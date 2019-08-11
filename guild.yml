@@ -1,0 +1,12 @@
+- model: topic_model
+  description: Simple topic modeling
+  operations:
+    experiment:
+      main: experiment
+      requires: prepared_data
+  resources:
+    prepared_data:
+      path: data
+      sources:
+        - operation: prepare_data
+          select: nlp_github_repos.csv
