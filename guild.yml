@@ -1,12 +1,17 @@
 - model: topic_model
   description: Simple topic modeling
+  sourcecode:
+    - exclude: 'data/*'
   operations:
     experiment:
       main: experiment
-      requires: prepared_data
+      requires:
+        - file: data
+    prepare-data:
+      main: prepare_data
+      requires:
+        - file: data
   resources:
-    prepared_data:
-      path: data
+    data:
       sources:
-        - operation: prepare_data
-          select: nlp_github_repos.csv
+      - file: data
