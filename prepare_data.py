@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 from operator import itemgetter
-import preprocessing
+from github_search import text_preprocessing
 
 input_file_path = 'github_repos.json'
 
@@ -35,7 +35,7 @@ lm_df.index = pd.RangeIndex(len(lm_df))
 
 import tqdm
 
-extracted_content = pd.Series([preprocessing.tokenize_markdown(md_string) for md_string in tqdm.tqdm(lm_df['content'])])
+extracted_content = pd.Series([text_preprocessing.tokenize_markdown(md_string) for md_string in tqdm.tqdm(lm_df['content'])])
 lm_df['text'] = extracted_content.apply(' '.join)
 lm_df = lm_df[(~lm_df['text'].isna()) & (lm_df['text'].apply(len) > 0)]
 print('filtered_n_examples: {}'.format(lm_df.shape[0]))
