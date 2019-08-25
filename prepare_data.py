@@ -3,7 +3,7 @@ import os
 from operator import itemgetter
 import preprocessing
 
-input_file_path = 'nlp_github_repos.json'
+input_file_path = 'github_repos.json'
 
 
 raw_df = pd.read_json(os.path.join('data', input_file_path), lines=True)
@@ -21,7 +21,8 @@ df = df[df['content'].str.split().apply(len) > 25]
 df = df[(df['content'].apply(itemgetter(0)) != '<') & (df['content'].apply(itemgetter(-1)) != '>')]
 
 
-n_examples =  10 * 10 ** 3
+n_examples = 10000
+print('selected_n_examples: {}'.format(n_examples))
 lm_df = df[['repo_name', 'languages', 'content']][:n_examples]
 
 lm_df = lm_df.dropna()
@@ -37,7 +38,10 @@ import tqdm
 extracted_content = pd.Series([preprocessing.tokenize_markdown(md_string) for md_string in tqdm.tqdm(lm_df['content'])])
 lm_df['text'] = extracted_content.apply(' '.join)
 lm_df = lm_df[(~lm_df['text'].isna()) & (lm_df['text'].apply(len) > 0)]
-lm_df[['text']].to_csv('github_repos_lm_text.csv')
+print('filtered_n_examples: {}'.format(lm_df.shape[0]))
+out_file = 'github_repos_lm_text.csv'
+print('saving results to: {}'.format(out_file))
+lm_df[['text']].to_csv(out_file)
 
 # ### Load to FastAI api
 

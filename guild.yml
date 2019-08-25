@@ -1,5 +1,4 @@
-- model: topic_model
-  description: Simple topic modeling
+- model: github_search
   sourcecode:
     - exclude: 'data/*'
   operations:
@@ -7,10 +6,12 @@
       main: experiment
       requires:
         - file: data
-    prepare-data:
+    prepare_data:
       main: prepare_data
       requires:
         - file: data
+      output-scalars:
+        filtered_n_examples: 'filtered_n_examples: (\value)'
   resources:
     data:
       sources:
