@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import attr
+import fastai.text
 
 
 def print_shapes_recursively(tpl, nesting=''):
@@ -22,24 +24,27 @@ def get_shapes_recursively(tpl, nesting=''):
         print(nesting + str(tpl.shape))
 
 
-def get_batch_items(learner, texts):
-    return torch.cat([learner.data.one_item(text)[0] for text in texts])
+@attr.s
+class FastAILearnerWrapper:
 
+    learner: fastai.text.LanguageLearner
 
-def get_model_outputs(learner, text):
-    input_tensor, __ = learner.data.one_item(text)
-    return learner.model[0](input_tensor)
+    def get_batch_items(self, texts, cpu=False):
+        return torch.cat([self.learner.data.one_item(text, cpu=cpu)[0] for text in texts])
 
+    def get_model_outputs(self, text, cpu=False):
+        input_tensor, __ = self.learner.data.one_item(text, cpu=cpu)
+        return self.learner.model[0](input_tensor)
 
-def get_last_hiddens(learner, text, layers=(0, 1, 2)):
-    input_tensor, __ = learner.data.one_item(text)
-    learner.model[0](input_tensor)
-    hiddens = learner.model[0].hidden
-    hiddens = [h.cpu().numpy().reshape(1, -1) for h in hiddens]
-    hiddens = hiddens[::-1] # do this because LM layers are reversed
-    hiddens = [hiddens[i] for i in layers]
-    return np.hstack(hiddens)
+    def get_last_hiddens(self, text, layers=(0, 1, 2)):
+        input_tensor, __ = self.learner.data.one_item(text)
+        self.learner.model[0](input_tensor)
+        hiddens = self.learner.model[0].hidden
+        hiddens = [h.cpu().numpy().reshape(1, -1) for h in hiddens]
+        hiddens = hiddens[::-1] # do this because LM layers are reversed
+        hiddens = [hiddens[i] for i in layers]
+        return np.hstack(hiddens)
 
+    def get_last_hiddens_batch(self, texts, layers=(0, 1, 2)):
+        return np.vstack([self.get_last_hiddens(self.learner, text, layers) for text in texts])
 
-def get_last_hiddens_batch(learner, texts, layers=(0, 1, 2)):
-    return np.vstack([get_last_hiddens(learner, text, layers) for text in texts])

@@ -2,3 +2,4 @@ fastai==1.0.57
 nltk
 bs4
 markdown
+attrs
