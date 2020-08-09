@@ -1,12 +1,12 @@
 networkx
 pandas
 scikit-learn
-nltk
 bs4
 markdown
 attrs
 numpy
 Cython
 markdown2
-farm @ https://github.com/lambdaofgod/FARM/
+https://download.pytorch.org/whl/cpu/torch-1.5.0%2Bcpu-cp36-cp36m-linux_x86_64.whl
+git+https://github.com/lambdaofgod/FARM/
 farm-haystack==0.3.0
