@@ -8,5 +8,3 @@ attrs
 numpy
 Cython
 markdown2
-git+https://github.com/lambdaofgod/FARM/
-farm-haystack==0.3.0
