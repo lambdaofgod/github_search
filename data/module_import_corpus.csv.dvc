@@ -1,0 +1,4 @@
+outs:
+- md5: 3f6057d355924ec993bbc53423fed828
+  size: 20384921
+  path: module_import_corpus.csv

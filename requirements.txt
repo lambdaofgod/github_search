@@ -8,3 +8,5 @@ attrs
 numpy
 Cython
 markdown2
+umap-learn
+altair
