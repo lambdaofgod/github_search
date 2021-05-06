@@ -1,0 +1,4 @@
+outs:
+- md5: 925de49368d1f32efa23ed7940b2a235
+  size: 1845509
+  path: codebert_prototypes.json

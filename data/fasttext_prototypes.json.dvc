@@ -1,0 +1,4 @@
+outs:
+- md5: a890387ad8716fd2b19103911514e6ed
+  size: 1838445
+  path: fasttext_prototypes.json
