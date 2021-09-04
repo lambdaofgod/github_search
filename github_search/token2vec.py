@@ -2,14 +2,12 @@
 
 upstream = None
 product = None
-embedding_dim = None
-n_iterations = None
-n_positive_imports = None 
+embedding_dim = 100
+n_iterations = 100000
+n_positive_imports = 32
 
-model_path = 'output/import2vec_module_vectors.bin'
+model_path = '/tmp/import2vec_module_vectors.bin'
 import_corpus_path='output/module_corpus.csv'
-
-# +
 
 # Cell
 import pandas as pd
@@ -218,3 +216,15 @@ def run_training_experiment(hyperparameters):
 # Cell
 print(hyperparameters)
 history = run_training_experiment(hyperparameters)
+
+# Cell
+plt.plot(history['train_loss']);
+plt.show()
+
+# Cell
+plt.plot(pd.Series(history['train_loss']).rolling(10).mean());
+plt.show()
+
+# Cell
+plt.plot(history['eval_loss']);
+plt.show()
