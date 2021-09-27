@@ -1,6 +1,6 @@
 __all__ = ['get_modules_string', 'get_module_corpus', 'prepare_module_corpus', 'store_word_vectors']
 
-
+import pickle
 import json
 import pandas as pd
 import tqdm
@@ -8,8 +8,9 @@ import numpy as np
 import gensim
 import ast
 
-from github_search import parsing_imports, repository_descriptions, paperswithcode_tasks, python_call_graph
+from github_search import parsing_imports, repository_descriptions, paperswithcode_tasks, python_call_graph, node_embedding_evaluation
 from sklearn import feature_extraction, decomposition
+import fasttext
 
 
 def get_modules_string(modules):
@@ -80,11 +81,32 @@ def prepare_dependency_records(python_file_paths, product):
         pd.read_csv(path)
         for path in python_file_paths
     ]).dropna(subset=['repo_name', 'content'])
-    repo_dependency_graph_fetcher = python_call_graph.RepoDependencyGraphFetcher()
-    dependency_records_df = repo_dependency_graph_fetcher.get_dependency_df(python_files_df)
-    dependency_records_df['destination'] = np.where(dependency_records_df['edge_type'] == 'repo-file', dependency_records_df['destination'] + ":file", dependency_records_df['destination'])
-    dependency_records_df['source'] = np.where(dependency_records_df['edge_type'] == 'file-function', dependency_records_df['source'] + ":file", dependency_records_df['source'])
-    dependency_records_df.to_csv(str(product), index=False)
+    repo_dependency_fetcher = python_call_graph.RepoDependencyGraphFetcher()
+    sample_files_df = python_call_graph.get_sample_files_df(python_files_df, n_files=1000)
+    repo_records_df = repo_dependency_fetcher.get_dependency_df(sample_files_df, "repo", clean_content=True)
+    function_records_df = repo_dependency_fetcher.get_dependency_df(sample_files_df, "function", clean_content=True)
+    dependency_records_df = pd.concat([repo_records_df, function_records_df])
+    dependency_records_df['source'] = dependency_records_df['source'].apply(
+        lambda s: s if type(s) is str else s.decode('utf-8')
+    )
+    dependency_records_df['destination'] = dependency_records_df['destination'].apply(
+        lambda s: s if type(s) is str else s.decode('utf-8')
+    )
+    dependency_records_df.dropna().to_csv(str(product), index=False)
+
+
+def train_python_token_fasttext(python_file_path, epoch, product):
+    python_files_df = pd.read_csv(path)
+    fasttext_corpus_path = "/tmp/python_files.csv"
+    python_files_df['content'].dropna().to_csv(fasttext_corpus_path, index=False, header=False)
+    model = fasttext.train_unsupervised(fasttext_corpus_path, epoch=epoch)
+    model.save_model(str(product))
+
+
+def make_igraph(upstream, product):
+    python_files_df = pd.read_csv(upstream['prepare_dependency_records']).dropna()
+    graph = node_embedding_evaluation.make_igraph(python_files_df)
+    pickle.dump(graph, open(str(product), 'wb'))
 
 
 def _word_vectors_to_word2vec_format_generator(vocabulary, word_vectors):

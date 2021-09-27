@@ -27,3 +27,13 @@ tasks:
     params:
       python_file_paths: ['data/scraped_python_files.csv']
     product: "output/dependency_records.csv"
+  - source: github_search.data_engineering.make_igraph
+    upstream:
+      prepare_dependency_records
+    product: "output/call_igraph.pkl"
+  - source: github_search.data_engineering.train_python_token_fasttext
+    params:
+      python_file_path: 'data/scraped_python_files.csv'
+      epoch: 5
+    product:
+      "output/python_files_fasttext.bin"
