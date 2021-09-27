@@ -5,11 +5,10 @@ meta:
   jupyter_functions_as_notebooks: True
 
 tasks:
-  - source: github_search.import_data.prepare_module_corpus
+  - source: github_search.data_engineering.prepare_module_corpus
     params:
-      python_files_csv_path: "data/paperswithcode_python_files.csv"
-    product:
-      "output/module_corpus.csv"
+      python_file_paths: ['data/scraped_python_files.csv']
+    product: "output/module_corpus.csv"
   - source: "github_search/token2vec.py"
     params:
       n_iterations: 100000
@@ -18,9 +17,13 @@ tasks:
     product:
       nb: "output/token2vec_training.ipynb"
       model_path: "output/import2vec_module_vectors.bin"
-  - source: github_search.import_data.prepare_paperswithcode_with_imports_df
+  - source: github_search.data_engineering.prepare_paperswithcode_with_imports_df
     params:
-      python_files_path: 'data/paperswithcode_python_files.csv'
+      python_file_paths: ['data/scraped_python_files.csv']
     upstream:
       prepare_module_corpus
     product: "output/papers_with_imports.csv"
+  - source: github_search.data_engineering.prepare_dependency_records
+    params:
+      python_file_paths: ['data/scraped_python_files.csv']
+    product: "output/dependency_records.csv"
