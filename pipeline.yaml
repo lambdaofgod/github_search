@@ -5,35 +5,42 @@ meta:
   jupyter_functions_as_notebooks: True
 
 tasks:
+  # prepare data for token2vec (modified import2vec)
   - source: github_search.data_engineering.prepare_module_corpus
     params:
-      python_file_paths: ['data/scraped_python_files.csv']
+      python_file_paths: ["data/scraped_python_files.csv"]
     product: "output/module_corpus.csv"
+  # train token2vec model
   - source: "github_search/token2vec.py"
     params:
       n_iterations: 100000
       n_positive_imports: 32
-      embedding_dim: 100
+      embedding_dim: "{{word2vec_dimension}}" 
     product:
       nb: "output/token2vec_training.ipynb"
-      model_path: "output/import2vec_module_vectors.bin"
+      model_path: "output/import2vec_module_vectors{{word2vec_dimension}}.bin"
+  # prepare paper dataset with imports extracted per-project
   - source: github_search.data_engineering.prepare_paperswithcode_with_imports_df
     params:
-      python_file_paths: ['data/scraped_python_files.csv']
+      python_file_paths: ["data/scraped_python_files.csv"]
     upstream:
       prepare_module_corpus
     product: "output/papers_with_imports.csv"
+  # prepare python dependency graph records
   - source: github_search.data_engineering.prepare_dependency_records
     params:
-      python_file_paths: ['data/scraped_python_files.csv']
+      python_file_paths: ["data/scraped_python_files.csv"]
     product: "output/dependency_records.csv"
+  # make igraph from dependency records
   - source: github_search.data_engineering.make_igraph
     upstream:
       prepare_dependency_records
     product: "output/call_igraph.pkl"
+  # train FastText model on Python files
   - source: github_search.data_engineering.train_python_token_fasttext
     params:
-      python_file_path: 'data/scraped_python_files.csv'
+      python_file_path: "data/scraped_python_files.csv"
+      dim: "{{fasttext_dimension}}" 
       epoch: 5
     product:
-      "output/python_files_fasttext.bin"
+      "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"

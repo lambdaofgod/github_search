@@ -95,12 +95,12 @@ def prepare_dependency_records(python_file_paths, product):
     dependency_records_df.dropna().to_csv(str(product), index=False)
 
 
-def train_python_token_fasttext(python_file_path, epoch, product):
-    python_files_df = pd.read_csv(path)
+def train_python_token_fasttext(python_file_path, epoch, dim, product):
+    python_files_df = pd.read_csv(python_file_path)
     fasttext_corpus_path = "/tmp/python_files.csv"
     python_files_df['content'].dropna().to_csv(fasttext_corpus_path, index=False, header=False)
-    model = fasttext.train_unsupervised(fasttext_corpus_path, epoch=epoch)
-    model.save_model(str(product))
+    model = fasttext.train_unsupervised(fasttext_corpus_path, dim=dim, epoch=epoch)
+    model.save_model(str(product).format(dim))
 
 
 def make_igraph(upstream, product):
