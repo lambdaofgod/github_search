@@ -10,6 +10,9 @@ import numpy as np
 from github_search import python_tokens
 from mlutil.feature_extraction import embeddings
 from mlutil import prototype_selection
+import mlutil
+from mlutil.feature_extraction import embeddings
+import transformers
 
 # Cell
 
@@ -22,9 +25,15 @@ def select_function_names(lines):
     return [line.strip() for line in lines if line.lstrip().startswith('def ')]
 
 
-def select_lines(text):
+def select_lines(text, use_function_names=True, use_class_names=False):
     lines = text.split('\n')
-    return select_function_names(lines) + select_class_names(lines)
+    selected_lines = []
+    if use_class_names:
+        selected_lines = selected_lines + select_class_names(lines)
+    if use_function_names:
+        selected_lines = selected_lines + select_function_names(lines)
+
+    return selected_lines
 
 # Cell
 import io
