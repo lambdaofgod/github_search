@@ -1,3 +1,8 @@
+"""
+this code is adapted from
+unsupervised GraphSAGE example
+https://github.com/pyg-team/pytorch_geometric/blob/master/examples/graph_sage_unsup.py
+"""
 import os
 import tqdm
 from typing import Union
@@ -25,89 +30,10 @@ from torch_cluster import random_walk
 
 from torch_geometric.loader import NeighborSampler as RawNeighborSampler
 from torch_geometric.typing import Adj, OptPairTensor, Size
-from torch_geometric.data import Data
 from torch_geometric.nn import SAGEConv
 
 
-class PygGraphWrapper:
-    """
-    holds pytorch_geometric dataset and utils for mapping vertices to names
-    """
-
-    def __init__(
-        self, featurizer, records_df, source_col="source", destination_col="destination"
-    ):
-        self.featurizer = featurizer
-        self.records_df = records_df
-        self.source_col = source_col
-        self.destination_col = destination_col
-
-        vertices = (
-            pd.concat([records_df[source_col], records_df[destination_col]])
-            .drop_duplicates()
-            .reset_index(drop=True)
-        )
-
-        self.vertex_mapping = pd.Series(data=vertices.index, index=vertices.values)
-        self.inverse_vertex_mapping = vertices
-        edge_index_source = self.vertex_mapping.loc[records_df[source_col]].values
-        edge_index_destination = self.vertex_mapping.loc[
-            records_df[destination_col]
-        ].values
-        edge_index = torch.tensor(
-            np.row_stack([edge_index_source, edge_index_destination])
-        )
-        features = featurizer(self.vertex_mapping.index)
-        self.dataset = Data(torch.tensor(features), torch.tensor(edge_index))
-
-    def get_sub_dataset_wrapper(self, vertex_subset):
-        records_subdf = self.records_df[
-            self.records_df[self.source_col].isin(vertex_subset)
-            | self.records_df[self.destination_col].isin(vertex_subset)
-        ]
-        return PygGraphWrapper(self.featurizer, records_subdf)
-
-    def get_vertex_embeddings(self, vertex_subset, model):
-        sub_dataset_wrapper = self.get_sub_dataset_wrapper(vertex_subset)
-        features = (
-            model.full_forward(
-                sub_dataset_wrapper.dataset.x, sub_dataset_wrapper.dataset.edge_index
-            )
-            .cpu()
-            .detach()
-            .numpy()
-        )
-        return features[sub_dataset_wrapper.vertex_mapping.loc[vertex_subset]]
-
-
 class ResidualSAGEConv(SAGEConv):
-    r"""The GraphSAGE operator from the `"Inductive Representation Learning on
-    Large Graphs" <https://arxiv.org/abs/1706.02216>`_ paper
-
-    .. math::
-        \mathbf{x}^{\prime}_i = \mathbf{W}_1 \mathbf{x}_i + \mathbf{W}_2 \cdot
-        \mathrm{mean}_{j \in \mathcal{N(i)}} \mathbf{x}_j
-
-    Args:
-        in_channels (int or tuple): Size of each input sample, or :obj:`-1` to
-            derive the size from the first input(s) to the forward method.
-            A tuple corresponds to the sizes of source and target
-            dimensionalities.
-        out_channels (int): Size of each output sample.
-        normalize (bool, optional): If set to :obj:`True`, output features
-            will be :math:`\ell_2`-normalized, *i.e.*,
-            :math:`\frac{\mathbf{x}^{\prime}_i}
-            {\| \mathbf{x}^{\prime}_i \|_2}`.
-            (default: :obj:`False`)
-        root_weight (bool, optional): If set to :obj:`False`, the layer will
-            not add transformed root node features to the output.
-            (default: :obj:`True`)
-        bias (bool, optional): If set to :obj:`False`, the layer will not learn
-            an additive bias. (default: :obj:`True`)
-        **kwargs (optional): Additional arguments of
-            :class:`torch_geometric.nn.conv.MessagePassing`.
-    """
-
     def __init__(self, **kwargs):
         super(ResidualSAGEConv, self).__init__(**kwargs)
 
@@ -147,8 +73,10 @@ class SAGENeighborSampler(RawNeighborSampler):
 
 
 class SAGE(nn.Module):
+
+
     def __init__(
-        self, in_channels, hidden_channels, num_layers, sage_layer_cls=ResidualSAGEConv
+        self, in_channels, hidden_channels, num_layers, sage_layer_cls=SAGEConv
     ):
         super(SAGE, self).__init__()
         self.num_layers = num_layers
@@ -175,7 +103,8 @@ class SAGE(nn.Module):
             if i != self.num_layers - 1:
                 x = x.relu()
                 x = F.dropout(x, p=0.5, training=self.training)
-        return x
+        out, pos_out, neg_out = x.split(x.size(0) // 3, dim=0)
+        return out, pos_out, neg_out
 
     def full_forward(self, x, edge_index):
         for i, conv in enumerate(self.convs):
@@ -185,15 +114,39 @@ class SAGE(nn.Module):
                 x = F.dropout(x, p=0.5, training=self.training)
         return x
 
+    def loss(self, out, pos_out, neg_out):
+        pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
+        neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
+        loss = -pos_loss - neg_loss
+        return loss
 
-def unsupervised_graphsage_loss(model, xs, adjs):
-    out = model(xs, adjs)
-    out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
 
-    pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
-    neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
-    loss = -pos_loss - neg_loss
-    return loss, out.size(0)
+class Encoder(nn.Module):
+    def __init__(self, in_channels, hidden_channels):
+        super(Encoder, self).__init__()
+        self.convs = torch.nn.ModuleList([
+            SAGEConv(in_channels, hidden_channels),
+            SAGEConv(hidden_channels, hidden_channels),
+            SAGEConv(hidden_channels, hidden_channels)
+        ])
+
+        self.activations = torch.nn.ModuleList()
+        self.activations.extend([
+            nn.PReLU(hidden_channels),
+            nn.PReLU(hidden_channels),
+            nn.PReLU(hidden_channels)
+        ])
+
+    def forward(self, x, adjs):
+        for i, (edge_index, _, size) in enumerate(adjs):
+            x_target = x[:size[1]]  # Target nodes are always placed first.
+            x = self.convs[i]((x, x_target), edge_index)
+            x = self.activations[i](x)
+        return x
+
+
+def corruption(x, edge_index):
+    return x[torch.randperm(x.size(0))], edge_index
 
 
 def train(model, data, train_loader, optimizer, device):
@@ -204,7 +157,9 @@ def train(model, data, train_loader, optimizer, device):
         adjs = [adj.to(device) for adj in adjs]
         optimizer.zero_grad()
         x = data.x[n_id].to(device)
-        loss, size = unsupervised_graphsage_loss(model, x, adjs)
+        outs = model(x, adjs)
+        size = outs[0].size(0)
+        loss = model.loss(*outs)
         loss.backward()
         optimizer.step()
 
@@ -218,6 +173,9 @@ def get_val_loss(model, val_loader):
     model.eval()
     for batch_size, n_id, adjs in val_loader:
         adjs = [adj.to(device) for adj in adjs]
+        x = data.x[n_id].to(device)
+        outs = model(x, adjs)
+
         loss = unsupervised_graphsage_loss(model, x[n_id], adjs)
         total_loss += float(loss) * out.size(0)
 

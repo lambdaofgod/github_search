@@ -58,7 +58,9 @@ def prepare_paperswithcode_with_imports_df(product, upstream, python_file_paths)
     add import data to python files csv
     """
     print("PYTHON FILE PATHS", python_file_paths)
-    python_files_df = pd.concat([pd.read_csv(path, encoding="utf-8") for path in python_file_paths])
+    python_files_df = pd.concat(
+        [pd.read_csv(path, encoding="utf-8") for path in python_file_paths]
+    )
     print(python_files_df.shape)
     repo_names = python_files_df["repo_name"]
     paperswithcode_df, all_papers_df = paperswithcode_tasks.get_paperswithcode_dfs()
@@ -98,13 +100,7 @@ def prepare_dependency_records(python_file_paths, product):
     prepare python dependency graph records (function calls, files in repo) csv
     """
     python_files_df = pd.concat(
-        [
-            pd.read_csv(
-                path,
-                encoding="utf-8"
-            )
-            for path in python_file_paths
-        ]
+        [pd.read_csv(path, encoding="utf-8") for path in python_file_paths]
     ).dropna(subset=["repo_name", "content"])
     repo_dependency_fetcher = python_call_graph.RepoDependencyGraphFetcher()
     sample_files_df = python_call_graph.get_sample_files_df(

@@ -45,15 +45,15 @@ tasks:
     product:
       "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"
   # train GraphSAGE model
-  - source: github_search.pytorch_geometric_training.run_graphsage_experiment
+  - source: github_search.pytorch_geometric_training.run_gnn_experiment
     params:
       fasttext_model_path: "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"
-      epochs: "{{graphsage_epochs}}" 
-      hidden_channels: "{{graphsage_hidden_channels}}" 
-      num_layers: "{{graphsage_layers}}"
+      epochs: "{{gnn_epochs}}" 
+      hidden_channels: "{{gnn_hidden_channels}}" 
+      batch_size: "{{gnn_batch_size}}" 
+      num_layers: "{{gnn_layers}}"
       lr: 0.001
-      skip_connections: "{{graphsage_use_skip_connections}}"
+      model_name: "{{gnn_model_name}}"
     product:
-      graphsage_token_embeddings: "output/graphsage_embeddings_fasttext_dim{{fasttext_dimension}}_epochs{{graphsage_epochs}}_dim{{graphsage_hidden_channels}}_layers{{graphsage_layers}}.bin"
-      model_path: "output/graphsage_model_{{graphsage_epochs}}_dim{{graphsage_hidden_channels}}_layers{{graphsage_layers}}.pth"
-      nb: "output/graphsage_training.ipynb"
+      gnn_token_embeddings: "output/gnn_embeddings_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.bin"
+      model_path: "output/gnn_model_{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.pth"
