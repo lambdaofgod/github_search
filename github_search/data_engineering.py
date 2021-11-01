@@ -95,7 +95,9 @@ def prepare_module_corpus(python_file_paths, product):
     get_module_corpus(python_files_df).to_csv(str(product))
 
 
-def prepare_dependency_records(python_file_paths, product):
+def prepare_dependency_records(
+    python_file_paths, sample_files_per_repo, add_filename_repo_label, product
+):
     """
     prepare python dependency graph records (function calls, files in repo) csv
     """
@@ -104,22 +106,51 @@ def prepare_dependency_records(python_file_paths, product):
     ).dropna(subset=["repo_name", "content"])
     repo_dependency_fetcher = python_call_graph.RepoDependencyGraphFetcher()
     sample_files_df = python_call_graph.get_sample_files_df(
-        python_files_df, n_files=1000
+        python_files_df, n_files=sample_files_per_repo
     )
-    repo_records_df = repo_dependency_fetcher.get_dependency_df(
-        sample_files_df, "repo", clean_content=True
-    )
-    function_records_df = repo_dependency_fetcher.get_dependency_df(
-        sample_files_df, "function", clean_content=True
-    )
-    dependency_records_df = pd.concat([repo_records_df, function_records_df])
-    dependency_records_df["source"] = dependency_records_df["source"].apply(
-        lambda s: s if type(s) is str else s.decode("utf-8")
-    )
-    dependency_records_df["destination"] = dependency_records_df["destination"].apply(
-        lambda s: s if type(s) is str else s.decode("utf-8")
+    dependency_records_df = repo_dependency_fetcher.prepare_dependency_records(
+        sample_files_df, add_filename_repo_label=add_filename_repo_label
     )
     dependency_records_df.dropna().to_csv(str(product), index=False)
+
+
+def postprocess_dependency_records(product, use_additional_records, upstream):
+    """
+    filter out ROOT records, add
+    """
+    dependency_records_df = pd.read_csv(upstream["prepare_dependency_records"])
+    non_root_dependency_records_df = dependency_records_df[
+        dependency_records_df["source"] != "<ROOT>"
+    ]
+    if use_additional_records:
+        papers_data_df = pd.read_csv(upstream["prepare_paperswithcode_with_imports_df"])
+        papers_data_df["tasks"] = papers_data_df["tasks"].apply(ast.literal_eval)
+        paperswithcode_single_task_df = papers_data_df.explode("tasks")
+        shared_task_pairs_df = paperswithcode_single_task_df.merge(
+            paperswithcode_single_task_df, on="tasks"
+        )
+        shared_task_pairs_df = shared_task_pairs_df[
+            shared_task_pairs_df["repo_x"] != shared_task_pairs_df["repo_y"]
+        ]
+
+        shared_task_repo_pairs = list(
+            set(
+                [
+                    tuple(set(t))
+                    for t in shared_task_pairs_df[["repo_x", "repo_y"]].itertuples(
+                        index=False
+                    )
+                ]
+            )
+        )
+        shared_task_records_df = pd.DataFrame.from_records(
+            {"source": r1, "destination": r2, "edge_type": "repo-repo"}
+            for (r1, r2) in shared_task_repo_pairs
+        )
+        non_root_dependency_records_df = pd.concat(
+            [shared_task_records_df, non_root_dependency_records_df]
+        )
+    non_root_dependency_records_df.dropna().to_csv(str(product), index=False)
 
 
 def train_python_token_fasttext(python_file_path, epoch, dim, product):

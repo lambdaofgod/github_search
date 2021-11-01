@@ -74,7 +74,12 @@ class SAGENeighborSampler(RawNeighborSampler):
 
 class SAGE(nn.Module):
     def __init__(
-        self, in_channels, hidden_channels, num_layers, sage_layer_cls=SAGEConv
+        self,
+        in_channels,
+        hidden_channels,
+        num_layers,
+        use_self_connection,
+        sage_layer_cls=SAGEConv,
     ):
         super(SAGE, self).__init__()
         self.num_layers = num_layers
@@ -82,7 +87,11 @@ class SAGE(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else hidden_channels
             self.convs.append(
-                sage_layer_cls(in_channels=in_channels, out_channels=hidden_channels)
+                sage_layer_cls(
+                    in_channels=in_channels,
+                    out_channels=hidden_channels,
+                    root_weight=use_self_connection,
+                )
             )
 
     def forward(self, x, adjs):
@@ -124,9 +133,13 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.convs = torch.nn.ModuleList(
             [
-                SAGEConv(in_channels, hidden_channels),
-                SAGEConv(hidden_channels, hidden_channels),
-                SAGEConv(hidden_channels, hidden_channels),
+                SAGEConv(in_channels, hidden_channels, root_weight=use_self_connection),
+                SAGEConv(
+                    hidden_channels, hidden_channels, root_weight=use_self_connection
+                ),
+                SAGEConv(
+                    hidden_channels, hidden_channels, root_weight=use_self_connection
+                ),
             ]
         )
 

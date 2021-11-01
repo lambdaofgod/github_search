@@ -29,8 +29,18 @@ tasks:
   # prepare python dependency graph records
   - source: github_search.data_engineering.prepare_dependency_records
     params:
+      sample_files_per_repo: 1000
+      add_filename_repo_label: True
       python_file_paths: ["data/crawled_python_files.csv"]
     product: "output/dependency_records.csv"
+  # additional information for dependency records
+  - source: github_search.data_engineering.postprocess_dependency_records
+    upstream:
+      - prepare_dependency_records
+      - prepare_paperswithcode_with_imports_df
+    params:
+      use_additional_records: True
+    product: "output/processed_dependency_records.csv"
   # make igraph from dependency records
   - source: github_search.data_engineering.make_igraph
     upstream:
@@ -44,18 +54,11 @@ tasks:
       epoch: "{{fasttext_epochs}}"
     product:
       "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"
-  # prepare records df where repos have edges if they share at least one task
-  - source: github_search.data_engineering.prepare_task_linked_repo_records_df
-    upstream:
-      prepare_paperswithcode_with_imports_df
-    product: "output/shared_task_repos.csv"
   # train GraphSAGE model
   - source: github_search.pytorch_geometric_training.run_gnn_experiment
     upstream:
-      prepare_task_linked_repo_records_df
+      postprocess_dependency_records
     params:
-      use_additional_records: True
-      records_csv_path: "{{graph_records_path}}"
       fasttext_model_path: "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"
       epochs: "{{gnn_epochs}}" 
       hidden_channels: "{{gnn_hidden_channels}}" 
@@ -64,6 +67,7 @@ tasks:
       test_run: "{{test_run}}" 
       lr: 0.001
       model_name: "{{gnn_model_name}}"
+      use_self_connection: "{{gnn_use_self_connection}}"
     product:
       plot_file: "output/loss_{{gnn_model_name}}_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.png"
       gnn_token_embeddings: "output/{{gnn_model_name}}_embeddings_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.bin"

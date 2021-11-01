@@ -32,7 +32,9 @@ except:
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def get_model(model_name, num_node_features, hidden_channels, num_layers):
+def get_model(
+    model_name, num_node_features, hidden_channels, num_layers, use_self_connection
+):
     if model_name.startswith("graphsage"):
         if model_name == "graphsage_skip_connections":
             sage_layer = ResidualSAGEConv
@@ -43,11 +45,12 @@ def get_model(model_name, num_node_features, hidden_channels, num_layers):
             hidden_channels=hidden_channels,
             num_layers=num_layers,
             sage_layer_cls=sage_layer,
+            use_self_connection=use_self_connection,
         )
     elif model_name == "graph_infomax":
         model = DeepGraphInfomax(
             hidden_channels=hidden_channels,
-            encoder=Encoder(num_node_features, hidden_channels),
+            encoder=Encoder(num_node_features, hidden_channels, use_self_connection),
             summary=graph_infomax_summary,
             corruption=graph_infomax_corruption,
         )
@@ -75,19 +78,10 @@ def get_loader(model_name, data, batch_size, shuffle=True):
         )
 
 
-def get_dataset_wrapper(csv_paths, embedder, label_file_nodes, test_run):
+def get_dataset_wrapper(csv_paths, embedder, test_run):
     dependency_records_df = pd.concat([pd.read_csv(p).dropna() for p in csv_paths])
-    non_root_dependency_records_df = dependency_records_df[
-        dependency_records_df["source"] != "<ROOT>"
-    ]
-    if label_file_nodes:
-        non_root_dependency_records_df = (
-            python_call_graph.get_records_df_with_labeled_files(
-                non_root_dependency_records_df
-            )
-        )
     dependency_graph_wrapper = PygGraphWrapper(
-        embedder.transform, non_root_dependency_records_df
+        embedder.transform, dependency_records_df
     )
     return dependency_graph_wrapper
 
@@ -138,26 +132,25 @@ def train_unsupervised_gnn_model(
             plotlosses.send()
         rnge.set_description(f"Epoch: {epoch}, Loss: {loss:.4f}, ")
 
-    # TODO: refactor 
+    # TODO: refactor
     fig = plt.figure()
-    x = list(litem.step for litem in plotlosses.logger.log_history['loss'])
-    y = list(litem.value for litem in plotlosses.logger.log_history['loss'])
+    x = list(litem.step for litem in plotlosses.logger.log_history["loss"])
+    y = list(litem.value for litem in plotlosses.logger.log_history["loss"])
     plt.ion()
     plt.plot(x, y)
     plt.ioff()
     plt.savefig(plot_file)
 
+
 def run_gnn_experiment(
     product,
     upstream,
-    records_csv_path,
-    use_additional_records,
     fasttext_model_path,
     model_name,
     hidden_channels,
     num_layers,
     batch_size,
-    label_file_nodes=False,
+    use_self_connection,
     epochs=50,
     lr=0.001,
     test_run=False,
@@ -169,26 +162,39 @@ def run_gnn_experiment(
     fasttext_model = fasttext.load_model(fasttext_model_path)
     fasttext_embedder = embeddings.FastTextVectorizer(fasttext_model)
 
-    csv_paths = [records_csv_path]
-    if use_additional_records:
-        csv_paths.append(upstream["prepare_task_linked_repo_records_df"])
+    csv_paths = [upstream["postprocess_dependency_records"]]
     dependency_graph_wrapper = get_dataset_wrapper(
-        csv_paths, fasttext_embedder, label_file_nodes, test_run
+        csv_paths, fasttext_embedder, test_run
     )
     data = dependency_graph_wrapper.dataset
     print("loaded:", data.num_nodes, "nodes")
     print("dataset:", data)
 
     train_loader = get_loader(model_name, data, batch_size)
-    model = get_model(model_name, data.num_node_features, hidden_channels, num_layers)
-    plot_file = str(product['plot_file'])
+    model = get_model(
+        model_name,
+        data.num_node_features,
+        hidden_channels,
+        num_layers,
+        use_self_connection,
+    )
+    plot_file = str(product["plot_file"])
     train_unsupervised_gnn_model(
-        model, data, train_loader, hidden_channels, num_layers, epochs, batch_size, lr, plot_file
+        model,
+        data,
+        train_loader,
+        hidden_channels,
+        num_layers,
+        epochs,
+        batch_size,
+        lr,
+        plot_file,
     )
     torch.save(model, str(product["model_path"]))
 
     # TODO: split this into different pipeline part
     model = model.to("cpu")
+    model.training = False
     gnn_features = get_gnn_features(model_name, model, data)
     gnn_kv = KeyedVectors(gnn_features.shape[1])
     gnn_kv.add(dependency_graph_wrapper.inverse_vertex_mapping.values, gnn_features)
