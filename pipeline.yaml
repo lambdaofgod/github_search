@@ -46,6 +46,14 @@ tasks:
     upstream:
       prepare_dependency_records
     product: "output/call_igraph.pkl"
+  # extract python function df
+  # df has columns
+  # ['repo_name', 'path', 'function_name', 'function_code']
+  - source: github_search.data_engineering.make_function_code_df
+    params:
+      python_file_path: "data/crawled_python_files.csv"
+    product:
+      "output/python_functions.csv"
   # train FastText model on Python files
   - source: github_search.data_engineering.train_python_token_fasttext
     params:

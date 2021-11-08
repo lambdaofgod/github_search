@@ -18,6 +18,7 @@ from github_search import (
     paperswithcode_tasks,
     python_call_graph,
     node_embedding_evaluation,
+    python_function_code
 )
 from sklearn import feature_extraction, decomposition
 import fasttext
@@ -167,6 +168,12 @@ def make_igraph(upstream, product):
     python_files_df = pd.read_csv(upstream["prepare_dependency_records"]).dropna()
     graph = node_embedding_evaluation.make_igraph(python_files_df)
     pickle.dump(graph, open(str(product), "wb"))
+
+
+def make_function_code_df(product, python_file_path):
+    python_files_df = pd.read_csv(python_file_path).dropna()
+    functions_df = python_function_code.get_function_data_df(python_files_df)
+    functions_df.to_csv(product)
 
 
 def _word_vectors_to_word2vec_format_generator(vocabulary, word_vectors):
