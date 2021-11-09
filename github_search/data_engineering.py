@@ -115,7 +115,7 @@ def prepare_dependency_records(
     dependency_records_df.dropna().to_csv(str(product), index=False)
 
 
-def postprocess_dependency_records(product, use_additional_records, upstream):
+def postprocess_dependency_records(product, use_additional_records, upstream, description_mode):
     """
     filter out ROOT records, add
     """
@@ -123,6 +123,9 @@ def postprocess_dependency_records(product, use_additional_records, upstream):
     non_root_dependency_records_df = dependency_records_df[
         dependency_records_df["source"] != "<ROOT>"
     ]
+    if description_mode:
+        non_root_dependency_records_df = python_call_graph.get_description_records_df(non_root_dependency_records_df.dropna())
+
     if use_additional_records:
         papers_data_df = pd.read_csv(upstream["prepare_paperswithcode_with_imports_df"])
         papers_data_df["tasks"] = papers_data_df["tasks"].apply(ast.literal_eval)

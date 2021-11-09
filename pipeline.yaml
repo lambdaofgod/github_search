@@ -39,7 +39,8 @@ tasks:
       - prepare_dependency_records
       - prepare_paperswithcode_with_imports_df
     params:
-      use_additional_records: True
+      use_additional_records: False
+      description_mode: True
     product: "output/processed_dependency_records.csv"
   # make igraph from dependency records
   - source: github_search.data_engineering.make_igraph

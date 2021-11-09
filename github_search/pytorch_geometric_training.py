@@ -78,10 +78,17 @@ def get_loader(model_name, data, batch_size, shuffle=True):
         )
 
 
-def get_dataset_wrapper(csv_paths, embedder, test_run):
+def get_dataset_wrapper(csv_paths, embedder, test_run, description_mode):
     dependency_records_df = pd.concat([pd.read_csv(p).dropna() for p in csv_paths])
+
+    source_col = "source"
+    destination_col = "destination"
+    if description_mode:
+        source_col = "repo_description"
+        destination_col = "file_description"
+
     dependency_graph_wrapper = PygGraphWrapper(
-        embedder.transform, dependency_records_df
+        embedder.transform, dependency_records_df, source_col, destination_col 
     )
     return dependency_graph_wrapper
 
@@ -154,6 +161,7 @@ def run_gnn_experiment(
     epochs=50,
     lr=0.001,
     test_run=False,
+    description_mode=True
 ):
     print()
     print("using model:", model_name)
@@ -164,7 +172,7 @@ def run_gnn_experiment(
 
     csv_paths = [upstream["postprocess_dependency_records"]]
     dependency_graph_wrapper = get_dataset_wrapper(
-        csv_paths, fasttext_embedder, test_run
+        csv_paths, fasttext_embedder, test_run, description_mode
     )
     data = dependency_graph_wrapper.dataset
     print("loaded:", data.num_nodes, "nodes")
@@ -195,23 +203,32 @@ def run_gnn_experiment(
     # TODO: split this into different pipeline part
     model = model.to("cpu")
     model.training = False
-    gnn_features = get_gnn_features(model_name, model, data)
+
+    if description_mode:
+        raw_dependency_graph_wrapper = get_dataset_wrapper(
+            csv_paths, fasttext_embedder, test_run, False
+        )
+        raw_data = dependency_graph_wrapper.dataset
+    else:
+        raw_data = data
+
+    gnn_features = get_gnn_features(model_name, model, raw_data)
     gnn_kv = KeyedVectors(gnn_features.shape[1])
-    gnn_kv.add(dependency_graph_wrapper.inverse_vertex_mapping.values, gnn_features)
+    gnn_kv.add(raw_dependency_graph_wrapper.inverse_vertex_mapping.str.split(":").apply(lambda s: s[-1]).values, gnn_features)
     gnn_kv.save(str(product["gnn_token_embeddings"]))
 
     example_repo = "huggingface/transformers"
 
     def get_most_similar_repos(example_repo, n_repos):
         similarities = metrics.pairwise.cosine_distances(
-            [gnn_features[dependency_graph_wrapper.vertex_mapping[example_repo]]],
+            [gnn_features[raw_dependency_graph_wrapper.vertex_mapping[example_repo]]],
             gnn_features,
         )[0]
-        repo_inverse_vertex_mapping = dependency_graph_wrapper.inverse_vertex_mapping
+        repo_inverse_vertex_mapping = raw_dependency_graph_wrapper.inverse_vertex_mapping
         repo_inverse_vertex_mapping = repo_inverse_vertex_mapping[
             repo_inverse_vertex_mapping.str.contains("/")
         ]
-        return dependency_graph_wrapper.inverse_vertex_mapping[
+        return raw_dependency_graph_wrapper.inverse_vertex_mapping[
             (similarities[: len(repo_inverse_vertex_mapping)]).argsort()[:n_repos]
         ]
 

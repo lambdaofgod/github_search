@@ -2,7 +2,9 @@
 
 __all__ = ['get_calls_from_expr_or_assign', 'zip_dicts', 'get_ast_function_calls', 'get_function_calls',
            'get_sample_files_df', 'clean_task_names', 'get_repo_task_edges', 'try_run', 'get_upper_level_edges',
-           'make_records', 'encode_bytes', 'RepoDependencyGraphFetcher', 'get_records_df_with_labeled_files']
+           'make_records', 'encode_bytes', 'RepoDependencyGraphFetcher', 'get_node_degrees',
+           'get_aggregated_edge_type_df', 'get_descriptions', 'get_description_records_df',
+           'get_records_df_with_labeled_files']
 
 # Cell
 
@@ -168,8 +170,12 @@ class RepoDependencyGraphFetcher:
         python_files_df[cleaned_column_name] = python_files_df['clean_content'].apply(lambda s: np.nan if s == "" else s)
         return python_files_df
 
-    def get_repo_and_root_edges(self, python_files_df, path_col='path'):
-        filenames = python_files_df[path_col].apply(os.path.basename).str.replace('.py', '').apply(encode_bytes)
+    def get_repo_and_root_edges(self, python_files_df, path_col='path', add_repo_label=False):
+        filenames = python_files_df[path_col].apply(os.path.basename).str.replace('.py', '')
+
+        if add_repo_label:
+            filenames = python_files_df['repo_name'] + ":" + filenames
+        filenames = filenames.apply(encode_bytes)
         repo_edges_dict = filenames.groupby(python_files_df['repo_name']).agg(lambda args: frozenset(args)).to_dict()
         repo_edges = [{k: repo_edges_dict[k]} for k in repo_edges_dict]
         root_edges = [{
@@ -178,24 +184,22 @@ class RepoDependencyGraphFetcher:
         ]
         return root_edges, repo_edges
 
-    def get_filename_and_function_edges(self, python_files_df, clean_content, path_col='path'):
+    def get_filename_and_function_edges(self, python_files_df, clean_content, add_repo_label=False, path_col='path'):
         if clean_content:
             content_column = 'clean_content'
             python_files_df = self.clean_content(python_files_df, content_column)
         else:
             content_column = 'content'
 
-        filenames = python_files_df[path_col].apply(os.path.basename).str.replace('.py', '').apply(encode_bytes)
+        filenames = python_files_df[path_col].apply(os.path.basename).str.replace('.py', '')
+        if add_repo_label:
+            filenames = python_files_df['repo_name'] + ":" + filenames
+        filenames = filenames.apply(encode_bytes)
         files = python_files_df[content_column]
         function_edges = files.apply(try_run(get_function_calls)).dropna()
         function_edges = function_edges.to_list()
         filename_edges = get_upper_level_edges(filenames, function_edges)
         return filename_edges, function_edges
-
-    def get_dependency_edges(self, python_files_df, clean_content=True):
-        filename_edges, function_edges = self.get_filename_and_function_edges(python_files_df, clean_content)
-        root_edges, repo_edges = self.get_repo_and_root_edges(python_files_df)
-        return root_edges, repo_edges, filename_edges, function_edges
 
     def get_records(self, edges):
         return [record
@@ -215,15 +219,15 @@ class RepoDependencyGraphFetcher:
         ]
         return dependency_records_df.drop_duplicates()
 
-    def get_dependency_df(self, python_files_df, dep_type="repo", clean_content=True):
+    def get_dependency_df(self, python_files_df, dep_type="repo", add_filename_repo_label=False, clean_content=True):
         print("constructing edges")
         if dep_type == "repo":
-            root_edges, repo_edges = self.get_repo_and_root_edges(python_files_df)
+            root_edges, repo_edges = self.get_repo_and_root_edges(python_files_df, add_repo_label=add_filename_repo_label)
             edge_groups = [root_edges, repo_edges]
             record_groups = [self.get_records(edge_group) for edge_group in edge_groups]
             edge_types = ['root-repo', 'repo-file']
         elif dep_type == "function":
-            filename_edges, function_edges = self.get_filename_and_function_edges(python_files_df, clean_content)
+            filename_edges, function_edges = self.get_filename_and_function_edges(python_files_df, clean_content, add_repo_label=add_filename_repo_label)
             edge_groups = [filename_edges, function_edges]
             record_groups = [self.get_records(edge_group) for edge_group in edge_groups]
             edge_types = ['file-function', 'function-function']
@@ -235,9 +239,71 @@ class RepoDependencyGraphFetcher:
             for edge_type, records in zip(edge_types, record_groups)
         ]).drop_duplicates(subset=['source', 'destination'], keep='first')
 
+    def prepare_dependency_records(self, python_files_df, add_filename_repo_label=False):
+        repo_records_df = self.get_dependency_df(
+            python_files_df, "repo", clean_content=True, add_filename_repo_label=add_filename_repo_label
+        )
+        function_records_df = self.get_dependency_df(
+            python_files_df, "function", clean_content=True, add_filename_repo_label=add_filename_repo_label
+        )
+        dependency_records_df = pd.concat([repo_records_df, function_records_df])
+        dependency_records_df["source"] = dependency_records_df["source"].apply(
+            lambda s: s if type(s) is str else s.decode("utf-8")
+        )
+        dependency_records_df["destination"] = dependency_records_df["destination"].apply(
+            lambda s: s if type(s) is str else s.decode("utf-8")
+        )
+        return dependency_records_df
+
+# Cell
+
+def get_node_degrees(records_df):
+    outdegree = records_df['source'].value_counts()
+    indegree = records_df['destination'].value_counts()
+    degree = outdegree.add(indegree, fill_value=0)
+    return outdegree, indegree, degree
+
+# Cell
+
+
+def get_aggregated_edge_type_df(records_df, edge_type):
+    sample_df = records_df[records_df['edge_type'] == edge_type]
+    repos = sample_df.groupby("source").groups.keys()
+    descriptions = sample_df.groupby("source").apply(
+        lambda df:
+        " ".join(
+            set(df['destination'].sample(min(len(df), 1000)))))
+    raw_descriptions_df = descriptions.reset_index()
+    descriptions_df = raw_descriptions_df.apply(lambda item: item["source"] + " " + item[0].replace(item["source"]+":", ""), axis=1)
+    descriptions_df.index = raw_descriptions_df['source']
+    return descriptions_df
+
+def get_descriptions(records_df):
+    repo_descriptions = get_aggregated_edge_type_df(records_df, "repo-file")
+    file_descriptions = get_aggregated_edge_type_df(records_df, "file-function")
+    file_descriptions.name = "file_description"
+    repo_descriptions.name = 'repo_description'
+    return repo_descriptions, file_descriptions
+
+
+def get_description_records_df(records_df):
+    repo_descriptions, file_descriptions = get_descriptions(records_df)
+    return (
+        records_df.merge(
+            repo_descriptions,
+            left_on='source',
+            right_index=True
+        ).merge(
+            file_descriptions,
+            left_on='destination',
+            right_index=True
+        )
+    )
+
 # Cell
 
 def get_records_df_with_labeled_files(records_df):
+    outdegree, indegree, degree = get_node_degrees(records_df)
     labeled_files_dependency_records_df = records_df.copy()
     labeled_files = labeled_files_dependency_records_df[labeled_files_dependency_records_df['edge_type'] == 'repo-file']['destination']
     labeled_files = labeled_files_dependency_records_df[labeled_files_dependency_records_df['edge_type'] == 'repo-file']['source'] + ":" + labeled_files
