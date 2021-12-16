@@ -81,3 +81,7 @@ tasks:
       plot_file: "output/loss_{{gnn_model_name}}_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.png"
       gnn_token_embeddings: "output/{{gnn_model_name}}_embeddings_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.bin"
       model_path: "output/{{gnn_model_name}}_model_{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.pth"
+  # get github readmes
+  - source: github_search.data_engineering.make_readme_summaries
+    upstream: "prepare_paperswithcode_with_imports_df"
+    product: "output/papers_with_readmes.csv"

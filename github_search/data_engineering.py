@@ -12,13 +12,15 @@ import tqdm
 import numpy as np
 import gensim
 import ast
+import concurrent.futures
 
 from github_search import (
     parsing_imports,
     paperswithcode_tasks,
     python_call_graph,
     node_embedding_evaluation,
-    python_function_code
+    python_function_code,
+    github_readmes
 )
 from sklearn import feature_extraction, decomposition
 import fasttext
@@ -165,6 +167,27 @@ def train_python_token_fasttext(python_file_path, epoch, dim, product):
     )
     model = fasttext.train_unsupervised(fasttext_corpus_path, dim=int(dim), epoch=epoch)
     model.save_model(str(product))
+
+
+def try_decode(s, codec="utf-8"):
+    try:
+        return s.decode(codec)
+    except:
+        return None
+
+
+def get_readme_summaries(df, keywords=True):
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+    raw_readmes = list(pool.map(github_readmes.get_readme, df['repo']))
+    readmes = list(map(try_decode, raw_readmes))
+    return readmes
+
+
+def make_readme_summaries(upstream, product):
+    df = pd.read_csv(upstream['prepare_paperswithcode_with_imports_df'])
+    readmes = get_readme_summaries(df)
+    df['readme'] = readmes
+    df.to_csv(product)
 
 
 def make_igraph(upstream, product):
