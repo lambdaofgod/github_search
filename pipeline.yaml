@@ -5,10 +5,19 @@ meta:
   jupyter_functions_as_notebooks: True
 
 tasks:
+  # run word2vec on natural language data
+  - source: github_search.word2vec.train_abstract_readme_w2v
+    upstream:
+      - make_readmes
+    params:
+      embedding_dim: "{{word2vec_dimension}}"
+      epochs: "{{word2vec_epochs}}"
+    product:
+      "output/abstract_readme_w2v{{word2vec_dimension}}.bin"
   # prepare data for token2vec (modified import2vec)
   - source: github_search.data_engineering.prepare_module_corpus
     params:
-      python_file_paths: ["data/scraped_python_files.csv"]
+      python_file_paths: ["{{python_files_csv_path}}"]
     product: "output/module_corpus.csv"
   # train token2vec model
   - source: "github_search/token2vec.py"
@@ -22,7 +31,7 @@ tasks:
   # prepare paper dataset with imports extracted per-project
   - source: github_search.data_engineering.prepare_paperswithcode_with_imports_df
     params:
-      python_file_paths: ["data/crawled_python_files.csv"]
+      python_file_paths: ["{{python_files_csv_path}}"]
     upstream:
       prepare_module_corpus
     product: "output/papers_with_imports.csv"
@@ -31,7 +40,7 @@ tasks:
     params:
       sample_files_per_repo: 1000
       add_filename_repo_label: True
-      python_file_paths: ["data/crawled_python_files.csv"]
+      python_file_paths: ["{{python_files_csv_path}}"]
     product: "output/dependency_records.csv"
   # additional information for dependency records
   - source: github_search.data_engineering.postprocess_dependency_records
@@ -40,7 +49,7 @@ tasks:
       - prepare_paperswithcode_with_imports_df
     params:
       use_additional_records: False
-      description_mode: True
+      description_mode: "{{gnn_description_mode}}" 
     product: "output/processed_dependency_records.csv"
   # make igraph from dependency records
   - source: github_search.data_engineering.make_igraph
@@ -52,13 +61,13 @@ tasks:
   # ['repo_name', 'path', 'function_name', 'function_code']
   - source: github_search.data_engineering.make_function_code_df
     params:
-      python_file_path: "data/crawled_python_files.csv"
+      python_file_path: "{{python_files_csv_path}}"
     product:
       "output/python_functions.csv"
   # train FastText model on Python files
   - source: github_search.data_engineering.train_python_token_fasttext
     params:
-      python_file_path: "data/crawled_python_files.csv"
+      python_file_path: "{{python_files_csv_path}}"
       dim: "{{fasttext_dimension}}" 
       epoch: "{{fasttext_epochs}}"
     product:
@@ -77,11 +86,14 @@ tasks:
       lr: 0.001
       model_name: "{{gnn_model_name}}"
       use_self_connection: "{{gnn_use_self_connection}}"
+      description_mode: "{{gnn_description_mode}}" 
     product:
       plot_file: "output/loss_{{gnn_model_name}}_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.png"
       gnn_token_embeddings: "output/{{gnn_model_name}}_embeddings_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.bin"
       model_path: "output/{{gnn_model_name}}_model_{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.pth"
   # get github readmes
-  - source: github_search.data_engineering.make_readme_summaries
+  - source: github_search.data_engineering.make_readmes
+    params:
+      max_workers: 24
     upstream: "prepare_paperswithcode_with_imports_df"
     product: "output/papers_with_readmes.csv"

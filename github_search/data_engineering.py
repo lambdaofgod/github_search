@@ -169,23 +169,9 @@ def train_python_token_fasttext(python_file_path, epoch, dim, product):
     model.save_model(str(product))
 
 
-def try_decode(s, codec="utf-8"):
-    try:
-        return s.decode(codec)
-    except:
-        return None
-
-
-def get_readme_summaries(df, keywords=True):
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=10)
-    raw_readmes = list(pool.map(github_readmes.get_readme, df['repo']))
-    readmes = list(map(try_decode, raw_readmes))
-    return readmes
-
-
-def make_readme_summaries(upstream, product):
+def make_readmes(upstream, product, max_workers):
     df = pd.read_csv(upstream['prepare_paperswithcode_with_imports_df'])
-    readmes = get_readme_summaries(df)
+    readmes = github_readmes.get_readmes(df, max_workers)
     df['readme'] = readmes
     df.to_csv(product)
 
