@@ -11,4 +11,5 @@ markdown2
 umap-learn
 altair
 stop-words
-dagshub
+docstring-parser
+rank-bm25

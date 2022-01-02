@@ -92,7 +92,8 @@ tasks:
   # train GraphSAGE model
   - source: github_search.pytorch_geometric_training.run_gnn_experiment
     upstream:
-      postprocess_dependency_records
+      - postprocess_dependency_records
+      - train_python_token_fasttext
     params:
       fasttext_model_path: "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"
       epochs: "{{gnn_epochs}}" 
