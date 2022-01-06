@@ -109,3 +109,15 @@ tasks:
       plot_file: "output/loss_{{gnn_model_name}}_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.png"
       gnn_token_embeddings: "output/{{gnn_model_name}}_embeddings_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.bin"
       model_path: "output/{{gnn_model_name}}_model_{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.pth"
+
+  # train-test split for tasks
+  - source: github_search.matching_zsl.prepare_task_train_test_split
+    upstream:
+      - postprocess_dependency_records
+      - train_python_token_fasttext
+    params:
+      area_grouped_tasks_path: "data/paperswithcode_tasks.csv"
+    product:
+      train: "output/tasks_train.csv"
+      test: "output/tasks_test.csv"
+    
