@@ -33,7 +33,7 @@ class PygGraphWrapper:
         edge_index = torch.tensor(
             np.row_stack([edge_index_source, edge_index_destination])
         )
-        features = featurizer(self.vertex_mapping.index)
+        features = featurizer.transform(self.vertex_mapping.index)
         self.dataset = Data(torch.tensor(features), torch.tensor(edge_index))
 
     def get_sub_dataset_wrapper(self, vertex_subset):
