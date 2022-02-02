@@ -88,7 +88,7 @@ def get_dataset_wrapper(csv_paths, embedder, test_run, description_mode):
         destination_col = "file_description"
 
     dependency_graph_wrapper = PygGraphWrapper(
-        embedder.transform, dependency_records_df, source_col, destination_col 
+        embedder, dependency_records_df, source_col, destination_col 
     )
     return dependency_graph_wrapper
 
