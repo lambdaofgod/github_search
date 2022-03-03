@@ -1,25 +1,21 @@
 import os
-import tqdm
-import pandas as pd
 
-from sklearn import metrics
 import fasttext
-from mlutil.feature_extraction import embeddings
 import livelossplot
-from gensim.models import KeyedVectors
 import matplotlib.pyplot as plt
-
+import pandas as pd
 import torch
+import tqdm
+from gensim.models import KeyedVectors
+from mlutil.feature_extraction import embeddings
+from sklearn import metrics
 from torch import optim
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn import DeepGraphInfomax
 
-
-from github_search.pytorch_geometric_networks import *
-from github_search.pytorch_geometric_data import PygGraphWrapper
 from github_search import python_call_graph
-from torch_geometric.nn import DeepGraphInfomax
-
+from github_search.pytorch_geometric_data import PygGraphWrapper
+from github_search.pytorch_geometric_networks import *
 
 plt.ioff()
 
@@ -88,7 +84,7 @@ def get_dataset_wrapper(csv_paths, embedder, test_run, description_mode):
         destination_col = "file_description"
 
     dependency_graph_wrapper = PygGraphWrapper(
-        embedder, dependency_records_df, source_col, destination_col 
+        embedder, dependency_records_df, source_col, destination_col
     )
     return dependency_graph_wrapper
 
@@ -161,7 +157,7 @@ def run_gnn_experiment(
     epochs=50,
     lr=0.001,
     test_run=False,
-    description_mode=True
+    description_mode=True,
 ):
     print()
     print("using model:", model_name)
@@ -214,7 +210,12 @@ def run_gnn_experiment(
 
     gnn_features = get_gnn_features(model_name, model, raw_data)
     gnn_kv = KeyedVectors(gnn_features.shape[1])
-    gnn_kv.add(dependency_graph_wrapper.inverse_vertex_mapping.str.split(":").apply(lambda s: s[-1]).values, gnn_features)
+    gnn_kv.add(
+        dependency_graph_wrapper.inverse_vertex_mapping.str.split(":")
+        .apply(lambda s: s[-1])
+        .values,
+        gnn_features,
+    )
     gnn_kv.save(str(product["gnn_token_embeddings"]))
 
     example_repo = "huggingface/transformers"

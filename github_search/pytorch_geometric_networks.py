@@ -4,33 +4,25 @@ unsupervised GraphSAGE example
 https://github.com/pyg-team/pytorch_geometric/blob/master/examples/graph_sage_unsup.py
 """
 import os
-import tqdm
 from typing import Union
-import pandas as pd
-import numpy as np
-
-import matplotlib.pyplot as plt
-
-from sklearn import metrics
 
 import fasttext
-from mlutil.feature_extraction import embeddings
-
 import livelossplot
-
-from gensim.models import KeyedVectors
-
-
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
-from torch import optim
-from torch import Tensor
 import torch.nn.functional as F
+import tqdm
+from gensim.models import KeyedVectors
+from mlutil.feature_extraction import embeddings
+from sklearn import metrics
+from torch import Tensor, optim
 from torch_cluster import random_walk
-
 from torch_geometric.loader import NeighborSampler as RawNeighborSampler
-from torch_geometric.typing import Adj, OptPairTensor, Size
 from torch_geometric.nn import SAGEConv
+from torch_geometric.typing import Adj, OptPairTensor, Size
 
 
 class ResidualSAGEConv(SAGEConv):
