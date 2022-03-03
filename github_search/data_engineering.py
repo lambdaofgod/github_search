@@ -71,7 +71,7 @@ def prepare_paperswithcode_with_imports_df(product, upstream, python_file_paths)
         all_papers_df, paperswithcode_df, repo_names
     )
     papers_with_repo_df = paperswithcode_tasks.get_papers_with_biggest_tasks(
-        papers_with_repo_df, 500
+        papers_with_repo_df, 2000 
     )
     import_corpus_df = pd.read_csv(upstream["prepare_module_corpus"])
     import_corpus_df["imports"] = import_corpus_df["imports"].apply(ast.literal_eval)
@@ -104,17 +104,19 @@ def prepare_dependency_records(
     """
     prepare python dependency graph records (function calls, files in repo) csv
     """
-    python_files_df = pd.concat(
-        [pd.read_csv(path, encoding="utf-8") for path in python_file_paths]
-    ).dropna(subset=["repo_name", "content"])
+    python_files_dfs = (
+        pd.read_csv(path, encoding="utf-8").dropna(subset=["repo_name", "content"])
+        for path in python_file_paths
+    )
     repo_dependency_fetcher = python_call_graph.RepoDependencyGraphFetcher()
-    sample_files_df = python_call_graph.get_sample_files_df(
-        python_files_df, n_files=sample_files_per_repo
-    )
-    dependency_records_df = repo_dependency_fetcher.prepare_dependency_records(
-        sample_files_df, add_filename_repo_label=add_filename_repo_label
-    )
-    dependency_records_df.dropna().to_csv(str(product), index=False)
+    for df in tqdm.tqdm(python_files_dfs, total=len(python_file_paths)):
+        sample_files_df = python_call_graph.get_sample_files_df(
+            df, n_files=sample_files_per_repo
+        )
+        dependency_records_df = repo_dependency_fetcher.prepare_dependency_records(
+            sample_files_df, add_filename_repo_label=add_filename_repo_label
+        )
+        dependency_records_df.dropna().to_csv(str(product), index=False, mode="a")
 
 
 def postprocess_dependency_records(product, use_additional_records, upstream, description_mode):
@@ -159,18 +161,18 @@ def postprocess_dependency_records(product, use_additional_records, upstream, de
     non_root_dependency_records_df.dropna().to_csv(str(product), index=False)
 
 
-def train_python_token_fasttext(python_file_path, epoch, dim, product):
+def train_python_token_fasttext(python_file_path, epoch, dim, n_cores, product):
     python_files_df = pd.read_csv(python_file_path, encoding="utf-8")
     fasttext_corpus_path = "/tmp/python_files.csv"
     python_files_df["content"].dropna().to_csv(
         fasttext_corpus_path, index=False, header=False
     )
-    model = fasttext.train_unsupervised(fasttext_corpus_path, dim=int(dim), epoch=epoch)
+    model = fasttext.train_unsupervised(fasttext_corpus_path, dim=int(dim), epoch=epoch, thread=n_cores)
     model.save_model(str(product))
 
 
-def make_readmes(upstream, product, max_workers):
-    df = pd.read_csv(upstream['prepare_paperswithcode_with_imports_df'])
+def make_readmes(upstream, paperswithcode_with_tasks_path, product, max_workers):
+    df = pd.read_csv(paperswithcode_with_tasks_path)
     readmes = github_readmes.get_readmes(df, max_workers)
     df['readme'] = readmes
     df.to_csv(product)

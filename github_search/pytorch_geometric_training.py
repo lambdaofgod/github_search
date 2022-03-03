@@ -205,7 +205,7 @@ def run_gnn_experiment(
     model.training = False
 
     if description_mode:
-        raw_dependency_graph_wrapper = get_dataset_wrapper(
+        dependency_graph_wrapper = get_dataset_wrapper(
             csv_paths, fasttext_embedder, test_run, False
         )
         raw_data = dependency_graph_wrapper.dataset
@@ -214,21 +214,21 @@ def run_gnn_experiment(
 
     gnn_features = get_gnn_features(model_name, model, raw_data)
     gnn_kv = KeyedVectors(gnn_features.shape[1])
-    gnn_kv.add(raw_dependency_graph_wrapper.inverse_vertex_mapping.str.split(":").apply(lambda s: s[-1]).values, gnn_features)
+    gnn_kv.add(dependency_graph_wrapper.inverse_vertex_mapping.str.split(":").apply(lambda s: s[-1]).values, gnn_features)
     gnn_kv.save(str(product["gnn_token_embeddings"]))
 
     example_repo = "huggingface/transformers"
 
     def get_most_similar_repos(example_repo, n_repos):
         similarities = metrics.pairwise.cosine_distances(
-            [gnn_features[raw_dependency_graph_wrapper.vertex_mapping[example_repo]]],
+            [gnn_features[dependency_graph_wrapper.vertex_mapping[example_repo]]],
             gnn_features,
         )[0]
-        repo_inverse_vertex_mapping = raw_dependency_graph_wrapper.inverse_vertex_mapping
+        repo_inverse_vertex_mapping = dependency_graph_wrapper.inverse_vertex_mapping
         repo_inverse_vertex_mapping = repo_inverse_vertex_mapping[
             repo_inverse_vertex_mapping.str.contains("/")
         ]
-        return raw_dependency_graph_wrapper.inverse_vertex_mapping[
+        return dependency_graph_wrapper.inverse_vertex_mapping[
             (similarities[: len(repo_inverse_vertex_mapping)]).argsort()[:n_repos]
         ]
 

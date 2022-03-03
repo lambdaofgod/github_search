@@ -43,7 +43,7 @@ tasks:
   # prepare python dependency graph records
   - source: github_search.data_engineering.prepare_dependency_records
     params:
-      sample_files_per_repo: 1000
+      sample_files_per_repo: 100
       add_filename_repo_label: True
       python_file_paths: ["{{python_files_csv_path}}"]
     product: "output/dependency_records.csv"
@@ -76,8 +76,9 @@ tasks:
   # get github readmes
   - source: github_search.data_engineering.make_readmes
     params:
+      paperswithcode_with_tasks_path: "data/paperswithcode_with_tasks.csv"
       max_workers: 24
-    upstream: "prepare_paperswithcode_with_imports_df"
+    upstream: prepare_paperswithcode_with_imports_df
     product: "output/papers_with_readmes.csv"
 
   # train FastText model on Python files
@@ -86,6 +87,7 @@ tasks:
       python_file_path: "{{python_files_csv_path}}"
       dim: "{{fasttext_dimension}}" 
       epoch: "{{fasttext_epochs}}"
+      n_cores: 12
     product:
       "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"
 

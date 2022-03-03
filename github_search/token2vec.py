@@ -2,11 +2,11 @@
 
 upstream = None
 product = None
-embedding_dim = 100
+embedding_dim = 200
 n_iterations = 100000
 n_positive_imports = 32
 
-model_path = '/tmp/import2vec_module_vectors.bin'
+model_path = '/tmp/import2vec_module_vectors_{}.bin'.format(embedding_dim)
 import_corpus_path='output/module_corpus.csv'
 
 # Cell
