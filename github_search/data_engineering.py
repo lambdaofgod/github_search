@@ -5,27 +5,27 @@ __all__ = [
     "store_word_vectors",
 ]
 
-import pickle
-import json
-import pandas as pd
-import tqdm
-import numpy as np
-import gensim
 import ast
 import concurrent.futures
+import csv
+import json
+import pickle
+
+import fasttext
+import gensim
+import numpy as np
+import pandas as pd
+import tqdm
+from sklearn import decomposition, feature_extraction
 
 from github_search import (
-    parsing_imports,
-    paperswithcode_tasks,
-    python_call_graph,
+    github_readmes,
     node_embedding_evaluation,
+    paperswithcode_tasks,
+    parsing_imports,
+    python_call_graph,
     python_function_code,
-    github_readmes
 )
-from sklearn import feature_extraction, decomposition
-import fasttext
-
-import csv
 
 csv.field_size_limit(1000000)
 
@@ -62,7 +62,7 @@ def prepare_paperswithcode_with_imports_df(product, upstream, python_file_paths)
     """
     print("PYTHON FILE PATHS", python_file_paths)
     python_files_df = pd.concat(
-        [pd.read_csv(path, encoding="utf-8") for path in python_file_paths]
+        [pd.read_feather(path) for path in python_file_paths]
     )
     print(python_files_df.shape)
     repo_names = python_files_df["repo_name"]
@@ -71,7 +71,7 @@ def prepare_paperswithcode_with_imports_df(product, upstream, python_file_paths)
         all_papers_df, paperswithcode_df, repo_names
     )
     papers_with_repo_df = paperswithcode_tasks.get_papers_with_biggest_tasks(
-        papers_with_repo_df, 2000 
+        papers_with_repo_df, 2000
     )
     import_corpus_df = pd.read_csv(upstream["prepare_module_corpus"])
     import_corpus_df["imports"] = import_corpus_df["imports"].apply(ast.literal_eval)
@@ -88,9 +88,8 @@ def prepare_module_corpus(python_file_paths, product):
     """
     python_files_df = pd.concat(
         [
-            pd.read_csv(
-                path,
-                encoding="utf-8",
+            pd.read_feather(
+                path
             )
             for path in python_file_paths
         ]
@@ -105,7 +104,7 @@ def prepare_dependency_records(
     prepare python dependency graph records (function calls, files in repo) csv
     """
     python_files_dfs = (
-        pd.read_csv(path, encoding="utf-8").dropna(subset=["repo_name", "content"])
+        pd.read_feather(path).dropna(subset=["repo_name", "content"])
         for path in python_file_paths
     )
     repo_dependency_fetcher = python_call_graph.RepoDependencyGraphFetcher()
@@ -119,7 +118,9 @@ def prepare_dependency_records(
         dependency_records_df.dropna().to_csv(str(product), index=False, mode="a")
 
 
-def postprocess_dependency_records(product, use_additional_records, upstream, description_mode):
+def postprocess_dependency_records(
+    product, use_additional_records, upstream, description_mode
+):
     """
     filter out ROOT records, add
     """
@@ -128,7 +129,9 @@ def postprocess_dependency_records(product, use_additional_records, upstream, de
         dependency_records_df["source"] != "<ROOT>"
     ]
     if description_mode:
-        non_root_dependency_records_df = python_call_graph.get_description_records_df(non_root_dependency_records_df.dropna())
+        non_root_dependency_records_df = python_call_graph.get_description_records_df(
+            non_root_dependency_records_df.dropna()
+        )
 
     if use_additional_records:
         papers_data_df = pd.read_csv(upstream["prepare_paperswithcode_with_imports_df"])
@@ -162,19 +165,21 @@ def postprocess_dependency_records(product, use_additional_records, upstream, de
 
 
 def train_python_token_fasttext(python_file_path, epoch, dim, n_cores, product):
-    python_files_df = pd.read_csv(python_file_path, encoding="utf-8")
+    python_files_df = pd.read_feather(python_file_path)
     fasttext_corpus_path = "/tmp/python_files.csv"
     python_files_df["content"].dropna().to_csv(
         fasttext_corpus_path, index=False, header=False
     )
-    model = fasttext.train_unsupervised(fasttext_corpus_path, dim=int(dim), epoch=epoch, thread=n_cores)
+    model = fasttext.train_unsupervised(
+        fasttext_corpus_path, dim=int(dim), epoch=epoch, thread=n_cores
+    )
     model.save_model(str(product))
 
 
 def make_readmes(upstream, paperswithcode_with_tasks_path, product, max_workers):
     df = pd.read_csv(paperswithcode_with_tasks_path)
     readmes = github_readmes.get_readmes(df, max_workers)
-    df['readme'] = readmes
+    df["readme"] = readmes
     df.to_csv(product)
 
 
@@ -185,7 +190,7 @@ def make_igraph(upstream, product):
 
 
 def make_function_code_df(product, python_file_path):
-    python_files_df = pd.read_csv(python_file_path).dropna()
+    python_files_df = pd.read_feather(python_file_path).dropna()
     functions_df = python_function_code.get_function_data_df(python_files_df)
     functions_df.to_csv(product)
 
@@ -193,10 +198,3 @@ def make_function_code_df(product, python_file_path):
 def _word_vectors_to_word2vec_format_generator(vocabulary, word_vectors):
     for (word, vector) in zip(vocabulary, word_vectors):
         yield word + " " + " ".join([str("{:.5f}".format(f)) for f in vector])
-
-
-def store_word_vectors(words, word_vectors, file_name):
-    with open(file_name, "w") as f:
-        f.write(str(len(words)) + " " + str(word_vectors.shape[1]) + "\n")
-        for line in _word_vectors_to_word2vec_format_generator(words, module_vectors):
-            f.write(line + "\n")
