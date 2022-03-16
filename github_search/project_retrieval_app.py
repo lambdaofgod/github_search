@@ -21,18 +21,22 @@ def get_repos_with_descriptions(repos_df, repos):
     return repos_df.loc[repos]
 
 
-def search_f(retriever,query, k, description_length):
+def search_f(retriever: Retriever, query: str, k: int, description_length: int):
     results = retriever.retrieve_query_results(query, k)
-    #results['repo'] = results.index
-    results['link'] = "https://github.com/" + results.index
-    results['description'] = results['description'].apply(lambda desc: truncate_description(desc, description_length))
+    # results['repo'] = results.index
+    results["link"] = "https://github.com/" + results.index
+    results["description"] = results["description"].apply(
+        lambda desc: truncate_description(desc, description_length)
+    )
     return results.reset_index()
 
 
-def show_retrieval_results(retriever, query, k, description_length):
+def show_retrieval_results(retriever: Retriever, query: str, k: int, description_length: int):
     print("started retrieval")
     if query in readme_data_test.y.values:
-        with st.expander("query is in gold standard set queries. Toggle viewing gold standard results?"):
+        with st.expander(
+            "query is in gold standard set queries. Toggle viewing gold standard results?"
+        ):
             st.write("gold standard results")
             task_repos = readme_data_test.repos[readme_data_test.y == query]
             st.table(get_repos_with_descriptions(retriever.X_df, task_repos))
@@ -41,7 +45,7 @@ def show_retrieval_results(retriever, query, k, description_length):
     print("finished retrieval")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     print("loading data")
     readme_data_test = pickle.load(open("output/readme_data_test.pkl", "rb"))
@@ -50,16 +54,25 @@ if __name__ == '__main__':
     print("setting up retriever")
     readme_retriever = Retriever.from_retriever_learner(readme_learner)
     readme_retriever.set_embeddings(
-        readme_data_test.repos, readme_data_test.X, readme_data_test.X, readme_data_test.all_tasks
+        readme_data_test.repos,
+        readme_data_test.X,
+        readme_data_test.X,
+        readme_data_test.all_tasks,
     )
 
     retrieved_results = st.sidebar.number_input("number of results", value=25)
-    description_length = st.sidebar.number_input("number of used description words", value=50)
+    description_length = st.sidebar.number_input(
+        "number of used description words", value=50
+    )
 
-    tasks_deduped = readme_data_test.y.value_counts().reset_index() #drop_duplicates().sort_values().reset_index(drop=True)
-    tasks_deduped.columns = ['task', 'n_projects']
+    tasks_deduped = (
+        readme_data_test.y.value_counts().reset_index()
+    )  # drop_duplicates().sort_values().reset_index(drop=True)
+    tasks_deduped.columns = ["task", "n_projects"]
     with st.sidebar.expander("Toggle viewing set queries"):
         st.table(tasks_deduped)
 
     query = st.text_input("input query", value="metric learning")
-    show_retrieval_results(readme_retriever, query, retrieved_results, description_length)
+    show_retrieval_results(
+        readme_retriever, query, retrieved_results, description_length
+    )
