@@ -122,4 +122,13 @@ tasks:
     product:
       train: "output/tasks_train.csv"
       test: "output/tasks_test.csv"
-    
+
+  # task embeddings
+  # prepares data for task_embeddings_app streamlit app
+  - source: github_search.embedding_utils.prepare_reduced_embeddings
+    params:
+      w2v_model_path: "output/abstract_readme_w2v200.bin"
+      fasttext_model_path: "output/python_files_fasttext_dim200.bin"
+      lstm_model_path: "output/sbert/lstm2x256_epoch500"
+      codebert_model_path: "output/sbert/codebert15"
+    product: "output/reduced_features.pkl"
