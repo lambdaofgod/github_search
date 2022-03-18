@@ -20,21 +20,29 @@ from sklearn import model_selection
 from torch.utils.data import DataLoader
 
 from github_search import paperswithcode_tasks
+import logging
+
+
+logging.basicConfig(level="INFO")
+
 
 # + tags=["parameters"]
 upstream = None
 product = None
 w2v_file = "output/abstract_readme_w2v200.txt"
-model_type = "lstm"  # microsoft/codebert-base"
+model_type = "lstm"#microsoft/codebert-base"
 num_layers = 2
 n_hidden = 256
 dropout = 0.25
-batch_size = 64
+batch_size = 128
 use_amp = "lstm" not in model_type
 n_epochs = 500
-show_results_n_epochs = 25
+show_results_n_epochs = 50
 paperswithcode_filepath = "output/papers_with_readmes.csv"
 max_seq_length = 128
+pooling_mode_mean_tokens = False
+pooling_mode_cls_token = False
+pooling_mode_max_tokens = True
 
 # %% [markdown]
 # ## Setting up variables
@@ -42,8 +50,12 @@ max_seq_length = 128
 
 # %%
 if "lstm" in model_type:
+    logging.info("training LSTM model")
+    logging.info("initializing word embeddings from {}".format(w2v_file))
+    logging.info({"num_layers": num_layers, "n_hidden": n_hidden, "dropout": dropout})
     model_type_ext = model_type + str(num_layers) + "x" + str(n_hidden)
 else:
+    logging.info("training {} transformer model".format(model_type))
     model_type_ext = model_type
 
 paperswithcode_df = pd.read_csv(paperswithcode_filepath).dropna(
@@ -130,9 +142,9 @@ def make_lstm_model(word_embedding_model, num_layers=2, n_hidden=256, dropout=0.
 
     pooling_model = models.Pooling(
         lstm.get_word_embedding_dimension(),
-        pooling_mode_mean_tokens=False,
-        pooling_mode_cls_token=False,
-        pooling_mode_max_tokens=True,
+        pooling_mode_mean_tokens=pooling_mode_mean_tokens,
+        pooling_mode_cls_token=pooling_mode_cls_token,
+        pooling_mode_max_tokens=pooling_mode_max_tokens,
     )
     model = SentenceTransformer(modules=[word_embedding_model, lstm, pooling_model])
     return model
@@ -146,9 +158,9 @@ def make_model(model_type, w2v_file, num_layers, n_hidden, dropout, max_seq_leng
         transformer = models.Transformer(model_type, max_seq_length=max_seq_length)
         pooling_model = models.Pooling(
             transformer.get_word_embedding_dimension(),
-            pooling_mode_mean_tokens=False,
-            pooling_mode_cls_token=False,
-            pooling_mode_max_tokens=True,
+            pooling_mode_mean_tokens=pooling_mode_mean_tokens,
+            pooling_mode_cls_token=pooling_mode_cls_token,
+            pooling_mode_max_tokens=pooling_mode_max_tokens,
         )
         model = SentenceTransformer(modules=[transformer, pooling_model])
     return model
@@ -176,10 +188,15 @@ train_dataloader = DataLoader(train_input_examples, shuffle=True, batch_size=bat
 train_loss = losses.MultipleNegativesRankingLoss(model)
 
 
-for epoch_iter in range(0, n_epochs, show_results_n_epochs):
+for epoch_iter in range(0, n_epochs + 1, show_results_n_epochs):
+    logging.info("#" * 100)
+    logging.info("#" * 100)
+    logging.info("EPOCH {}".format(str(epoch_iter)))
+    logging.info("#" * 100)
+    logging.info("#" * 100)
     model.fit(
         train_objectives=[(train_dataloader, train_loss)],
-        epochs=5,
+        epochs=show_results_n_epochs,
         show_progress_bar=True,
         evaluator=ir_evaluator,
         evaluation_steps=1000,
@@ -193,4 +210,4 @@ for epoch_iter in range(0, n_epochs, show_results_n_epochs):
     model.save("output/sbert/" + model_dir_suffix)
 
     ir_evaluator(model, output_path="output/sbert/" + model_dir_suffix)
-    print(get_ir_metrics("output/sbert/" + model_dir_suffix))
+    # print(get_ir_metrics("output/sbert/" + model_dir_suffix))
