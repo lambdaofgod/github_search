@@ -6,6 +6,10 @@ meta:
 
 tasks:
 
+  # download area grouped tasks
+  - source: github_search.paperswithcode_task_areas.prepare_area_grouped_tasks
+    product: "data/paperswithcode_tasks.csv"
+
   # run word2vec on natural language data
   - source: github_search.word2vec.train_abstract_readme_w2v
     upstream:
@@ -117,14 +121,14 @@ tasks:
     upstream:
       - postprocess_dependency_records
       - train_python_token_fasttext
-    params:
-      area_grouped_tasks_path: "data/paperswithcode_tasks.csv"
+      - prepare_area_grouped_tasks
     product:
       train: "output/tasks_train.csv"
       test: "output/tasks_test.csv"
 
   # task embeddings
   # prepares data for task_embeddings_app streamlit app
+  # depends on sentence_embeddings_main
   - source: github_search.embedding_utils.prepare_reduced_embeddings
     params:
       w2v_model_path: "output/abstract_readme_w2v200.bin"
