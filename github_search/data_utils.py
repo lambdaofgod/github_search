@@ -31,7 +31,7 @@ def make_records_df(repos: pd.Series, repo_dependent_nodes: pd.Series) -> pd.Dat
                 "edge_type": "repo-file",
             }
             for (src, destinations) in zip(repos, repo_dependent_nodes)
-            for dst in destinations
+            for dst in destinations.split()
         ]
     )
 

@@ -15,10 +15,10 @@ tasks:
     upstream:
       - make_readmes
     params:
-      embedding_dim: "{{word2vec_dimension}}"
-      epochs: "{{word2vec_epochs}}"
+      embedding_dim: "{{word2vec.dimension}}"
+      epochs: "{{word2vec.epochs}}"
     product:
-      "output/abstract_readme_w2v{{word2vec_dimension}}.bin"
+      "output/abstract_readme_w2v{{word2vec.dimension}}.bin"
 
   # prepare data for token2vec (modified import2vec)
   - source: github_search.data_engineering.prepare_module_corpus
@@ -28,20 +28,22 @@ tasks:
 
   # train token2vec model
   - source: "github_search/token2vec.py"
+    upstream:
+      - prepare_module_corpus
     params:
       n_iterations: 100000
       n_positive_imports: 32
-      embedding_dim: "{{word2vec_dimension}}" 
+      embedding_dim: "{{word2vec.dimension}}" 
     product:
       nb: "output/token2vec_training.ipynb"
-      model_path: "output/import2vec_module_vectors{{word2vec_dimension}}.bin"
+      model_path: "output/import2vec_module_vectors{{word2vec.dimension}}.bin"
 
   # prepare paper dataset with imports extracted per-project
   - source: github_search.data_engineering.prepare_paperswithcode_with_imports_df
+    upstream:
+      - prepare_module_corpus
     params:
       python_file_paths: ["{{python_files_csv_path}}"]
-    upstream:
-      prepare_module_corpus
     product: "output/papers_with_imports.csv"
 
   # prepare python dependency graph records
@@ -59,7 +61,7 @@ tasks:
       - prepare_paperswithcode_with_imports_df
     params:
       use_additional_records: False
-      description_mode: "{{gnn_description_mode}}" 
+      description_mode: "{{gnn.description_mode}}" 
     product: "output/processed_dependency_records.csv"
 
   # make igraph from dependency records
@@ -69,7 +71,7 @@ tasks:
     product: "output/call_igraph.pkl"
 
   # extract python function df
-  # df has columns
+  # f has columns
   # ['repo_name', 'path', 'function_name', 'function_code']
   - source: github_search.data_engineering.make_function_code_df
     params:
@@ -89,11 +91,11 @@ tasks:
   - source: github_search.data_engineering.train_python_token_fasttext
     params:
       python_file_path: "{{python_files_csv_path}}"
-      dim: "{{fasttext_dimension}}" 
-      epoch: "{{fasttext_epochs}}"
+      dim: "{{fasttext.dimension}}" 
+      epoch: "{{fasttext.epochs}}"
       n_cores: 12
     product:
-      "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"
+      "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
 
   # train GraphSAGE model
   - source: github_search.pytorch_geometric_training.run_gnn_experiment
@@ -101,20 +103,20 @@ tasks:
       - postprocess_dependency_records
       - train_python_token_fasttext
     params:
-      fasttext_model_path: "output/python_files_fasttext_dim{{fasttext_dimension}}.bin"
-      epochs: "{{gnn_epochs}}" 
-      hidden_channels: "{{gnn_hidden_channels}}" 
-      batch_size: "{{gnn_batch_size}}" 
-      num_layers: "{{gnn_layers}}"
+      fasttext_model_path: "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
+      epochs: "{{gnn.epochs}}" 
+      hidden_channels: "{{gnn.hidden_channels}}" 
+      batch_size: "{{gnn.batch_size}}" 
+      num_layers: "{{gnn.layers}}"
       test_run: "{{test_run}}" 
       lr: 0.001
-      model_name: "{{gnn_model_name}}"
-      use_self_connection: "{{gnn_use_self_connection}}"
-      description_mode: "{{gnn_description_mode}}" 
+      model_name: "{{gnn.model_name}}"
+      use_self_connection: "{{gnn.use_self_connection}}"
+      description_mode: "{{gnn.description_mode}}" 
     product:
-      plot_file: "output/loss_{{gnn_model_name}}_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.png"
-      gnn_token_embeddings: "output/{{gnn_model_name}}_embeddings_fasttext_dim{{fasttext_dimension}}_epochs{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.bin"
-      model_path: "output/{{gnn_model_name}}_model_{{gnn_epochs}}_dim{{gnn_hidden_channels}}_layers{{gnn_layers}}.pth"
+      plot_file: "output/loss_{{gnn.model_name}}_fasttext_dim{{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.png"
+      gnn_token_embeddings: "output/{{gnn.model_name}}_embeddings_fasttext_dim{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.bin"
+      model_path: "output/{{gnn.model_name}}_model_{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.pth"
 
   # train-test split for tasks
   - source: github_search.matching_zsl.prepare_task_train_test_split
@@ -130,9 +132,10 @@ tasks:
   # prepares data for task_embeddings_app streamlit app
   # depends on sentence_embeddings_main
   - source: github_search.embedding_utils.prepare_reduced_embeddings
+    upstream:
+      - train_abstract_readme_w2v
+      - train_python_token_fasttext
     params:
-      w2v_model_path: "output/abstract_readme_w2v200.bin"
-      fasttext_model_path: "output/python_files_fasttext_dim200.bin"
-      lstm_model_path: "output/sbert/lstm2x256_epoch500"
+      rnn_model_path: "output/sbert/sru2x256_epoch350"
       codebert_model_path: "output/sbert/codebert15"
     product: "output/reduced_features.pkl"
