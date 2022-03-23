@@ -1,13 +1,14 @@
-# + tags=["parameters"]
+# %% + tags=["parameters"]
 
 upstream = None
 product = None
-embedding_dim = 200
-n_iterations = 100000
-n_positive_imports = 32
+embedding_dim = None  # 200 default
+n_iterations = None  # 100000 default
+n_positive_imports = None  # 32 default
 
-model_path = '/tmp/import2vec_module_vectors_{}.bin'.format(embedding_dim)
-import_corpus_path='output/module_corpus.csv'
+# %%
+
+model_path = "/tmp/import2vec_module_vectors_{}.bin".format(embedding_dim)
 
 # Cell
 import pandas as pd
@@ -29,45 +30,61 @@ torch.manual_seed(1)
 
 # Cell
 
+
 def get_module_import_corpus(import_corpus_path):
-    return pd.read_csv(import_corpus_path)['imports'].dropna()
+    return pd.read_csv(import_corpus_path)["imports"].dropna()
+
 
 # Cell
+import_corpus_path = str(upstream["prepare_module_corpus"])
 import_corpus = get_module_import_corpus(import_corpus_path)
 
 # Cell
 
 
 class TokenDataset:
-
-    def __init__(self, import_corpus, min_import_frequency=5, min_imports=2, use_cuda=True):
+    def __init__(
+        self, import_corpus, min_import_frequency=5, min_imports=2, use_cuda=True
+    ):
         filtered_import_corpus = self._filter_corpus(import_corpus, min_imports)
-        self._vectorizer = feature_extraction.text.CountVectorizer(min_df=min_import_frequency, binary=True)
+        self._vectorizer = feature_extraction.text.CountVectorizer(
+            min_df=min_import_frequency, binary=True
+        )
         occurrence_matrix = self._vectorizer.fit_transform(filtered_import_corpus)
         n_imports = np.array((occurrence_matrix.sum(axis=1) > 1)).reshape(-1)
         valid_indices = np.where(n_imports)[0]
-        occurrence_matrix = occurrence_matrix[valid_indices,:]
+        occurrence_matrix = occurrence_matrix[valid_indices, :]
         self._occurrence_matrix = occurrence_matrix
         self.corpus_size = occurrence_matrix.shape[0]
         self.vocabulary_size = occurrence_matrix.shape[1]
         self.use_cuda = use_cuda
 
-    def sample_imports(self, n_positive_imports, n_negative_imports='same'):
-        if n_negative_imports == 'same':
+    def sample_imports(self, n_positive_imports, n_negative_imports="same"):
+        if n_negative_imports == "same":
             n_negative_imports = n_positive_imports
 
-        positive_import_contexts, positive_import_targets = self._sample_positive_or_negative_imports(n_positive_imports, positive=True)
-        negative_import_contexts, negative_import_targets = self._sample_positive_or_negative_imports(n_negative_imports, positive=False)
-        positive_import_contexts, positive_import_targets = torch.tensor(positive_import_contexts), torch.tensor(positive_import_targets)
-        negative_import_contexts, negative_import_targets = torch.tensor(negative_import_contexts), torch.tensor(negative_import_targets)
-        predictions = torch.cat(
-            (
-                torch.ones(n_positive_imports),
-                torch.zeros(n_positive_imports)
-            ),
-            axis=0
+        (
+            positive_import_contexts,
+            positive_import_targets,
+        ) = self._sample_positive_or_negative_imports(n_positive_imports, positive=True)
+        (
+            negative_import_contexts,
+            negative_import_targets,
+        ) = self._sample_positive_or_negative_imports(
+            n_negative_imports, positive=False
         )
-        contexts = torch.cat((positive_import_contexts, negative_import_contexts), axis=0)
+        positive_import_contexts, positive_import_targets = torch.tensor(
+            positive_import_contexts
+        ), torch.tensor(positive_import_targets)
+        negative_import_contexts, negative_import_targets = torch.tensor(
+            negative_import_contexts
+        ), torch.tensor(negative_import_targets)
+        predictions = torch.cat(
+            (torch.ones(n_positive_imports), torch.zeros(n_positive_imports)), axis=0
+        )
+        contexts = torch.cat(
+            (positive_import_contexts, negative_import_contexts), axis=0
+        )
         targets = torch.cat((positive_import_targets, negative_import_targets), axis=0)
         if self.use_cuda:
             return contexts.cuda(), targets.cuda(), predictions.cuda()
@@ -93,13 +110,15 @@ class TokenDataset:
         return context_indices, target_indices
 
     def _filter_corpus(self, import_corpus, min_imports):
-        return import_corpus[import_corpus.str.split().apply(set).apply(len) >= min_imports]
+        return import_corpus[
+            import_corpus.str.split().apply(set).apply(len) >= min_imports
+        ]
+
 
 # Cell
 
 
 class Token2Vec(nn.Module):
-
     def __init__(self, vocab_size, embedding_dim):
         super(Token2Vec, self).__init__()
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
@@ -110,6 +129,7 @@ class Token2Vec(nn.Module):
         similarities = (context_embeddings * target_embeddings).sum(axis=1)
         return similarities
 
+
 # Cell
 
 
@@ -117,7 +137,6 @@ do_nothing_callback = lambda *arg: None
 
 
 class Token2VecModeler:
-
     def __init__(self, token_dataset, embedding_size, use_cuda=True):
         self.token_dataset = token_dataset
         self.token2vec = Token2Vec(token_dataset.vocabulary_size, embedding_size)
@@ -125,17 +144,17 @@ class Token2VecModeler:
             self.token2vec.cuda()
 
     def fit(
-            self,
-            n_positive_imports,
-            n_iterations,
-            lr=0.001,
-            loss_function=nn.BCEWithLogitsLoss(),
-            evaluation_period=100,
-            optimizer_cls=optim.Adam,
-            training_loss_callback=do_nothing_callback,
-            valid_loss_callback=do_nothing_callback,
-            training_end_callback=do_nothing_callback
-        ):
+        self,
+        n_positive_imports,
+        n_iterations,
+        lr=0.001,
+        loss_function=nn.BCEWithLogitsLoss(),
+        evaluation_period=100,
+        optimizer_cls=optim.Adam,
+        training_loss_callback=do_nothing_callback,
+        valid_loss_callback=do_nothing_callback,
+        training_end_callback=do_nothing_callback,
+    ):
         losses = []
         eval_losses = []
         self.loss_function = nn.BCEWithLogitsLoss()
@@ -143,7 +162,9 @@ class Token2VecModeler:
         self.optimizer = optimizer
 
         for iteration in tqdm.tqdm(range(n_iterations)):
-            training_loss = self._get_sample_loss(n_positive_imports, training=True, optimizer=optimizer)
+            training_loss = self._get_sample_loss(
+                n_positive_imports, training=True, optimizer=optimizer
+            )
             training_loss_callback(training_loss)
             losses.append(training_loss)
             if iteration % evaluation_period == 0:
@@ -151,12 +172,14 @@ class Token2VecModeler:
                 eval_losses.append(valid_loss)
                 valid_loss_callback(valid_loss)
 
-        history = {'train_loss': losses, 'eval_loss': eval_losses}
+        history = {"train_loss": losses, "eval_loss": eval_losses}
         training_end_callback(self)
         return history
 
     def _get_sample_loss(self, n_positive_imports, training, optimizer=None):
-        (context, target, pred) = self.token_dataset.sample_imports(n_positive_imports=n_positive_imports)
+        (context, target, pred) = self.token_dataset.sample_imports(
+            n_positive_imports=n_positive_imports
+        )
         self.token2vec.zero_grad()
         log_probs = self.token2vec(context, target)
 
@@ -184,7 +207,9 @@ class Token2VecModeler:
 import_dataset = TokenDataset(import_corpus)
 token2vec_modeler = Token2VecModeler(import_dataset, embedding_dim)
 sampled_files_ratio = n_positive_imports * n_iterations / import_dataset.corpus_size
-sampled_tokens_ratio = n_positive_imports * n_iterations / import_dataset.vocabulary_size
+sampled_tokens_ratio = (
+    n_positive_imports * n_iterations / import_dataset.vocabulary_size
+)
 
 # Cell
 sampled_files_ratio, sampled_tokens_ratio
@@ -195,36 +220,37 @@ hyperparameters = dict(
     n_iterations=n_iterations,
     n_positive_imports=n_positive_imports,
     embedding_dim=embedding_dim,
-    lr=0.001
+    lr=0.001,
 )
 
 # Cell
 
-def run_training_experiment(hyperparameters):
 
+def run_training_experiment(hyperparameters):
     def training_end_callback(model):
         model.make_keyed_vectors().save(model_path)
 
     history = token2vec_modeler.fit(
         n_positive_imports,
         n_iterations,
-        lr=hyperparameters['lr'],
+        lr=hyperparameters["lr"],
         training_end_callback=training_end_callback,
     )
     return history
+
 
 # Cell
 print(hyperparameters)
 history = run_training_experiment(hyperparameters)
 
 # Cell
-plt.plot(history['train_loss']);
+plt.plot(history["train_loss"])
 plt.show()
 
 # Cell
-plt.plot(pd.Series(history['train_loss']).rolling(10).mean());
+plt.plot(pd.Series(history["train_loss"]).rolling(10).mean())
 plt.show()
 
 # Cell
-plt.plot(history['eval_loss']);
+plt.plot(history["eval_loss"])
 plt.show()

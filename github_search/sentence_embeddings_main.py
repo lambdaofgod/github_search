@@ -1,14 +1,13 @@
 import ast
+import logging
 import os
 
 import attr
 import numpy as np
 import pandas as pd
+import sru
 import tqdm
-
-np.random.seed(1)
-
-
+from mlutil.sentence_rnn import SentenceRNN
 from sentence_transformers import (
     InputExample,
     SentenceTransformer,
@@ -17,27 +16,29 @@ from sentence_transformers import (
     models,
 )
 from sklearn import model_selection
+from torch import nn
 from torch.utils.data import DataLoader
 
 from github_search import paperswithcode_tasks
-import logging
-
 
 logging.basicConfig(level="INFO")
 
+# %%
+np.random.seed(1)
+rnn_model_types = ["sru", "lstm"]
 
 # + tags=["parameters"]
 upstream = None
 product = None
 w2v_file = "output/abstract_readme_w2v200.txt"
-model_type = "lstm"#microsoft/codebert-base"
+model_type = "sru"  # "microsoft/codebert-base"
 num_layers = 2
 n_hidden = 256
 dropout = 0.25
 batch_size = 128
 use_amp = "lstm" not in model_type
-n_epochs = 500
-show_results_n_epochs = 50
+n_epochs = 500 
+show_results_n_epochs = 25 
 paperswithcode_filepath = "output/papers_with_readmes.csv"
 max_seq_length = 128
 pooling_mode_mean_tokens = False
@@ -49,8 +50,8 @@ pooling_mode_max_tokens = True
 
 
 # %%
-if "lstm" in model_type:
-    logging.info("training LSTM model")
+if any(rnn_type in model_type for rnn_type in rnn_model_types):
+    logging.info("training RNN model")
     logging.info("initializing word embeddings from {}".format(w2v_file))
     logging.info({"num_layers": num_layers, "n_hidden": n_hidden, "dropout": dropout})
     model_type_ext = model_type + str(num_layers) + "x" + str(n_hidden)
@@ -132,28 +133,38 @@ def get_input_examples(df, aug=None, text_cols=["title", "abstract"]):
     ]
 
 
-def make_lstm_model(word_embedding_model, num_layers=2, n_hidden=256, dropout=0.25):
-    lstm = models.LSTM(
+def make_rnn_model(
+    word_embedding_model, model_type, num_layers=2, n_hidden=256, dropout=0.25
+):
+    rnn_model_types = ["lstm", "sru"]
+    maybe_chosen_model_type = [tpe for tpe in rnn_model_types if tpe in model_type]
+    assert len(maybe_chosen_model_type) == 1
+    chosen_model_type = maybe_chosen_model_type[0]
+
+    rnn = SentenceRNN(
         word_embedding_dimension=word_embedding_model.get_word_embedding_dimension(),
         dropout=dropout,
         hidden_dim=n_hidden,
         num_layers=num_layers,
+        rnn_class_type=chosen_model_type,
     )
 
     pooling_model = models.Pooling(
-        lstm.get_word_embedding_dimension(),
+        rnn.get_word_embedding_dimension(),
         pooling_mode_mean_tokens=pooling_mode_mean_tokens,
         pooling_mode_cls_token=pooling_mode_cls_token,
         pooling_mode_max_tokens=pooling_mode_max_tokens,
     )
-    model = SentenceTransformer(modules=[word_embedding_model, lstm, pooling_model])
+    model = SentenceTransformer(modules=[word_embedding_model, rnn, pooling_model])
     return model
 
 
 def make_model(model_type, w2v_file, num_layers, n_hidden, dropout, max_seq_length):
-    if "lstm" in model_type:
+    if any(rnn_type in model_type for rnn_type in rnn_model_types):
         word_embedding_model = models.WordEmbeddings.from_text_file(w2v_file)
-        model = make_lstm_model(word_embedding_model, num_layers, n_hidden, dropout)
+        model = make_rnn_model(
+            word_embedding_model, model_type, num_layers, n_hidden, dropout
+        )
     else:
         transformer = models.Transformer(model_type, max_seq_length=max_seq_length)
         pooling_model = models.Pooling(
@@ -171,43 +182,49 @@ def make_model(model_type, w2v_file, num_layers, n_hidden, dropout, max_seq_leng
 
 # %%
 
-queries, corpus, relevant_docs = get_sbert_ir_dicts(test_df)
-ir_evaluator = evaluation.InformationRetrievalEvaluator(
-    queries, corpus, relevant_docs, main_score_function="cos_sim", map_at_k=[10]
-)
+if __name__ == "__main__":
 
-
-train_input_examples = get_input_examples(train_df, text_cols=["title", "abstract"])
-test_input_examples = get_input_examples(test_df, text_cols=["abstract"])
-
-
-model = make_model(model_type, w2v_file, num_layers, n_hidden, dropout, max_seq_length)
-train_dataloader = DataLoader(train_input_examples, shuffle=True, batch_size=batch_size)
-
-
-train_loss = losses.MultipleNegativesRankingLoss(model)
-
-
-for epoch_iter in range(0, n_epochs + 1, show_results_n_epochs):
-    logging.info("#" * 100)
-    logging.info("#" * 100)
-    logging.info("EPOCH {}".format(str(epoch_iter)))
-    logging.info("#" * 100)
-    logging.info("#" * 100)
-    model.fit(
-        train_objectives=[(train_dataloader, train_loss)],
-        epochs=show_results_n_epochs,
-        show_progress_bar=True,
-        evaluator=ir_evaluator,
-        evaluation_steps=1000,
-        use_amp=use_amp,
-        callback=lambda score, epoch, steps: print(
-            "epoch {}, step {}, map@10: {}".format(epoch, steps, round(score, 3))
-        ),
+    queries, corpus, relevant_docs = get_sbert_ir_dicts(test_df)
+    ir_evaluator = evaluation.InformationRetrievalEvaluator(
+        queries, corpus, relevant_docs, main_score_function="cos_sim", map_at_k=[10]
     )
 
-    model_dir_suffix = model_type_ext.replace("/", "_") + "_epoch" + str(epoch_iter)
-    model.save("output/sbert/" + model_dir_suffix)
+    train_input_examples = get_input_examples(train_df, text_cols=["title", "abstract"])
+    test_input_examples = get_input_examples(test_df, text_cols=["abstract"])
 
-    ir_evaluator(model, output_path="output/sbert/" + model_dir_suffix)
-    # print(get_ir_metrics("output/sbert/" + model_dir_suffix))
+    model = make_model(
+        model_type, w2v_file, num_layers, n_hidden, dropout, max_seq_length
+    )
+    train_dataloader = DataLoader(
+        train_input_examples, shuffle=True, batch_size=batch_size
+    )
+
+    train_loss = losses.MultipleNegativesRankingLoss(model)
+
+    for epoch_iter in range(0, n_epochs, show_results_n_epochs):
+        logging.info("#" * 100)
+        logging.info("#" * 100)
+        logging.info("EPOCH {}".format(str(epoch_iter)))
+        logging.info("#" * 100)
+        logging.info("#" * 100)
+        model.fit(
+            train_objectives=[(train_dataloader, train_loss)],
+            epochs=show_results_n_epochs,
+            show_progress_bar=True,
+            evaluator=ir_evaluator,
+            evaluation_steps=1000,
+            use_amp=use_amp,
+            callback=lambda score, epoch, steps: print(
+                "epoch {}, step {}, map@10: {}".format(epoch, steps, round(score, 3))
+            ),
+        )
+
+        model_dir_suffix = (
+            model_type_ext.replace("/", "_")
+            + "_epoch"
+            + str(epoch_iter + show_results_n_epochs)
+        )
+        model.save("output/sbert/" + model_dir_suffix)
+
+        ir_evaluator(model, output_path="output/sbert/" + model_dir_suffix)
+        # print(get_ir_metrics("output/sbert/" + model_dir_suffix))

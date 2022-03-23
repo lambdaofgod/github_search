@@ -24,13 +24,11 @@ class Retriever:
     zs_learner = attr.ib()
     embeddings_calculated = attr.ib(default=False)
 
-    def set_embeddings(self, X_names, X, X_descriptions=None, tasks=None):
+    def set_embeddings(self, X_names, X, X_descriptions=None):
         self.X_embeddings = self.input_embedder.transform(X)
         self.X_df = pd.DataFrame({"input": X})
         if not X_descriptions is None:
             self.X_df['description'] = X_descriptions
-        if not tasks is None:
-            self.X_df['tasks'] = tasks
         self.X_df.index = X_names
         self.embeddings_calculated = True
 

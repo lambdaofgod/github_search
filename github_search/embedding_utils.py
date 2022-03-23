@@ -20,21 +20,22 @@ area_grouped_tasks["task"] = area_grouped_tasks["task"].apply(
 )
 
 
-lstm_model_path = "output/sbert/lstm2x256_epoch325/"
+rnn_model_path = "output/sbert/rnn2x256_epoch325/"
 codebert_model_path = "output/sbert/codebert15/"
 
 
 def prepare_reduced_embeddings(
     product,
-    w2v_model_path="output/abstract_readme_w2v200.bin",
-    fasttext_model_path="output/python_files_fasttext_dim200.bin",
-    lstm_model_path="output/sbert/lstm2x256_epoch325/",
+    upstream,
+    rnn_model_path="output/sbert/rnn2x256_epoch325/",
     codebert_model_path="output/sbert/codebert15/",
 ):
+    w2v_model_path = str(upstream["train_abstract_readme_w2v"])
+    fasttext_model_path = str(upstream["train_python_token_fasttext"])
     logging.info("preparing ")
     fasttext_model = fasttext.load_model(fasttext_model_path)
     codebert_model = sentence_transformers.SentenceTransformer(codebert_model_path)
-    lstm_model = sentence_transformers.SentenceTransformer(lstm_model_path)
+    rnn_model = sentence_transformers.SentenceTransformer(rnn_model_path)
     fasttext_embedder = embeddings.FastTextVectorizer(fasttext_model)
     w2v_embedder = embeddings.AverageWordEmbeddingsVectorizer(
         word_embeddings=gensim.models.KeyedVectors.load(w2v_model_path).wv
@@ -49,10 +50,10 @@ def prepare_reduced_embeddings(
     reduced_features["fasttext"] = feature_extraction_utils.get_reduced_embeddings_df(
         area_grouped_tasks["task"], fasttext_embedder, umap.UMAP(metric="cosine")
     )
-    logging.info("preparing lstm features")
-    reduced_features["lstm"] = feature_extraction_utils.get_reduced_embeddings_df(
+    logging.info("preparing rnn features")
+    reduced_features["rnn"] = feature_extraction_utils.get_reduced_embeddings_df(
         area_grouped_tasks["task"],
-        embeddings.SentenceTransformerWrapper(lstm_model),
+        embeddings.SentenceTransformerWrapper(rnn_model),
         umap.UMAP(metric="cosine"),
     )
     logging.info("preparing codebert features")
