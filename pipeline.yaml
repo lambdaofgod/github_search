@@ -27,15 +27,14 @@ tasks:
     product: "output/module_corpus.csv"
 
   # train token2vec model
-  - source: "github_search/token2vec.py"
+  - source: github_search.token2vec.train_token2vec
     upstream:
       - prepare_module_corpus
     params:
-      n_iterations: 100000
+      n_iterations: 10000
       n_positive_imports: 32
       embedding_dim: "{{word2vec.dimension}}" 
     product:
-      nb: "output/token2vec_training.ipynb"
       model_path: "output/import2vec_module_vectors{{word2vec.dimension}}.bin"
 
   # prepare paper dataset with imports extracted per-project
@@ -76,8 +75,9 @@ tasks:
   - source: github_search.data_engineering.make_function_code_df
     params:
       python_file_path: "{{python_files_csv_path}}"
+      max_depth: 10
     product:
-      "output/python_functions.csv"
+      "output/python_functions.feather"
 
   # get github readmes
   - source: github_search.data_engineering.make_readmes
