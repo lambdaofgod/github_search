@@ -140,10 +140,13 @@ tasks:
       codebert_model_path: "output/sbert/codebert15"
     product: "output/reduced_features.pkl"
 
-  #
+  # for each repo select files that are most similar
+  # similarity is cosine similarity in provided model
   - source: github_search.python_code_analysis.select_repo_files
     params:
       similar_col: "abstract"
+      bow_vectorizer_class: "CountVectorizer"
+      files_per_repo: 10
       python_files_path: "data/all_crawled_python_files.feather"
       paperswithcode_path: "data/paperswithcode_with_tasks.csv"
     product: "output/selected_python_files.pkl"
