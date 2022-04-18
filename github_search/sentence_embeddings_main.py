@@ -1,67 +1,61 @@
 import ast
 import logging
-import os
 
-import attr
 import numpy as np
 import pandas as pd
-import sru
-import tqdm
-from mlutil.sentence_rnn import SentenceRNN
-from sentence_transformers import (
-    InputExample,
-    SentenceTransformer,
-    evaluation,
-    losses,
-    models,
-)
-from sklearn import model_selection
-from torch import nn
+from sentence_transformers import losses
 from torch.utils.data import DataLoader
 
-from github_search import paperswithcode_tasks
+from github_search import paperswithcode_tasks, sentence_embeddings
+from github_search.sentence_embeddings import RNN_MODEL_TYPES
 
 logging.basicConfig(level="INFO")
 
 # %%
 np.random.seed(1)
-rnn_model_types = ["sru", "lstm"]
 
 # + tags=["parameters"]
 upstream = None
 product = None
 w2v_file = "output/abstract_readme_w2v200.txt"
-model_type = "sru"  # "microsoft/codebert-base"
+model_type = "sru"  # "SEBIS/code_trans_t5_small_source_code_summarization_python_multitask_finetune"
 num_layers = 2
 n_hidden = 256
 dropout = 0.25
-batch_size = 128
+batch_size = 64
 use_amp = "lstm" not in model_type
-n_epochs = 500 
-show_results_n_epochs = 25 
+n_epochs = 150
+show_results_n_epochs = 10
+train_target_col = "imports"
+training_run_label = "imports+comments"
+train_source_cols = ["comments"]  # "title", "abstract", "readme"]
+df_path = "output/selected_python_files_comments_imports.csv"
 paperswithcode_filepath = "output/papers_with_readmes.csv"
-max_seq_length = 128
-pooling_mode_mean_tokens = False
-pooling_mode_cls_token = False
-pooling_mode_max_tokens = True
-
+max_seq_length = 256
+pooling_kwargs = dict(
+    pooling_mode_mean_tokens=False,
+    pooling_mode_cls_token=False,
+    pooling_mode_max_tokens=True,
+)
+compared_col = "imports"
+use_imports_as_doc = compared_col == "imports"
 # %% [markdown]
 # ## Setting up variables
 
-
 # %%
-if any(rnn_type in model_type for rnn_type in rnn_model_types):
+if any(rnn_type in model_type for rnn_type in RNN_MODEL_TYPES):
     logging.info("training RNN model")
-    logging.info("initializing word embeddings from {}".format(w2v_file))
+    logging.info("initializing word embeddings from %s", w2v_file)
     logging.info({"num_layers": num_layers, "n_hidden": n_hidden, "dropout": dropout})
     model_type_ext = model_type + str(num_layers) + "x" + str(n_hidden)
 else:
-    logging.info("training {} transformer model".format(model_type))
+    logging.info("training %s transformer model", model_type)
     model_type_ext = model_type
 
 paperswithcode_df = pd.read_csv(paperswithcode_filepath).dropna(
-    subset=["least_common_task", "abstract"]
+    subset=["least_common_task", "readme", "abstract"]
 )
+
 paperswithcode_df["tasks"] = paperswithcode_df["tasks"].apply(ast.literal_eval)
 
 repo_counts = paperswithcode_df["repo"].value_counts()
@@ -83,98 +77,26 @@ paperswithcode_df["areas"] = paperswithcode_df["tasks"].apply(
 )
 
 
-train_df = paperswithcode_df[
-    paperswithcode_df["tasks"].apply(
-        lambda ts: not (any(t in tasks_test.values for t in ts))
-    )
-]
-test_df = paperswithcode_df[
-    paperswithcode_df["tasks"].apply(lambda ts: any(t in tasks_test.values for t in ts))
-]
+def get_sbert_inputs(train_df, train_target_col, train_source_cols, model):
+    train_df = train_df.dropna(subset=[train_target_col] + train_source_cols)
+    # train_df[train_target_col] = train_df[train_target_col].apply(
+    #    lambda examples: [examples] if type(examples) is not list else examples
+    # )
 
-# %%
-def get_sbert_ir_dicts(input_df, query_col="tasks", doc_col="abstract"):
-    df_copy = input_df.copy()
-    queries = df_copy[query_col].explode().drop_duplicates()
-    queries = pd.DataFrame(
-        {"query": queries, "query_id": [str(s) for s in queries.index]}
-    )
-    queries.index = queries["query_id"]
-    corpus = df_copy["abstract"]
-    corpus.index = [str(i) for i in corpus.index]
-    df_copy["doc_id"] = corpus.index
-    relevant_docs_str = df_copy[["doc_id", "tasks", doc_col]].explode(column="tasks")
-    relevant_docs = (
-        relevant_docs_str.merge(queries, left_on="tasks", right_on="query")[
-            ["doc_id", "query_id"]
-        ]
-        .groupby("query_id")
-        .apply(lambda df: set(df["doc_id"]))
-        .to_dict()
-    )
-    return queries["query"].to_dict(), corpus.to_dict(), relevant_docs
-
-
-def get_ir_metrics(path):
-    metrics_df = pd.read_csv(
-        os.path.join(path, "Information-Retrieval_evaluation_results.csv")
-    )
-    return metrics_df[[col for col in metrics_df if "cos" in col]]
-
-
-def get_input_examples(df, aug=None, text_cols=["title", "abstract"]):
-    return [
-        InputExample(texts=[task, text])
-        for row in tqdm.tqdm(
-            df[["tasks"] + text_cols].itertuples(index=False), total=len(df)
-        )
-        for task in row[0]
-        for text in row[1:]
-    ]
-
-
-def make_rnn_model(
-    word_embedding_model, model_type, num_layers=2, n_hidden=256, dropout=0.25
-):
-    rnn_model_types = ["lstm", "sru"]
-    maybe_chosen_model_type = [tpe for tpe in rnn_model_types if tpe in model_type]
-    assert len(maybe_chosen_model_type) == 1
-    chosen_model_type = maybe_chosen_model_type[0]
-
-    rnn = SentenceRNN(
-        word_embedding_dimension=word_embedding_model.get_word_embedding_dimension(),
-        dropout=dropout,
-        hidden_dim=n_hidden,
-        num_layers=num_layers,
-        rnn_class_type=chosen_model_type,
+    return sentence_embeddings.get_input_examples(
+        train_df,
+        model=model,
+        target_col=train_target_col,
+        source_cols=train_source_cols,
+        max_seq_length=max_seq_length,
     )
 
-    pooling_model = models.Pooling(
-        rnn.get_word_embedding_dimension(),
-        pooling_mode_mean_tokens=pooling_mode_mean_tokens,
-        pooling_mode_cls_token=pooling_mode_cls_token,
-        pooling_mode_max_tokens=pooling_mode_max_tokens,
+
+def get_merged_import_df(paperswithcode_df, imports_df):
+    repo_imports_df = (
+        imports_df.dropna()[["repo", "imports"]].groupby("repo").agg("\n".join)
     )
-    model = SentenceTransformer(modules=[word_embedding_model, rnn, pooling_model])
-    return model
-
-
-def make_model(model_type, w2v_file, num_layers, n_hidden, dropout, max_seq_length):
-    if any(rnn_type in model_type for rnn_type in rnn_model_types):
-        word_embedding_model = models.WordEmbeddings.from_text_file(w2v_file)
-        model = make_rnn_model(
-            word_embedding_model, model_type, num_layers, n_hidden, dropout
-        )
-    else:
-        transformer = models.Transformer(model_type, max_seq_length=max_seq_length)
-        pooling_model = models.Pooling(
-            transformer.get_word_embedding_dimension(),
-            pooling_mode_mean_tokens=pooling_mode_mean_tokens,
-            pooling_mode_cls_token=pooling_mode_cls_token,
-            pooling_mode_max_tokens=pooling_mode_max_tokens,
-        )
-        model = SentenceTransformer(modules=[transformer, pooling_model])
-    return model
+    return paperswithcode_df.merge(repo_imports_df, on=["repo"])
 
 
 # %% [markdown]
@@ -182,24 +104,44 @@ def make_model(model_type, w2v_file, num_layers, n_hidden, dropout, max_seq_leng
 
 # %%
 
+# text_df = pd.DataFrame(ex.texts for ex in train_input_examples)
+# len_df = pd.DataFrame([len(t) for t in ex.texts] for ex in train_input_examples)
+
 if __name__ == "__main__":
 
-    queries, corpus, relevant_docs = get_sbert_ir_dicts(test_df)
-    ir_evaluator = evaluation.InformationRetrievalEvaluator(
-        queries, corpus, relevant_docs, main_score_function="cos_sim", map_at_k=[10]
+    model = sentence_embeddings.make_model(
+        model_type,
+        w2v_file,
+        num_layers=num_layers,
+        n_hidden=n_hidden,
+        dropout=dropout,
+        max_seq_length=max_seq_length,
+        **pooling_kwargs
     )
 
-    train_input_examples = get_input_examples(train_df, text_cols=["title", "abstract"])
-    test_input_examples = get_input_examples(test_df, text_cols=["abstract"])
-
-    model = make_model(
-        model_type, w2v_file, num_layers, n_hidden, dropout, max_seq_length
+    repo_imports_df = get_merged_import_df(paperswithcode_df, pd.read_csv(df_path))
+    imports_train_input_examples = get_sbert_inputs(
+        repo_imports_df, "readme", ["imports"], model
     )
+    tasks_train_input_examples = get_sbert_inputs(
+        paperswithcode_df.explode("tasks"), "tasks", ["readme"], model
+    )
+    train_input_examples = imports_train_input_examples + tasks_train_input_examples
+    print([i.texts for i in train_input_examples[:5]])
+    paperswithcode_df = pd.read_csv(paperswithcode_filepath)
+    if use_imports_as_doc:
+        test_df = get_merged_import_df(paperswithcode_df, pd.read_csv(df_path))
+        ir_evaluator = sentence_embeddings.get_ir_evaluator(test_df, "tasks", "imports")
+    else:
+        ir_evaluator = sentence_embeddings.get_ir_evaluator(paperswithcode_df)
+
+    logging.info("loaded %s train samples", int(len(train_input_examples)))
+
     train_dataloader = DataLoader(
         train_input_examples, shuffle=True, batch_size=batch_size
     )
 
-    train_loss = losses.MultipleNegativesRankingLoss(model)
+    train_loss = losses.MultipleNegativesSymmetricRankingLoss(model)
 
     for epoch_iter in range(0, n_epochs, show_results_n_epochs):
         logging.info("#" * 100)
@@ -212,7 +154,7 @@ if __name__ == "__main__":
             epochs=show_results_n_epochs,
             show_progress_bar=True,
             evaluator=ir_evaluator,
-            evaluation_steps=1000,
+            evaluation_steps=600,
             use_amp=use_amp,
             callback=lambda score, epoch, steps: print(
                 "epoch {}, step {}, map@10: {}".format(epoch, steps, round(score, 3))
@@ -224,7 +166,8 @@ if __name__ == "__main__":
             + "_epoch"
             + str(epoch_iter + show_results_n_epochs)
         )
-        model.save("output/sbert/" + model_dir_suffix)
+        model_path = "output/sbert/{}_{}".format(model_dir_suffix, training_run_label)
+        model.save(model_path)
 
         ir_evaluator(model, output_path="output/sbert/" + model_dir_suffix)
         # print(get_ir_metrics("output/sbert/" + model_dir_suffix))
