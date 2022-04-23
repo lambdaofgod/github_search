@@ -93,40 +93,40 @@ tasks:
       python_file_path: "{{python_files_csv_path}}"
       dim: "{{fasttext.dimension}}" 
       epoch: "{{fasttext.epochs}}"
-      n_cores: 12
+      n_cores: 16 
     product:
       "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
 
-  # train GraphSAGE model
-  - source: github_search.pytorch_geometric_training.run_gnn_experiment
-    upstream:
-      - postprocess_dependency_records
-      - train_python_token_fasttext
-    params:
-      fasttext_model_path: "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
-      epochs: "{{gnn.epochs}}" 
-      hidden_channels: "{{gnn.hidden_channels}}" 
-      batch_size: "{{gnn.batch_size}}" 
-      num_layers: "{{gnn.layers}}"
-      test_run: "{{test_run}}" 
-      lr: 0.001
-      model_name: "{{gnn.model_name}}"
-      use_self_connection: "{{gnn.use_self_connection}}"
-      description_mode: "{{gnn.description_mode}}" 
-    product:
-      plot_file: "output/loss_{{gnn.model_name}}_fasttext_dim{{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.png"
-      gnn_token_embeddings: "output/{{gnn.model_name}}_embeddings_fasttext_dim{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.bin"
-      model_path: "output/{{gnn.model_name}}_model_{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.pth"
+#  # train GraphSAGE model
+#  - source: github_search.pytorch_geometric_training.run_gnn_experiment
+#    upstream:
+#      - postprocess_dependency_records
+#      - train_python_token_fasttext
+#    params:
+#      fasttext_model_path: "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
+#      epochs: "{{gnn.epochs}}" 
+#      hidden_channels: "{{gnn.hidden_channels}}" 
+#      batch_size: "{{gnn.batch_size}}" 
+#      num_layers: "{{gnn.layers}}"
+#      test_run: "{{test_run}}" 
+#      lr: 0.001
+#      model_name: "{{gnn.model_name}}"
+#      use_self_connection: "{{gnn.use_self_connection}}"
+#      description_mode: "{{gnn.description_mode}}" 
+#    product:
+#      plot_file: "output/loss_{{gnn.model_name}}_fasttext_dim{{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.png"
+#      gnn_token_embeddings: "output/{{gnn.model_name}}_embeddings_fasttext_dim{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.bin"
+#      model_path: "output/{{gnn.model_name}}_model_{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.pth"
 
-  # train-test split for tasks
-  - source: github_search.matching_zsl.prepare_task_train_test_split
-    upstream:
-      - postprocess_dependency_records
-      - train_python_token_fasttext
-      - prepare_area_grouped_tasks
-    product:
-      train: "output/tasks_train.csv"
-      test: "output/tasks_test.csv"
+#  # train-test split for tasks
+#  - source: github_search.matching_zsl.prepare_task_train_test_split
+#    upstream:
+#      - postprocess_dependency_records
+#      - train_python_token_fasttext
+#      - prepare_area_grouped_tasks
+#    product:
+#      train: "output/tasks_train.csv"
+#      test: "output/tasks_test.csv"
 
   # task embeddings
   # prepares data for task_embeddings_app streamlit app
@@ -143,10 +143,44 @@ tasks:
   # for each repo select files that are most similar
   # similarity is cosine similarity in provided model
   - source: github_search.python_code_analysis.select_repo_files
+    upstream:
+      - make_readmes 
     params:
-      similar_col: "abstract"
+      similar_col: "readme"
       bow_vectorizer_class: "CountVectorizer"
       files_per_repo: 10
-      python_files_path: "data/all_crawled_python_files.feather"
-      paperswithcode_path: "data/paperswithcode_with_tasks.csv"
-    product: "output/selected_python_files.pkl"
+      python_files_path: "{{python_files_csv_path}}"
+    product: "output/selected_python_files.feather"
+
+
+  - source: github_search.python_code_analysis.extract_python_comments
+    upstream:
+      - select_repo_files
+    params:
+      line_neighbor_threshold: 2
+    product:
+      "output/selected_python_files_comments.feather"
+
+  - source: github_search.python_code_analysis.extract_python_imports
+    upstream:
+      - select_repo_files
+    product:
+      "output/selected_python_files_imports.feather"
+
+  - source: github_search.seq2seq_utils.prepare_path_docid_seq2seq_df
+    upstream:
+      - select_repo_files
+      - make_readmes
+    product:
+      "output/path_docid_seq2seq.csv"
+
+  - source: github_search.seq2seq_utils.prepare_seq2seq_dataset
+    name: prepare_path_docid_seq2seq_dataset
+    upstream:
+      - prepare_path_docid_seq2seq_df
+    params:
+      base_model: "Salesforce/codet5-base"
+      max_source_length: 512
+      max_target_length: 64
+    product:
+      "output/seq2seq_hf_dataset"
