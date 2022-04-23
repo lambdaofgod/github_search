@@ -1,5 +1,6 @@
 import ast
 import logging
+import pathlib
 
 import numpy as np
 import pandas as pd
@@ -18,27 +19,32 @@ np.random.seed(1)
 upstream = None
 product = None
 w2v_file = "output/abstract_readme_w2v200.txt"
-model_type = "sru"  # "SEBIS/code_trans_t5_small_source_code_summarization_python_multitask_finetune"
+model_type = (
+    "ir_model/checkpoint-300"
+    # "stmnk/codet5-small-code-summarization-python"
+    # "Salesforce/codet5-small-code-summarization-python"
+    # "SEBIS/code_trans_t5_small_source_code_summarization_python_multitask_finetune"
+)
 num_layers = 2
-n_hidden = 256
+n_hidden = 192
 dropout = 0.25
-batch_size = 64
+batch_size = 128 
 use_amp = "lstm" not in model_type
-n_epochs = 150
-show_results_n_epochs = 10
-train_target_col = "imports"
+n_epochs = 50
+show_results_n_epochs = 5
+train_target_col = "tasks"
 training_run_label = "imports+comments"
-train_source_cols = ["comments"]  # "title", "abstract", "readme"]
+train_source_cols = ["repo"]  # "title", "abstract", "readme"]
 df_path = "output/selected_python_files_comments_imports.csv"
 paperswithcode_filepath = "output/papers_with_readmes.csv"
-max_seq_length = 256
+max_seq_length = 64
 pooling_kwargs = dict(
     pooling_mode_mean_tokens=False,
     pooling_mode_cls_token=False,
     pooling_mode_max_tokens=True,
 )
-compared_col = "imports"
-use_imports_as_doc = compared_col == "imports"
+train_feature_col = "repo"
+use_imports_as_doc = train_feature_col == "imports"
 # %% [markdown]
 # ## Setting up variables
 
@@ -120,20 +126,28 @@ if __name__ == "__main__":
     )
 
     repo_imports_df = get_merged_import_df(paperswithcode_df, pd.read_csv(df_path))
-    imports_train_input_examples = get_sbert_inputs(
-        repo_imports_df, "readme", ["imports"], model
-    )
+    logging.info("loading readme-imports examples")
+    # imports_train_input_examples = get_sbert_inputs(
+    #    repo_imports_df, train_target_col, train_source_cols, model
+    # )
+    logging.info("loading task-readme examples")
     tasks_train_input_examples = get_sbert_inputs(
-        paperswithcode_df.explode("tasks"), "tasks", ["readme"], model
+        paperswithcode_df[["tasks", train_feature_col]].explode("tasks"),
+        "tasks",
+        [train_feature_col],
+        model,
     )
-    train_input_examples = imports_train_input_examples + tasks_train_input_examples
+    train_input_examples = tasks_train_input_examples
     print([i.texts for i in train_input_examples[:5]])
     paperswithcode_df = pd.read_csv(paperswithcode_filepath)
+    use_imports_as_doc = False
     if use_imports_as_doc:
         test_df = get_merged_import_df(paperswithcode_df, pd.read_csv(df_path))
         ir_evaluator = sentence_embeddings.get_ir_evaluator(test_df, "tasks", "imports")
     else:
-        ir_evaluator = sentence_embeddings.get_ir_evaluator(paperswithcode_df)
+        ir_evaluator = sentence_embeddings.get_ir_evaluator(
+            paperswithcode_df, doc_col=train_feature_col
+        )
 
     logging.info("loaded %s train samples", int(len(train_input_examples)))
 
@@ -154,7 +168,7 @@ if __name__ == "__main__":
             epochs=show_results_n_epochs,
             show_progress_bar=True,
             evaluator=ir_evaluator,
-            evaluation_steps=600,
+            evaluation_steps=1000,
             use_amp=use_amp,
             callback=lambda score, epoch, steps: print(
                 "epoch {}, step {}, map@10: {}".format(epoch, steps, round(score, 3))
@@ -167,6 +181,7 @@ if __name__ == "__main__":
             + str(epoch_iter + show_results_n_epochs)
         )
         model_path = "output/sbert/{}_{}".format(model_dir_suffix, training_run_label)
+        pathlib.Path(model_path).mkdir(parents=True)
         model.save(model_path)
 
         ir_evaluator(model, output_path="output/sbert/" + model_dir_suffix)

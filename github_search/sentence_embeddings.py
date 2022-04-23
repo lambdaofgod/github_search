@@ -56,13 +56,14 @@ def get_input_examples(df, target_col, source_cols, max_seq_length, model):
     sources = [df[src_col] for src_col in source_cols]
     src_lengths_masks = [
         pd.Series(
-            model.tokenize(src)["sentence_lengths"].cpu().numpy() > 0, index=src.index
+            src.str.split().apply(len) > 0
         )
         for src in sources
     ]
     target_source_pairs = [
-        (df[target_col][mask], source[mask])
+        (target_text, source_text)
         for (mask, source) in zip(src_lengths_masks, sources)
+        for (target_text, source_text) in zip(df[target_col][mask], source[mask])
     ]
     return [
         InputExample(
@@ -71,8 +72,7 @@ def get_input_examples(df, target_col, source_cols, max_seq_length, model):
                 " ".join(source.split()[:max_seq_length]),
             ]
         )
-        for targets, sources in target_source_pairs
-        for (target, source) in zip(targets, sources)
+        for (target, source) in tqdm.tqdm(target_source_pairs)
     ]
 
 
