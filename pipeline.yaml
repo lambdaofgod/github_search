@@ -179,8 +179,8 @@ tasks:
     upstream:
       - prepare_path_docid_seq2seq_df
     params:
-      base_model: "Salesforce/codet5-base"
-      max_source_length: 512
-      max_target_length: 64
+      base_model: "{{transformer.T5_model}}" 
+      max_source_length: "{{transformer.max_source_length}}" 
+      max_target_length: "{{transformer.max_target_length}}" 
     product:
       "output/seq2seq_hf_dataset"
