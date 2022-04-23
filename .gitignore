@@ -1,0 +1,8 @@
+/data/*
+/output/*
+/notebooks/*
+*ipynb
+mlruns/*
+metrics/*
+output/*
+outputs/*
