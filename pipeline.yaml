@@ -23,7 +23,7 @@ tasks:
   # prepare data for token2vec (modified import2vec)
   - source: github_search.data_engineering.prepare_module_corpus
     params:
-      python_file_paths: ["{{python_files_csv_path}}"]
+      python_file_paths: ["{{python_files_path}}"]
     product: "output/module_corpus.csv"
 
   # train token2vec model
@@ -42,7 +42,7 @@ tasks:
     upstream:
       - prepare_module_corpus
     params:
-      python_file_paths: ["{{python_files_csv_path}}"]
+      python_file_paths: ["{{python_files_path}}"]
     product: "output/papers_with_imports.csv"
 
   # prepare python dependency graph records
@@ -50,7 +50,7 @@ tasks:
     params:
       sample_files_per_repo: 100
       add_filename_repo_label: True
-      python_file_paths: ["{{python_files_csv_path}}"]
+      python_file_paths: ["{{python_files_path}}"]
     product: "output/dependency_records.csv"
 
   # additional information for dependency records
@@ -72,9 +72,9 @@ tasks:
   # extract python function df
   # f has columns
   # ['repo_name', 'path', 'function_name', 'function_code']
-  - source: github_search.data_engineering.make_function_code_df
+  - source: github_search.data_engineering.prepare_function_code_df
     params:
-      python_file_path: "{{python_files_csv_path}}"
+      python_file_path: "{{python_files_path}}"
       max_depth: 10
     product:
       "output/python_functions.feather"
@@ -90,12 +90,20 @@ tasks:
   # train FastText model on Python files
   - source: github_search.data_engineering.train_python_token_fasttext
     params:
-      python_file_path: "{{python_files_csv_path}}"
+      python_file_path: "{{python_files_path}}"
       dim: "{{fasttext.dimension}}" 
       epoch: "{{fasttext.epochs}}"
       n_cores: 16 
     product:
       "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
+
+  #
+  - source: github_search.summarization.prepare_function_df_with_summarized_code
+    params:
+      transformer_model_name: "{{summarization.transformer_model_name}}"
+    upstream: prepare_function_code_df
+    product:
+      "output/python_files_descriptions_{{summarization.transformer_model_name}}.feather"
 
 #  # train GraphSAGE model
 #  - source: github_search.pytorch_geometric_training.run_gnn_experiment
@@ -149,7 +157,7 @@ tasks:
       similar_col: "readme"
       bow_vectorizer_class: "CountVectorizer"
       files_per_repo: 10
-      python_files_path: "{{python_files_csv_path}}"
+      python_files_path: "{{python_files_path}}"
     product: "output/selected_python_files.feather"
 
 
@@ -171,6 +179,10 @@ tasks:
     upstream:
       - select_repo_files
       - make_readmes
+    params:
+      max_source_length: "{{transformer.max_source_length}}" 
+      max_target_length: "{{transformer.max_target_length}}" 
+
     product:
       "output/path_docid_seq2seq.csv"
 

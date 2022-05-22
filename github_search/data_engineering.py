@@ -61,9 +61,7 @@ def prepare_paperswithcode_with_imports_df(product, upstream, python_file_paths)
     add import data to python files csv
     """
     print("PYTHON FILE PATHS", python_file_paths)
-    python_files_df = pd.concat(
-        [pd.read_feather(path) for path in python_file_paths]
-    )
+    python_files_df = pd.concat([pd.read_feather(path) for path in python_file_paths])
     print(python_files_df.shape)
     repo_names = python_files_df["repo_name"]
     paperswithcode_df, all_papers_df = paperswithcode_tasks.get_paperswithcode_dfs()
@@ -87,12 +85,7 @@ def prepare_module_corpus(python_file_paths, product):
     prepare csv file with modules for import2vec
     """
     python_files_df = pd.concat(
-        [
-            pd.read_feather(
-                path
-            )
-            for path in python_file_paths
-        ]
+        [pd.read_feather(path) for path in python_file_paths]
     ).dropna(subset=["repo_name", "content"])
     get_module_corpus(python_files_df).to_csv(str(product))
 
@@ -168,7 +161,9 @@ def train_python_token_fasttext(python_file_path, epoch, dim, n_cores, product):
     python_files_df = pd.read_feather(python_file_path)
     fasttext_corpus_path = "/tmp/python_files.csv"
     python_files_df["content"].dropna().to_csv(
-        fasttext_corpus_path, index=False, header=False
+        fasttext_corpus_path,
+        index=False,
+        header=False,
     )
     model = fasttext.train_unsupervised(
         fasttext_corpus_path, dim=int(dim), epoch=epoch, thread=n_cores
@@ -189,10 +184,13 @@ def make_igraph(upstream, product):
     pickle.dump(graph, open(str(product), "wb"))
 
 
-def make_function_code_df(product, python_file_path):
+def prepare_function_code_df(product, max_depth, python_file_path):
     python_files_df = pd.read_feather(python_file_path).dropna()
-    functions_df = python_function_code.get_function_data_df(python_files_df)
-    functions_df.to_csv(product)
+    print("#" * 50)
+    print("PYTHON FILES")
+    print(python_files_df.shape)
+    functions_df = python_function_code.get_function_data_df(python_files_df, max_depth)
+    functions_df.to_feather(product)
 
 
 def _word_vectors_to_word2vec_format_generator(vocabulary, word_vectors):
