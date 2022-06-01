@@ -6,6 +6,15 @@ meta:
 
 tasks:
 
+# extract python tokens for BoW baseline
+  - source: github_search.bow_baseline.extract_python_tokens
+    product: "output/python_files_with_tokens_df.feather"
+
+  - source: github_search.bow_baseline.prepare_bm25_evaluation_results
+    upstream:
+      - extract_python_tokens
+    product: "output/bow_retrieval_results.json"
+
   # download area grouped tasks
   - source: github_search.paperswithcode_task_areas.prepare_area_grouped_tasks
     product: "data/paperswithcode_tasks.csv"
@@ -126,15 +135,13 @@ tasks:
 #      gnn_token_embeddings: "output/{{gnn.model_name}}_embeddings_fasttext_dim{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.bin"
 #      model_path: "output/{{gnn.model_name}}_model_{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.pth"
 
-#  # train-test split for tasks
-#  - source: github_search.matching_zsl.prepare_task_train_test_split
-#    upstream:
-#      - postprocess_dependency_records
-#      - train_python_token_fasttext
-#      - prepare_area_grouped_tasks
-#    product:
-#      train: "output/tasks_train.csv"
-#      test: "output/tasks_test.csv"
+# train-test split for tasks
+  - source: github_search.matching_zsl.prepare_task_train_test_split
+    upstream:
+      - prepare_area_grouped_tasks
+    product:
+      train: "output/tasks_train.csv"
+      test: "output/tasks_test.csv"
 
   # task embeddings
   # prepares data for task_embeddings_app streamlit app
