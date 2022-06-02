@@ -26,7 +26,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-papers_with_repo_df = paperswithcode_tasks.get_papers_with_biggest_tasks_df(10000)
 
 
 def get_comment_contents(file_contents):
@@ -43,26 +42,20 @@ def get_comment_contents(file_contents):
 
 
 def extract_python_tokens(
-    product, python_files_path="data/all_crawled_python_files.feather"
+        product, python_files_path="data/all_crawled_python_files.feather",
 ):
+    tqdm.tqdm.pandas()
     logging.info("loading files")
     python_files_df = pd.read_feather(python_files_path)
     big_files_repos = python_files_df["repo_name"].value_counts().iloc[:10].index
 
     python_files_df = python_files_df[
         ~python_files_df["repo_name"].isin(big_files_repos)
-    ]
+    ].reset_index(drop=True)
     logging.info("extracting tokens")
-    files_tokens = run_dask_series_apply(
-        get_parsed_python_tokens, python_files_df["content"]
-    )
+    files_tokens =  python_files_df["content"].progress_apply(get_joined_parsed_python_tokens)
     python_files_df["tokens_space_sep"] = files_tokens
-    python_files_df["tokens_space_sep"] = python_files_df["tokens_space_sep"].apply(
-        " ".join
-    )
-    python_files_df.drop(columns=["content"]).reset_index(drop=True).to_feather(
-        str(product)
-    )
+    python_files_df.drop(columns=["content"]).to_feather(str(product))
 
 
 def parse_camelcase(token):
@@ -116,11 +109,11 @@ def get_valid_comments_and_files(python_files_df, comment_contents):
     return valid_comment_files_df, valid_comments
 
 
-def run_dask_series_apply(function, values, chunksize=100):
-    ddf_values = ddf.from_array(values, chunksize=chunksize)
-    with dask.config.set(scheduler="threads", n_workers=10):
-        with DaskProgressBar():
-            computed_values = ddf_values.apply(function).compute()
+def run_dask_series_apply(function, values, chunksize=50, n_workers=10):
+    ddf_values = ddf.from_array(values).repartition(chunksize=chunksize)
+    with dask.config.set(scheduler="threads", n_workers=n_workers):
+        DaskProgressBar().register()
+        computed_values = ddf_values.apply(function).compute()
     return computed_values
 
 
@@ -143,6 +136,13 @@ def get_parsed_python_tokens(contents):
         for part in parse_token(tok.strip(string.punctuation))
         if part.strip() != ""
     ]
+
+
+def get_joined_parsed_python_tokens(contents):
+    try:
+        return " ".join(get_parsed_python_tokens(contents))
+    except TypeError:
+        return ""
 
 
 class RankBM25AggregateSearcher:
@@ -214,13 +214,19 @@ def get_bm25_evaluation_results(papers_with_repo_df, files_df, files_tokens):
         make_query_results_list(searcher, evaluator.queries, evaluator.queries_ids)
     )
 
-def prepare_bm25_evaluation_results(upstream, product):
-    files_with_tokens_df = pd.read_feather(upstream['extract_python_tokens'])
-    files_tokens = files_with_tokens_df['tokens_space_sep'].str.split()
-    results = get_bm25_evaluation_results(papers_with_repo_df, files_with_tokens_df, files_tokens)
+
+def prepare_bow_retrieval_evaluation_results(upstream, product):
+    papers_with_repo_df = paperswithcode_tasks.get_papers_with_biggest_tasks_df(10000)
+    files_with_tokens_df = pd.read_parquet(upstream["extract_python_tokens"])
+    files_tokens = files_with_tokens_df["tokens_space_sep"].str.split()
+    results = get_bm25_evaluation_results(
+        papers_with_repo_df, files_with_tokens_df, files_tokens
+    )
     with open(str(product), "w") as f:
         json.dump(results, f)
     #
+
+
 # searcher = RankBM25AggregateSearcher(selected_files_df, files_tokens)
 # searcher.df.iloc[searcher.search("metric learning")[0]]
 # searcher.search("metric learning")[1]

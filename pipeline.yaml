@@ -10,7 +10,7 @@ tasks:
   - source: github_search.bow_baseline.extract_python_tokens
     product: "output/python_files_with_tokens_df.feather"
 
-  - source: github_search.bow_baseline.prepare_bm25_evaluation_results
+  - source: github_search.bow_baseline.prepare_bow_retrieval_evaluation_results
     upstream:
       - extract_python_tokens
     product: "output/bow_retrieval_results.json"
