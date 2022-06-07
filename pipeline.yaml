@@ -6,19 +6,58 @@ meta:
 
 tasks:
 
-# extract python tokens for BoW baseline
-  - source: github_search.bow_baseline.extract_python_tokens
-    product: "output/python_files_with_tokens_df.feather"
-
-  - source: github_search.bow_baseline.prepare_bow_retrieval_evaluation_results
-    upstream:
-      - extract_python_tokens
-    product: "output/bow_retrieval_results.json"
-
   # download area grouped tasks
   - source: github_search.paperswithcode_task_areas.prepare_area_grouped_tasks
     product: "data/paperswithcode_tasks.csv"
 
+  # train-test split for tasks
+  # tasks are stratified by paperswithcode area
+  - source: github_search.data_engineering.prepare_task_train_test_split
+    upstream:
+      - prepare_area_grouped_tasks
+    params:
+      test_size: 0.1
+    product:
+      train: "output/tasks_train.csv"
+      test: "output/tasks_test.csv"
+
+  # get github readmes
+  - source: github_search.data_engineering.make_readmes
+    params:
+      paperswithcode_with_tasks_path: "data/paperswithcode_with_tasks.csv"
+      max_workers: 24
+    upstream: prepare_paperswithcode_with_imports_df
+    product: "output/papers_with_readmes.csv"
+
+  #
+  - source: github_search.data_engineering.prepare_repo_train_test_split
+    upstream:
+      - make_readmes
+      - prepare_task_train_test_split
+    product:
+      train: "output/repos_train.csv"
+      test: "output/repos_test.csv"
+
+  # extract python tokens for BoW baseline
+  - source: github_search.bow_baseline.extract_python_tokens
+    product: "output/python_files_with_tokens_df.feather"
+
+  # 
+  - source: github_search.bow_baseline.prepare_bow_retrieval_evaluation_results
+    name: prepare_bow_retrieval_evaluation_results_readme
+    upstream:
+      - prepare_task_train_test_split
+    params:
+      index: python_tokenized_files 
+    product: "output/python_files_retrieval_results.csv"
+  # 
+  - source: github_search.bow_baseline.prepare_bow_retrieval_evaluation_results
+    name: prepare_bow_retrieval_evaluation_results_python_files
+    upstream:
+      - prepare_task_train_test_split
+    params:
+      index: project_readmes 
+    product: "output/readme_retrieval_results.csv"
   # run word2vec on natural language data
   - source: github_search.word2vec.train_abstract_readme_w2v
     upstream:
@@ -88,14 +127,6 @@ tasks:
     product:
       "output/python_functions.feather"
 
-  # get github readmes
-  - source: github_search.data_engineering.make_readmes
-    params:
-      paperswithcode_with_tasks_path: "data/paperswithcode_with_tasks.csv"
-      max_workers: 24
-    upstream: prepare_paperswithcode_with_imports_df
-    product: "output/papers_with_readmes.csv"
-
   # train FastText model on Python files
   - source: github_search.data_engineering.train_python_token_fasttext
     params:
@@ -134,14 +165,6 @@ tasks:
 #      plot_file: "output/loss_{{gnn.model_name}}_fasttext_dim{{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.png"
 #      gnn_token_embeddings: "output/{{gnn.model_name}}_embeddings_fasttext_dim{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.bin"
 #      model_path: "output/{{gnn.model_name}}_model_{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.pth"
-
-# train-test split for tasks
-  - source: github_search.matching_zsl.prepare_task_train_test_split
-    upstream:
-      - prepare_area_grouped_tasks
-    product:
-      train: "output/tasks_train.csv"
-      test: "output/tasks_test.csv"
 
   # task embeddings
   # prepares data for task_embeddings_app streamlit app
