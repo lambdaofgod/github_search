@@ -1,3 +1,7 @@
+executor:
+  dotted_path: ploomber.executors.Serial
+  build_in_subprocess: false
+
 meta:
   extract_upstream: False 
   extract_product: False
@@ -144,6 +148,27 @@ tasks:
     upstream: prepare_function_code_df
     product:
       "output/python_files_descriptions_{{summarization.transformer_model_name}}.feather"
+
+  # prepare graph dataloaders
+  - source: github_search.graph_data.prepare_datasets
+    name: gnn.prepare_datasets
+    upstream:
+      - prepare_area_grouped_tasks
+      - make_igraph
+      - train_python_token_fasttext
+    product:
+      train: "output/graph_inputs_train.pkl"
+      test: "output/graph_inputs_test.pkl"
+
+  # train graph classification model
+  - source: github_search.graph_nn_training.run_classification
+    name: gnn.run_classification_
+    upstream:
+      - gnn.prepare_datasets
+    grid:
+      hidden_channels: [32]
+    product:
+      "graph_model"
 
 #  # train GraphSAGE model
 #  - source: github_search.pytorch_geometric_training.run_gnn_experiment
