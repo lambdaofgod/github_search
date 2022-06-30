@@ -1,0 +1,52 @@
+import numpy as np
+from sklearn import metrics
+
+
+def maybe_convert_to_numpy(x, dtype=np.int32):
+    if type(x) is list:
+        return np.array(x, dtype)
+    else:
+        return x
+
+
+def get_accuracy_from_scores(labels, scores):
+    labels = maybe_convert_to_numpy(labels)
+    return np.mean(labels == scores.argmax(axis=1))
+
+
+def get_multilabel_samplewise_topk_accuracy(labels: np.ndarray, scores: np.ndarray):
+    """
+    labels: np.ndarray, one-hot encoded labels
+    scores: np.ndarray
+
+    returns multilabel topk accuracy: for each record, it has k classes
+    and we check how many from top k classes by score match them
+    """
+    labels = maybe_convert_to_numpy(labels)
+
+    assert labels.shape == scores.shape
+    accs = []
+    scores_indices = np.argsort(-scores, axis=1)
+    labels_indices = np.argsort(-labels, axis=1)
+    total_n_classes = (labels > 0).sum()
+    for (labels_row, scores_indices_row, labels_indices_row) in zip(
+        labels, scores_indices, labels_indices
+    ):
+        n_classes = (labels_row > 0).sum()
+        top_scores_indices = scores_indices_row[:n_classes]
+        correct_labels_indices = labels_indices_row[:n_classes]
+        row_topk_hits = len(
+            set(correct_labels_indices).intersection(top_scores_indices)
+        )
+        accs.append(row_topk_hits)
+    return sum(accs) / total_n_classes
+
+
+def try_run(f, default=None):
+    def _maybe_failed_f(args):
+        try:
+            return f(args)
+        except:
+            return default
+
+    return _maybe_failed_f

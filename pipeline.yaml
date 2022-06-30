@@ -1,6 +1,6 @@
 executor:
   dotted_path: ploomber.executors.Serial
-  build_in_subprocess: false
+  build_in_subprocess: False
 
 meta:
   extract_upstream: False 
@@ -115,12 +115,6 @@ tasks:
       description_mode: "{{gnn.description_mode}}" 
     product: "output/processed_dependency_records.csv"
 
-  # make igraph from dependency records
-  - source: github_search.data_engineering.make_igraph
-    upstream:
-      prepare_dependency_records
-    product: "output/call_igraph.pkl"
-
   # extract python function df
   # f has columns
   # ['repo_name', 'path', 'function_name', 'function_code']
@@ -149,26 +143,44 @@ tasks:
     product:
       "output/python_files_descriptions_{{summarization.transformer_model_name}}.feather"
 
+  - source: github_search.graphs.prepare_graph.prepare_from_function_code
+    name: graph.prepare_from_function_code
+    upstream:
+      - prepare_function_code_df
+    product: "output/function_code_igraph.pkl"
+
   # prepare graph dataloaders
-  - source: github_search.graph_data.prepare_datasets
-    name: gnn.prepare_datasets
+  - source: github_search.graphs.data_preparation.prepare_dataset
+    name: gnn.prepare_dataset
+    params:
+      sentence_transformer_model_name: "flax-sentence-embeddings/st-codesearch-distilroberta-base"
+      batch_size: 128
     upstream:
       - prepare_area_grouped_tasks
-      - make_igraph
-      - train_python_token_fasttext
-    product:
-      train: "output/graph_inputs_train.pkl"
-      test: "output/graph_inputs_test.pkl"
+      - graph.prepare_from_function_code
+    product: "output/graph_list.pkl"
 
   # train graph classification model
-  - source: github_search.graph_nn_training.run_classification
-    name: gnn.run_classification_
+  - source: github_search.graphs.nn_training.run_area_classification
+    name: gnn.run_area_classification
     upstream:
-      - gnn.prepare_datasets
-    grid:
-      hidden_channels: [32]
+      - prepare_area_grouped_tasks
+      - prepare_repo_train_test_split
+      - gnn.prepare_dataset
+    params:
+      hidden_channels: 64
     product:
-      "graph_model"
+      "graph_nn_area_training_losses.png"
+  - source: github_search.graphs.nn_training.run_multilabel_classification
+    name: gnn.run_multilabel_task_classification
+    upstream:
+      - prepare_area_grouped_tasks
+      - prepare_repo_train_test_split
+      - gnn.prepare_dataset
+    params:
+      hidden_channels: 64
+    product:
+      "graph_nn_task_training_losses.png"
 
 #  # train GraphSAGE model
 #  - source: github_search.pytorch_geometric_training.run_gnn_experiment
