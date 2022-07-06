@@ -24,13 +24,6 @@ exclude:
 exclude: [vendor]
 
 highlighter: rouge
-markdown: kramdown
-kramdown:
- input: GFM
- auto_ids: true
- hard_wrap: false
- syntax_highlighter: rouge
-
 collections:
   tooltips:
     output: false

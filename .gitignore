@@ -6,3 +6,4 @@ mlruns/*
 metrics/*
 output/*
 outputs/*
+.dvc/*

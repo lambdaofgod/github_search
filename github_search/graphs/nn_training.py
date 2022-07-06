@@ -1,19 +1,31 @@
 import ast
 import logging
 import pickle
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Callable, List, Tuple, Union
 
 import livelossplot
 import numpy as np
 import pandas as pd
+import sentence_transformers
 import torch
 import torch.nn.functional as F
 import torch_geometric.data as ptg_data
 import torch_geometric.nn as ptgnn
 import tqdm
 from github_search import paperswithcode_task_areas, utils
-from sklearn import metrics, preprocessing
+from mlutil.feature_extraction import embeddings
+from sklearn import base, metrics, preprocessing
+from toolz import partial
 from torch import nn
+
+from github_search.graphs.training_config import (
+    GNNTrainingConfig,
+    AreaClassificationTrainingConfig,
+    MultilabelTaskClassificationTrainingConfig,
+    SimilarityModelTrainingConfig,
+)
 
 
 logging.basicConfig(level="INFO")
@@ -54,42 +66,57 @@ class GCN(torch.nn.Module):
         return x
 
 
+def default_label_preprocessing_fn(data, labels_dtype, device):
+    return torch.Tensor(np.array(data.encoded_label).astype(labels_dtype)).to(device)
+
+
 def train_gnn(
     model: nn.Module,
-    loader: ptg_data.DataLoader,
+    dataset: GraphDataList,
+    epochs: int,
+    batch_size: int,
     device: str,
-    loss_fn: nn.Module,
-    accuracy_fn,
-    labels_dtype: np.dtype,
+    config: GNNTrainingConfig,
     plot_fig_path: str,
+    model_path: str,
 ):
 
     loss_plot = livelossplot.PlotLosses(
         outputs=[livelossplot.outputs.MatplotlibPlot(figpath=plot_fig_path)]
     )
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-    loss_fn = loss_fn.to(device)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    loss_fn = config.loss_function.to(device)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, factor=0.5, patience=20
+    )
 
     model.train()
 
-    with tqdm.auto.tqdm(enumerate(loader), total=len(loader)) as pbar:
-        for (i, data) in pbar:
-            out = model(
-                data.x.to(device), data.edge_index.to(device), data.batch.to(device)
-            )  # Perform a single forward pass.
-            labels = torch.tensor(np.array(data.encoded_label).astype(labels_dtype)).to(
-                device
-            )
-            loss = loss_fn(out, labels)  # Compute the loss.
-            loss.backward()  # Derive gradients.
-            optimizer.step()  # Update parameters based on gradients.
-            accuracy = accuracy_fn(data.encoded_label, out.detach().cpu().numpy())
-            pbar.set_description(f"iteration {i}, loss: {round(loss.item(), 3)}")
-            loss_plot.update({"loss": loss.item(), "accuracy": accuracy})
-            optimizer.zero_grad()  # Clear gradients.
-            scheduler.step(loss)
+    losses = []
+    for __ in tqdm.auto.tqdm(range(epochs)):
+        train_loader = ptg_data.DataLoader(dataset, batch_size, shuffle=True)
+        with tqdm.auto.tqdm(enumerate(train_loader), total=len(train_loader)) as pbar:
+            for (i, data) in pbar:
+                out = model(
+                    data.x.to(device), data.edge_index.to(device), data.batch.to(device)
+                )  # Perform a single forward pass.
+                labels = config.preprocess_labels(data, device)
+                loss = loss_fn(out, labels)  # Compute the loss.
+                loss.backward()  # Derive gradients.
+                optimizer.step()  # Update parameters based on gradients.
+                accuracy = config.accuracy_function(
+                    data.encoded_label, out.detach().cpu().numpy()
+                )
+                losses.append(loss.item())
+                smoothed_loss = np.mean(losses[-20:])
+                pbar.set_description(
+                    f"iteration {i}, loss: {round(smoothed_loss.item(), 3)}"
+                )
+                loss_plot.update({"loss": smoothed_loss, "accuracy": accuracy})
+                optimizer.zero_grad()  # Clear gradients.
+                scheduler.step(loss)
     loss_plot.send()
+    torch.save(model, model_path)
     return loss_plot
 
 
@@ -150,27 +177,15 @@ def get_dataset_splits_with_labels(
     return train_dataset_with_labels, test_dataset_with_labels
 
 
-class GNNConfig:
-
-    label_encoders = {
-        "tasks": preprocessing.MultiLabelBinarizer(),
-        "area": preprocessing.LabelEncoder(),
-    }
-    accuracy_functions = {
-        "tasks": utils.get_multilabel_samplewise_topk_accuracy,
-        "area": utils.get_accuracy_from_scores,
-    }
-    loss_functions = {"tasks": nn.BCEWithLogitsLoss(), "area": nn.CrossEntropyLoss()}
-    labels_dtype = {"tasks": np.float32, "area": np.int64}
-
-
 def run_classification(
-    upstream, product, hidden_channels, classification_column, batch_size=32
+    upstream, product, hidden_channels, classification_column, batch_size=32, epochs=1
 ):
-    assert (
-        classification_column in GNNConfig.label_encoders.keys()
-    ), "unsupported classification type"
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    config = (
+        AreaClassificationTrainingConfig
+        if classification_column == "name"
+        else MultilabelTaskClassificationTrainingConfig
+    )
     logging.info(f"using {device}")
     area_tasks_path = str(upstream.get("prepare_area_grouped_tasks"))
     dataset = pickle.load(open(upstream["gnn.prepare_dataset"], "rb"))
@@ -191,7 +206,8 @@ def run_classification(
     )
 
     train_dataset, label_encoder = get_data_list_with_encoded_classes(
-        train_dataset_with_labels, GNNConfig.label_encoders[classification_column]
+        train_dataset_with_labels,
+        config.label_encoder,
     )
     test_dataset, __ = get_data_list_with_encoded_classes(
         test_dataset_with_labels, label_encoder
@@ -208,15 +224,15 @@ def run_classification(
         n_node_features=dim,
         n_classes=len(label_encoder.classes_),
     ).to(device)
-    train_loader = ptg_data.DataLoader(train_dataset, batch_size)
     train_gnn(
         model,
-        train_loader,
+        train_dataset,
+        epochs,
+        batch_size,
         device,
-        GNNConfig.loss_functions[classification_column],
-        GNNConfig.accuracy_functions[classification_column],
-        GNNConfig.labels_dtype[classification_column],
-        str(product)
+        config,
+        str(product["plot_path"]),
+        str(product["model_path"]),
     )
 
 
@@ -226,3 +242,67 @@ def run_multilabel_classification(upstream, product, hidden_channels, batch_size
 
 def run_area_classification(upstream, product, hidden_channels, batch_size=32):
     run_classification(upstream, product, hidden_channels, "area", batch_size)
+
+
+def run_label_similarity_model(
+    upstream,
+    product,
+    sentence_transformer_model_name,
+    hidden_channels,
+    batch_size=256,
+    epochs=3,
+):
+    query_column = "least_common_task"
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    logging.info(f"using {device}")
+    area_tasks_path = str(upstream.get("prepare_area_grouped_tasks"))
+    dataset = pickle.load(open(upstream["gnn.prepare_dataset"], "rb"))
+
+    train_metadata_path, test_metadata_path = [
+        str(upstream["prepare_repo_train_test_split"][split_part])
+        for split_part in ["train", "test"]
+    ]
+    (
+        train_dataset_with_labels,
+        test_dataset_with_labels,
+    ) = get_dataset_splits_with_labels(
+        dataset,
+        train_metadata_path,
+        test_metadata_path,
+        query_column,
+        area_tasks_path,
+    )
+    dim = dataset[0].x.shape[1]
+    n_classes = len(set(l for (g, l) in train_dataset_with_labels))
+    model = GCN(
+        hidden_channels=hidden_channels,
+        n_node_features=dim,
+        n_classes=n_classes,
+    ).to(device)
+    embedder = embeddings.SentenceTransformerWrapper(
+        sentence_transformers.SentenceTransformer(sentence_transformer_model_name)
+    )
+    config = SimilarityModelTrainingConfig(embedder, model)
+
+    train_dataset, label_encoder = get_data_list_with_encoded_classes(
+        train_dataset_with_labels, config.label_encoder
+    )
+    # test_dataset, __ = get_data_list_with_encoded_classes(
+    #    test_dataset_with_labels, label_encoder
+    # )
+    logging.info(f"using {len(train_dataset)} examples in train set")
+    # logging.info(f"using {len(test_dataset)} examples in test set")
+    logging.info(f"fitting model with {len(label_encoder.classes_)} labels")
+    pd.Series(label_encoder.classes_).to_csv("/tmp/output_classes.txt")
+    logging.info(f"fitting model with {len(label_encoder.classes_)} labels")
+
+    train_gnn(
+        model,
+        train_dataset,
+        epochs,
+        batch_size,
+        device,
+        config,
+        str(product["plot_path"]),
+        str(product["model_path"]),
+    )

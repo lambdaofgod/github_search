@@ -1,20 +1,35 @@
 import logging
 import pickle
 from dataclasses import dataclass
-from typing import *
+from typing import Dict, List, Callable, Union
 
-import fasttext
+import numpy as np
 import igraph
 import pandas as pd
 import sentence_transformers
 import torch
 import tqdm
-from github_search import pytorch_geometric_data
 from mlutil.feature_extraction import embeddings
-from sklearn import base, model_selection, preprocessing
+from sklearn import model_selection, preprocessing
 from torch_geometric import data as ptg_data
 
+from findkit import feature_extractor
+
 logging.basicConfig(level="INFO")
+
+Label = Union[str, List[str]]
+
+
+def make_trivial_graph(
+    vertex_texts, vertex_encoder: feature_extractor.SentenceEncoderFeatureExtractor
+):
+    return ptg_data.Data(
+        torch.Tensor(
+            vertex_encoder.extract_features(vertex_texts, show_progress_bar=False)
+        ),
+        edge_index=torch.LongTensor([[i, i] for i in range(len(vertex_texts))]).T,
+        names=vertex_texts,
+    )
 
 
 def make_igraph(call_records_df):
@@ -68,21 +83,26 @@ def get_repo_vertices(graph, paperswithcode_df):
     return set(vertex_names).intersection(set(paperswithcode_df["repo"].values))
 
 
-def get_graph_data(graph, graph_name, label, encoding_method, **kwargs):
+def get_graph_data(
+    graph: igraph.Graph,
+    graph_name: str,
+    metadata: Dict[str, Label],
+    encoding_method: Callable[[List[str]], np.ndarray],
+    **kwargs,
+):
     texts = graph.vs.get_attribute_values("text")
     names = graph.vs.get_attribute_values("name")
     edge_index = torch.tensor(graph.get_edgelist()).T
     features = torch.tensor(encoding_method(texts, **kwargs))
     return ptg_data.Data(
-        features, edge_index, names=names, label=label, graph_name=graph_name
+        features, edge_index, names=names, graph_name=graph_name, **metadata
     )
 
 
 @dataclass
 class GraphDataPreprocessor:
-
-    embedder: base.TransformerMixin
-    label_mapping: Dict[str, Union[str, List[str]]]
+    extractor: feature_extractor.SentenceEncoderFeatureExtractor
+    metadata: Dict[str, Dict[str, str]]
 
     def get_data_list(self, graph, show_progress_bar=True, **kwargs):
         subgraphs = (
@@ -98,13 +118,13 @@ class GraphDataPreprocessor:
             get_graph_data(
                 subgraph,
                 repo_vertex,
-                self.label_mapping[repo_vertex],
-                encoding_method=self.embedder.transform,
-                show_progress_bar=not show_progress_bar,
+                self.metadata[repo_vertex],
+                encoding_method=self.extractor.extract_features,
+                show_progress_bar=False,
                 **kwargs,
             )
             for (subgraph, repo_vertex) in subgraphs_with_repo_vertices
-            if repo_vertex in self.label_mapping.keys()
+            if repo_vertex in self.metadata.keys()
         ]
 
     def get_repo_vertex(self, subgraph):
@@ -135,21 +155,22 @@ def prepare_dataset(upstream, product, sentence_transformer_model_name, batch_si
     with open(graph_path, "rb") as f:
         graph = pickle.load(f)
 
-    area_tasks_df = pd.read_csv().set_index("task")
+    area_tasks_df = pd.read_csv(area_tasks_path).set_index("task")
     paperswithcode_df = pd.read_csv("data/paperswithcode_with_tasks.csv")
-    task_mapping = (
-        paperswithcode_df[["least_common_task", "repo"]]
+    repo_metadata = (
+        paperswithcode_df[["least_common_task", "tasks", "repo"]]
         .merge(area_tasks_df, left_on="least_common_task", right_on="task")
-        .set_index("repo")["area"]
-        .to_dict()
+        .drop_duplicates(subset="repo")
+        .set_index("repo")[["tasks", "area"]]
+        .to_dict(orient="index")
     )
     logging.info("preparing graph records")
     logging.info("loading embedder")
-    embedder = embeddings.SentenceTransformerWrapper(
+    extractor = feature_extractor.SentenceEncoderFeatureExtractor(
         sentence_transformers.SentenceTransformer(sentence_transformer_model_name)
     )
 
-    graph_preprocessor = GraphDataPreprocessor(embedder, label_mapping=task_mapping)
+    graph_preprocessor = GraphDataPreprocessor(extractor, metadata=repo_metadata)
 
     logging.info("preparing graph data")
     data_list = graph_preprocessor.get_data_list(

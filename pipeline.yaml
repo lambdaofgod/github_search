@@ -153,7 +153,7 @@ tasks:
   - source: github_search.graphs.data_preparation.prepare_dataset
     name: gnn.prepare_dataset
     params:
-      sentence_transformer_model_name: "flax-sentence-embeddings/st-codesearch-distilroberta-base"
+      sentence_transformer_model_name: "{{gnn.sentence_transformer_model_name}}"
       batch_size: 128
     upstream:
       - prepare_area_grouped_tasks
@@ -162,7 +162,7 @@ tasks:
 
   # train graph classification model
   - source: github_search.graphs.nn_training.run_area_classification
-    name: gnn.run_area_classification
+    name: gnn.train_area_classification
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
@@ -170,9 +170,10 @@ tasks:
     params:
       hidden_channels: 64
     product:
-      "graph_nn_area_training_losses.png"
+      model_path: "output/models/graph_nn_area_training.pth"
+      plot_path: "output/graph_nn_area_training_losses.png"
   - source: github_search.graphs.nn_training.run_multilabel_classification
-    name: gnn.run_multilabel_task_classification
+    name: gnn.train_multilabel_task_classification
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
@@ -180,7 +181,20 @@ tasks:
     params:
       hidden_channels: 64
     product:
-      "graph_nn_task_training_losses.png"
+      model_path: "output/models/graph_nn_task_training.pth"
+      plot_path: "output/graph_nn_task_training_losses.png"
+  - source: github_search.graphs.nn_training.run_label_similarity_model
+    name: gnn.train_label_similarity_model
+    upstream:
+      - prepare_area_grouped_tasks
+      - prepare_repo_train_test_split
+      - gnn.prepare_dataset
+    params:
+      hidden_channels: 128 
+      sentence_transformer_model_name: "{{gnn.sentence_transformer_model_name}}"
+    product:
+      model_path: "output/models/similarity_gnn.pth"
+      plot_path: "output/graph_nn_similarity_training_losses.png"
 
 #  # train GraphSAGE model
 #  - source: github_search.pytorch_geometric_training.run_gnn_experiment
