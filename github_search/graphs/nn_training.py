@@ -1,5 +1,7 @@
 import ast
 import logging
+from github_search import logging_setup
+
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -20,54 +22,16 @@ from sklearn import base, metrics, preprocessing
 from toolz import partial
 from torch import nn
 
+from github_search.graphs.models import GCN
+
 from github_search.graphs.training_config import (
     GNNTrainingConfig,
     AreaClassificationTrainingConfig,
     MultilabelTaskClassificationTrainingConfig,
     SimilarityModelTrainingConfig,
 )
-
-
-logging.basicConfig(level="INFO")
-
 GraphDataList = List[ptg_data.Data]
 GraphDataListWithLabels = List[Tuple[ptg_data.Data, Union[str, List[str]]]]
-
-
-class GCN(torch.nn.Module):
-    def __init__(
-        self, hidden_channels, n_node_features, n_classes, graph_conv_cls=ptgnn.SAGEConv
-    ):
-        super(GCN, self).__init__()
-        torch.manual_seed(12345)
-
-        self.conv1 = graph_conv_cls(n_node_features, hidden_channels)
-        self.conv2 = graph_conv_cls(hidden_channels, hidden_channels)
-        self.conv3 = graph_conv_cls(hidden_channels, hidden_channels)
-        self.lin = nn.Linear(2 * hidden_channels, n_classes)
-
-    def forward(self, x, edge_index, batch):
-        # 1. Obtain node embeddings
-        x = self.conv1(x, edge_index)
-        x = x.relu()
-        x = self.conv2(x, edge_index)
-        x = x.relu()
-        x = self.conv3(x, edge_index)
-
-        # 2. Readout layer
-        x_max = ptgnn.global_max_pool(x, batch)  # [batch_size, hidden_channels]
-        x_mean = ptgnn.global_mean_pool(x, batch)  # [batch_size, hidden_channels]
-
-        x = torch.column_stack([x_max, x_mean])
-        # 3. Apply a final classifier
-        x = F.dropout(x, p=0.5, training=self.training)
-        x = self.lin(x)
-
-        return x
-
-
-def default_label_preprocessing_fn(data, labels_dtype, device):
-    return torch.Tensor(np.array(data.encoded_label).astype(labels_dtype)).to(device)
 
 
 def train_gnn(
@@ -81,6 +45,7 @@ def train_gnn(
     model_path: str,
 ):
 
+    import ipdb; ipdb.set_trace()
     loss_plot = livelossplot.PlotLosses(
         outputs=[livelossplot.outputs.MatplotlibPlot(figpath=plot_fig_path)]
     )
@@ -100,8 +65,8 @@ def train_gnn(
                 out = model(
                     data.x.to(device), data.edge_index.to(device), data.batch.to(device)
                 )  # Perform a single forward pass.
-                labels = config.preprocess_labels(data, device)
-                loss = loss_fn(out, labels)  # Compute the loss.
+                target = config.preprocess_target(data, device)
+                loss = loss_fn(out, target)  # Compute the loss.
                 loss.backward()  # Derive gradients.
                 optimizer.step()  # Update parameters based on gradients.
                 accuracy = config.accuracy_function(
@@ -116,7 +81,7 @@ def train_gnn(
                 optimizer.zero_grad()  # Clear gradients.
                 scheduler.step(loss)
     loss_plot.send()
-    torch.save(model, model_path)
+    model.save(model_path)
     return loss_plot
 
 
@@ -182,9 +147,9 @@ def run_classification(
 ):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = (
-        AreaClassificationTrainingConfig
+        AreaClassificationTrainingConfig()
         if classification_column == "name"
-        else MultilabelTaskClassificationTrainingConfig
+        else MultilabelTaskClassificationTrainingConfig()
     )
     logging.info(f"using {device}")
     area_tasks_path = str(upstream.get("prepare_area_grouped_tasks"))
@@ -222,7 +187,7 @@ def run_classification(
     model = GCN(
         hidden_channels=hidden_channels,
         n_node_features=dim,
-        n_classes=len(label_encoder.classes_),
+        final_layer_size=len(label_encoder.classes_),
     ).to(device)
     train_gnn(
         model,
@@ -277,12 +242,12 @@ def run_label_similarity_model(
     model = GCN(
         hidden_channels=hidden_channels,
         n_node_features=dim,
-        n_classes=n_classes,
+        final_layer_size=n_classes,
     ).to(device)
     embedder = embeddings.SentenceTransformerWrapper(
         sentence_transformers.SentenceTransformer(sentence_transformer_model_name)
     )
-    config = SimilarityModelTrainingConfig(embedder, model)
+    config = SimilarityModelTrainingConfig.from_embedder_and_model(embedder, model)
 
     train_dataset, label_encoder = get_data_list_with_encoded_classes(
         train_dataset_with_labels, config.label_encoder

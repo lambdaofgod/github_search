@@ -1,4 +1,4 @@
-import logging
+from github_search import logging_setup
 import pickle
 from dataclasses import dataclass
 from typing import Dict, List, Callable, Union
@@ -12,10 +12,9 @@ import tqdm
 from mlutil.feature_extraction import embeddings
 from sklearn import model_selection, preprocessing
 from torch_geometric import data as ptg_data
-
+from github_search import utils
 from findkit import feature_extractor
 
-logging.basicConfig(level="INFO")
 
 Label = Union[str, List[str]]
 
@@ -156,12 +155,14 @@ def prepare_dataset(upstream, product, sentence_transformer_model_name, batch_si
         graph = pickle.load(f)
 
     area_tasks_df = pd.read_csv(area_tasks_path).set_index("task")
-    paperswithcode_df = pd.read_csv("data/paperswithcode_with_tasks.csv")
+    paperswithcode_df = utils.load_paperswithcode_df(
+        "data/paperswithcode_with_tasks.csv"
+    )
     repo_metadata = (
         paperswithcode_df[["least_common_task", "tasks", "repo"]]
         .merge(area_tasks_df, left_on="least_common_task", right_on="task")
         .drop_duplicates(subset="repo")
-        .set_index("repo")[["tasks", "area"]]
+        .set_index("repo")[["least_common_task", "tasks", "area"]]
         .to_dict(orient="index")
     )
     logging.info("preparing graph records")
