@@ -1,12 +1,11 @@
 import ast
 import logging
-from github_search import logging_setup
-
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, List, Tuple, Union
 
+import findkit
 import livelossplot
 import numpy as np
 import pandas as pd
@@ -16,20 +15,20 @@ import torch.nn.functional as F
 import torch_geometric.data as ptg_data
 import torch_geometric.nn as ptgnn
 import tqdm
-from github_search import paperswithcode_task_areas, utils
 from mlutil.feature_extraction import embeddings
 from sklearn import base, metrics, preprocessing
 from toolz import partial
 from torch import nn
 
+from github_search import logging_setup, paperswithcode_task_areas, utils
 from github_search.graphs.models import GCN
-
 from github_search.graphs.training_config import (
-    GNNTrainingConfig,
     AreaClassificationTrainingConfig,
+    GNNTrainingConfig,
     MultilabelTaskClassificationTrainingConfig,
     SimilarityModelTrainingConfig,
 )
+
 GraphDataList = List[ptg_data.Data]
 GraphDataListWithLabels = List[Tuple[ptg_data.Data, Union[str, List[str]]]]
 
@@ -44,8 +43,6 @@ def train_gnn(
     plot_fig_path: str,
     model_path: str,
 ):
-
-    import ipdb; ipdb.set_trace()
     loss_plot = livelossplot.PlotLosses(
         outputs=[livelossplot.outputs.MatplotlibPlot(figpath=plot_fig_path)]
     )
@@ -62,10 +59,10 @@ def train_gnn(
         train_loader = ptg_data.DataLoader(dataset, batch_size, shuffle=True)
         with tqdm.auto.tqdm(enumerate(train_loader), total=len(train_loader)) as pbar:
             for (i, data) in pbar:
+                target = config.preprocess_target(data, device)
                 out = model(
                     data.x.to(device), data.edge_index.to(device), data.batch.to(device)
                 )  # Perform a single forward pass.
-                target = config.preprocess_target(data, device)
                 loss = loss_fn(out, target)  # Compute the loss.
                 loss.backward()  # Derive gradients.
                 optimizer.step()  # Update parameters based on gradients.
@@ -244,7 +241,7 @@ def run_label_similarity_model(
         n_node_features=dim,
         final_layer_size=n_classes,
     ).to(device)
-    embedder = embeddings.SentenceTransformerWrapper(
+    embedder = findkit.feature_extractor.SentenceEncoderFeatureExtractor(
         sentence_transformers.SentenceTransformer(sentence_transformer_model_name)
     )
     config = SimilarityModelTrainingConfig.from_embedder_and_model(embedder, model)

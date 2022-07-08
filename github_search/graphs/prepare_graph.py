@@ -1,6 +1,7 @@
+import pickle
+
 import igraph
 import pandas as pd
-import pickle
 
 
 def make_file_vertices(df):

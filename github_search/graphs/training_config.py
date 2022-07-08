@@ -2,22 +2,19 @@ import ast
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Callable, List, Tuple, Union
+from typing import List, Tuple, Union
 
-import livelossplot
 import numpy as np
 import pandas as pd
 import sentence_transformers
 import torch
 import torch.nn.functional as F
-import torch_geometric.nn as ptgnn
-import tqdm
-from github_search import paperswithcode_task_areas, utils
 from mlutil.feature_extraction import embeddings
-from sklearn import base, metrics, preprocessing
-from toolz import partial
+from sklearn import base, preprocessing
 from torch import nn
-from github_search.graphs.data_preparation import make_trivial_graph
+
+from github_search import paperswithcode_task_areas, utils
+from github_search.graphs import label_preprocessing
 
 
 @dataclass
@@ -42,7 +39,9 @@ class GNNTrainingConfig(ABC):
 class MultilabelTaskClassificationTrainingConfig(GNNTrainingConfig):
 
     loss_function: nn.Module = field(default_factory=nn.BCEWithLogitsLoss)
-    label_encoder: base.BaseEstimator = field(default_factory=preprocessing.MultiLabelBinarizer)
+    label_encoder: base.BaseEstimator = field(
+        default_factory=preprocessing.MultiLabelBinarizer
+    )
     labels_dtype: torch.dtype = field(default=np.float32)
 
     @classmethod
@@ -56,7 +55,9 @@ class MultilabelTaskClassificationTrainingConfig(GNNTrainingConfig):
 class AreaClassificationTrainingConfig(GNNTrainingConfig):
 
     loss_function: nn.Module = field(default_factory=nn.CrossEntropyLoss())
-    label_encoder: base.BaseEstimator = field(default_factory=preprocessing.LabelEncoder())
+    label_encoder: base.BaseEstimator = field(
+        default_factory=preprocessing.LabelEncoder()
+    )
     labels_dtype: torch.dtype = field(default=np.int64)
 
     @classmethod
@@ -104,10 +105,10 @@ class SimilarityModelTrainingConfig(GNNTrainingConfig):
         )
 
     def preprocess_target(self, data, device):
-        graph_data = make_trivial_graph(data.label, self.embedder).to(device)
-        return self.model(
-            graph_data.x, graph_data.edge_index, torch.arange(len(data.label)).cuda()
-        )
+        graph_data = label_preprocessing.make_graph_from_label_list(
+            data.tasks, self.embedder
+        ).to(device)
+        return self.model(graph_data.x, graph_data.edge_index, graph_data.batch)
 
     @classmethod
     def accuracy_function(cls, encoded_label, model_output):

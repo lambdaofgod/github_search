@@ -190,6 +190,7 @@ tasks:
       - prepare_repo_train_test_split
       - gnn.prepare_dataset
     params:
+      epochs: 10 
       hidden_channels: 128 
       sentence_transformer_model_name: "{{gnn.sentence_transformer_model_name}}"
     product:

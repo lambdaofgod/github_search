@@ -1,20 +1,19 @@
-from github_search import logging_setup
 import pickle
 from dataclasses import dataclass
-from typing import Dict, List, Callable, Union
+from typing import Callable, Dict, List, Union
 
-import numpy as np
 import igraph
+import numpy as np
 import pandas as pd
 import sentence_transformers
 import torch
 import tqdm
+from findkit import feature_extractor
 from mlutil.feature_extraction import embeddings
 from sklearn import model_selection, preprocessing
 from torch_geometric import data as ptg_data
-from github_search import utils
-from findkit import feature_extractor
 
+from github_search import logging_setup, utils
 
 Label = Union[str, List[str]]
 
