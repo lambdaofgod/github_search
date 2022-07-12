@@ -1,5 +1,17 @@
+import ast
+
 import numpy as np
+import pandas as pd
 from sklearn import metrics
+
+
+def load_paperswithcode_df(path, drop_na_cols=["readme", "tasks"]):
+    df = pd.read_csv(path)
+    drop_na_cols = [col for col in drop_na_cols if col in df.columns]
+    df = df.dropna(subset=drop_na_cols)
+    if "tasks" in df.columns:
+        df["tasks"] = df["tasks"].apply(ast.literal_eval)
+    return df
 
 
 def maybe_convert_to_numpy(x, dtype=np.int32):

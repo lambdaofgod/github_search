@@ -1,8 +1,9 @@
 import os
+
 import pandas as pd
+from haystack import retriever as haystack_retriever
 from sentence_transformers import InputExample, SentenceTransformer, evaluation, models
 from toolz import partial
-from haystack import retriever as haystack_retriever
 
 
 def get_ir_dicts(input_df, query_col="tasks", doc_col="readme"):
@@ -25,9 +26,9 @@ def get_ir_dicts(input_df, query_col="tasks", doc_col="readme"):
         .to_dict()
     )
     return {
-        "queries_mapping": queries["query"].to_dict(),
-        "doc_mapping": corpus.to_dict(),
-        "relevant_docs_mapping": relevant_docs,
+        "queries": queries["query"].to_dict(),
+        "corpus": corpus.to_dict(),
+        "relevant_docs": relevant_docs,
     }
 
 
@@ -38,14 +39,12 @@ def get_ir_metrics(path):
     return metrics_df[[col for col in metrics_df if "cos" in col]]
 
 
-def get_ir_evaluator(paperswithcode_df, query_col="tasks", doc_col="readme"):
-    queries, corpus, relevant_docs = get_ir_dicts(
-        paperswithcode_df.dropna(subset=[query_col, doc_col]), query_col, doc_col
+def get_ir_evaluator(df, query_col="tasks", doc_col="readme"):
+    ir_dicts = get_ir_dicts(
+        df.dropna(subset=[query_col, doc_col]), query_col, doc_col
     )
     ir_evaluator = evaluation.InformationRetrievalEvaluator(
-        queries,
-        corpus,
-        relevant_docs,
+        **ir_dicts,
         main_score_function="cos_sim",
         map_at_k=[10],
         corpus_chunk_size=5000,
