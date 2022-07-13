@@ -7,3 +7,5 @@ metrics/*
 output/*
 outputs/*
 .dvc/*
+.mypy_cache/*
+/github_search/.mypy_cache/*

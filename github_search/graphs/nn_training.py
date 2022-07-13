@@ -21,7 +21,7 @@ from toolz import partial
 from torch import nn
 
 from github_search import logging_setup, paperswithcode_task_areas, utils
-from github_search.graphs.models import GCN
+from github_search.graphs import models
 from github_search.graphs.training_config import (
     AreaClassificationTrainingConfig,
     GNNTrainingConfig,
@@ -34,7 +34,7 @@ GraphDataListWithLabels = List[Tuple[ptg_data.Data, Union[str, List[str]]]]
 
 
 def train_gnn(
-    model: nn.Module,
+    model: models.GraphNeuralNetwork,
     dataset: GraphDataList,
     epochs: int,
     batch_size: int,
@@ -78,7 +78,7 @@ def train_gnn(
                 optimizer.zero_grad()  # Clear gradients.
                 scheduler.step(loss)
     loss_plot.send()
-    model.save(model_path)
+    torch.save(model, model_path)
     return loss_plot
 
 
@@ -140,7 +140,13 @@ def get_dataset_splits_with_labels(
 
 
 def run_classification(
-    upstream, product, hidden_channels, classification_column, batch_size=32, epochs=1
+    upstream,
+    product,
+    hidden_channels,
+    classification_column,
+    gnn_class=models.GCN,
+    batch_size=32,
+    epochs=1,
 ):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = (
@@ -181,7 +187,7 @@ def run_classification(
     pd.Series(label_encoder.classes_).to_csv("/tmp/output_classes.txt")
     logging.info(f"fitting model with {len(label_encoder.classes_)} labels")
 
-    model = GCN(
+    model = models.GCN(
         hidden_channels=hidden_channels,
         n_node_features=dim,
         final_layer_size=len(label_encoder.classes_),
@@ -209,11 +215,16 @@ def run_area_classification(upstream, product, hidden_channels, batch_size=32):
 def run_label_similarity_model(
     upstream,
     product,
-    sentence_transformer_model_name,
-    hidden_channels,
-    batch_size=256,
-    epochs=3,
+    similarity_model_params,
+    n_features,
+    gnn_class=models.GCN,
 ):
+    sentence_transformer_model_name = similarity_model_params[
+        "sentence_transformer_model_name"
+    ]
+    hidden_channels = similarity_model_params["hidden_channels"]
+    epochs = similarity_model_params["epochs"]
+    batch_size = similarity_model_params["batch_size"]
     query_column = "least_common_task"
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(f"using {device}")
@@ -235,11 +246,10 @@ def run_label_similarity_model(
         area_tasks_path,
     )
     dim = dataset[0].x.shape[1]
-    n_classes = len(set(l for (g, l) in train_dataset_with_labels))
-    model = GCN(
+    model = gnn_class(
         hidden_channels=hidden_channels,
         n_node_features=dim,
-        final_layer_size=n_classes,
+        final_layer_size=n_features,
     ).to(device)
     embedder = findkit.feature_extractor.SentenceEncoderFeatureExtractor(
         sentence_transformers.SentenceTransformer(sentence_transformer_model_name)

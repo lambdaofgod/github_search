@@ -190,9 +190,8 @@ tasks:
       - prepare_repo_train_test_split
       - gnn.prepare_dataset
     params:
-      epochs: 10 
-      hidden_channels: 128 
-      sentence_transformer_model_name: "{{gnn.sentence_transformer_model_name}}"
+      similarity_model_params: "{{gnn.similarity_model_params}}"
+      n_features: 256
     product:
       model_path: "output/models/similarity_gnn.pth"
       plot_path: "output/graph_nn_similarity_training_losses.png"

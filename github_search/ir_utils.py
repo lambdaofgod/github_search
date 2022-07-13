@@ -40,9 +40,7 @@ def get_ir_metrics(path):
 
 
 def get_ir_evaluator(df, query_col="tasks", doc_col="readme"):
-    ir_dicts = get_ir_dicts(
-        df.dropna(subset=[query_col, doc_col]), query_col, doc_col
-    )
+    ir_dicts = get_ir_dicts(df.dropna(subset=[query_col, doc_col]), query_col, doc_col)
     ir_evaluator = evaluation.InformationRetrievalEvaluator(
         **ir_dicts,
         main_score_function="cos_sim",

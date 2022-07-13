@@ -1,6 +1,7 @@
 import pickle
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Union
+import logging
 
 import igraph
 import numpy as np

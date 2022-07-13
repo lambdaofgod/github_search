@@ -10,7 +10,9 @@ def build_word_embeddings_sentence_transformer_model(
     build from word embeddings from word_embeddings_file
     word_embeddings_file is assumed to be a word2vec .txt format file
     """
-    word_embeddings = sentence_transformers.models.WordEmbeddings.from_text_file(word_embeddings_file)
+    word_embeddings = sentence_transformers.models.WordEmbeddings.from_text_file(
+        word_embeddings_file
+    )
 
     pooling_model = sentence_transformers.models.Pooling(
         word_embeddings.get_word_embedding_dimension(),
