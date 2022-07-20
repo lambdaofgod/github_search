@@ -20,11 +20,10 @@ def get_ml_related_dbpedia_concepts_df():
 
     entities = [pref + name for pref in ["dbc:", "dbr:"] for name in entity_names]
 
-    return (
-        semantic_web_utils.make_dataframe_from_results(
-            semantic_web_utils.get_related_concepts_results(entities)
-        )
+    return semantic_web_utils.make_dataframe_from_results(
+        semantic_web_utils.get_related_concepts_results(entities)
     )
+
 
 def normalize_dbpedia_df(df):
     df = df.copy()

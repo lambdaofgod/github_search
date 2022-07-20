@@ -35,10 +35,10 @@ def build_rnn_model(
     pooling_mode_mean_tokens: bool,
     pooling_mode_cls_token: bool,
     pooling_mode_max_tokens: bool,
-    num_layers: int=2,
-    n_hidden: int=256,
-    dropout: float=0.25,
-    max_seq_length: int=256,
+    num_layers: int = 2,
+    n_hidden: int = 256,
+    dropout: float = 0.25,
+    max_seq_length: int = 256,
 ) -> SentenceTransformer:
     rnn_model_types = ["lstm", "sru"]
     maybe_chosen_model_type = [tpe for tpe in rnn_model_types if tpe in model_type]
