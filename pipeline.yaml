@@ -33,10 +33,30 @@ tasks:
     upstream: prepare_paperswithcode_with_imports_df
     product: "output/papers_with_readmes.csv"
 
+  # prepare data for similarity learning from paperswithcode
+  - source: github_search.sentence_embeddings.datasets.prepare_paperswithcode_data
+    name: sentence_embeddings.prepare_paperswithcode_data
+    product:
+      datasets: "data/datasets.json.gz"
+      methods: "data/methods.json.gz"
+
+  # prepare data for similarity learning from dbpedia 
+  - source: github_search.sentence_embeddings.datasets.prepare_dbpedia_machine_learning_data
+    name: sentence_embeddings.prepare_dbpedia_data
+    product: "data/dbpedia_ml_records.csv" 
+
+  - source: github_search.sentence_embeddings.datasets.prepare_data
+    name: sentence_embeddings.prepare_data
+    upstream:
+      - sentence_embeddings.prepare_dbpedia_data
+      - sentence_embeddings.prepare_paperswithcode_data
+    product: "data/sentence_similarity_data.csv"
+
   #
   - source: github_search.data_engineering.prepare_repo_train_test_split
+    params:
+      paperswithcode_with_tasks_path: "data/paperswithcode_with_tasks.csv"
     upstream:
-      - make_readmes
       - prepare_task_train_test_split
     product:
       train: "output/repos_train.csv"
@@ -71,6 +91,14 @@ tasks:
       epochs: "{{word2vec.epochs}}"
     product:
       "output/abstract_readme_w2v{{word2vec.dimension}}.bin"
+
+  # make word2vec aggregator model
+  - source: github_search.sentence_embeddings.models.prepare_word2vec_sentence_embedding_model
+    name: sentence_embeddings.prepare_w2v_model
+    upstream:
+      - train_abstract_readme_w2v
+    product:
+      "output/abstract_readme_embedder"
 
   # prepare data for token2vec (modified import2vec)
   - source: github_search.data_engineering.prepare_module_corpus
@@ -149,9 +177,9 @@ tasks:
       - prepare_function_code_df
     product: "output/function_code_igraph.pkl"
 
-  # prepare graph dataloaders
-  - source: github_search.graphs.data_preparation.prepare_dataset
-    name: gnn.prepare_dataset
+  # prepare graph list 
+  - source: github_search.graphs.data_preparation.prepare_dataset_with_transformer
+    name: gnn.prepare_dataset_with_transformer
     params:
       sentence_transformer_model_name: "{{gnn.sentence_transformer_model_name}}"
       batch_size: 128
@@ -160,35 +188,61 @@ tasks:
       - graph.prepare_from_function_code
     product: "output/graph_list.pkl"
 
-  # train graph classification model
+  # prepare graph list 
+  - source: github_search.graphs.data_preparation.prepare_dataset_with_word2vec
+    name: gnn.prepare_dataset_with_w2v
+    params:
+      batch_size: 128
+    upstream:
+      - sentence_embeddings.prepare_w2v_model
+      - prepare_area_grouped_tasks
+      - graph.prepare_from_function_code
+    product: "output/graph_list_w2v.pkl"
+
+  # split graph lists
+  - source: github_search.graphs.data_preparation.prepare_dataset_split
+    name: gnn.prepare_dataset_splits
+    upstream:
+      - gnn.prepare_dataset_with_w2v
+      - prepare_repo_train_test_split
+    product:
+      train: "output/train_graph_list.pkl"
+      test: "output/test_graph_list.pkl"
+
+  # train graph classification model using task area as labels
   - source: github_search.graphs.nn_training.run_area_classification
     name: gnn.train_area_classification
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
-      - gnn.prepare_dataset
+      - gnn.prepare_dataset_splits
     params:
       hidden_channels: 64
     product:
       model_path: "output/models/graph_nn_area_training.pth"
       plot_path: "output/graph_nn_area_training_losses.png"
+
+    # train graph multilabel classification model using tasks
   - source: github_search.graphs.nn_training.run_multilabel_classification
     name: gnn.train_multilabel_task_classification
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
-      - gnn.prepare_dataset
+      - gnn.prepare_dataset_splits
     params:
       hidden_channels: 64
     product:
       model_path: "output/models/graph_nn_task_training.pth"
       plot_path: "output/graph_nn_task_training_losses.png"
+
+  # train similarity model that uses MultipleNegativesRanking loss 
   - source: github_search.graphs.nn_training.run_label_similarity_model
     name: gnn.train_label_similarity_model
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
-      - gnn.prepare_dataset
+      - gnn.prepare_dataset_splits
+      - sentence_embeddings.prepare_w2v_model
     params:
       similarity_model_params: "{{gnn.similarity_model_params}}"
       n_features: 256
