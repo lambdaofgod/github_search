@@ -90,7 +90,43 @@ tasks:
       embedding_dim: "{{word2vec.dimension}}"
       epochs: "{{word2vec.epochs}}"
     product:
-      "output/abstract_readme_w2v{{word2vec.dimension}}.bin"
+      binary: "output/abstract_readme_w2v{{word2vec.dimension}}.bin"
+      txt: "output/abstract_readme_w2v{{word2vec.dimension}}.txt"
+
+  #
+  # imports
+  #
+  - source: github_search.imports.prepare_data.prepare_file_imports
+    name: imports.prepare_file_imports
+    params:
+      python_files_path: "{{python_files_path}}"
+    product: "output/python_file_imports.feather"
+
+  - source: github_search.imports.training.train_import_word2vec
+    name: imports.train_w2v
+    upstream:
+      - imports.prepare_file_imports
+    params:
+      embedding_dim: "{{word2vec.dimension}}"
+      epochs: "{{word2vec.epochs}}"
+    product:
+      binary: "output/imports_w2v{{word2vec.dimension}}.bin"
+      txt: "output/imports_w2v{{word2vec.dimension}}.txt"
+
+  - source: github_search.imports.training.train_import_rnn_file_similarity_model
+    name: imports.train_rnn
+    upstream:
+      - imports.prepare_file_imports
+      - imports.train_w2v
+    params:
+      epochs: 2
+      batch_size: 256 
+      rnn_config: "{{rnn_config}}"
+    product: "output/models/import_lstm"
+
+  #
+  # sentence embeddings
+  #
 
   # make word2vec aggregator model
   - source: github_search.sentence_embeddings.models.prepare_word2vec_sentence_embedding_model
@@ -127,21 +163,26 @@ tasks:
 
   # prepare python dependency graph records
   - source: github_search.data_engineering.prepare_dependency_records
+    name:
+      dependency_graph.prepare_records
     params:
       sample_files_per_repo: 100
-      add_filename_repo_label: True
-      python_file_paths: ["{{python_files_path}}"]
-    product: "output/dependency_records.csv"
+      add_repo_col: True
+      use_basename: False
+      python_file_path: "{{python_files_path}}"
+    product: "output/dependency_records.feather"
 
   # additional information for dependency records
   - source: github_search.data_engineering.postprocess_dependency_records
+    name:
+      dependency_graph.postprocess_records
     upstream:
-      - prepare_dependency_records
+      - dependency_graph.prepare_records
       - prepare_paperswithcode_with_imports_df
     params:
       use_additional_records: False
       description_mode: "{{gnn.description_mode}}" 
-    product: "output/processed_dependency_records.csv"
+    product: "output/processed_dependency_records.feather"
 
   # extract python function df
   # f has columns
@@ -199,11 +240,21 @@ tasks:
       - graph.prepare_from_function_code
     product: "output/graph_list_w2v.pkl"
 
+  - source: github_search.graphs.data_preparation.prepare_dataset_with_import_rnn
+    name: gnn.prepare_dataset_with_rnn
+    params:
+      batch_size: 128
+    upstream:
+      - imports.train_rnn
+      - prepare_area_grouped_tasks
+      - graph.prepare_from_function_code
+    product: "output/graph_list_rnn.pkl"
+
   # split graph lists
   - source: github_search.graphs.data_preparation.prepare_dataset_split
     name: gnn.prepare_dataset_splits
     upstream:
-      - gnn.prepare_dataset_with_w2v
+      - gnn.prepare_dataset_with_transformer
       - prepare_repo_train_test_split
     product:
       train: "output/train_graph_list.pkl"
