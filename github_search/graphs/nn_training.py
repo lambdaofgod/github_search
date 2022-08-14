@@ -30,18 +30,20 @@ from github_search.graphs.training_config import (
 )
 
 GraphDataList = List[ptg_data.Data]
+DatasetLike = Union[GraphDataList, ptg_data.Dataset]
 GraphDataListWithLabels = List[Tuple[ptg_data.Data, Union[str, List[str]]]]
 
 
 def train_gnn(
     model: models.GraphNeuralNetwork,
-    dataset: GraphDataList,
+    dataset: DatasetLike,
     epochs: int,
     batch_size: int,
     device: str,
     config: GNNTrainingConfig,
     plot_fig_path: str,
     model_path: str,
+    accumulation_steps: int
 ):
     loss_plot = livelossplot.PlotLosses(
         outputs=[livelossplot.outputs.MatplotlibPlot(figpath=plot_fig_path)]
@@ -75,8 +77,9 @@ def train_gnn(
                     f"iteration {i}, loss: {round(smoothed_loss.item(), 3)}"
                 )
                 loss_plot.update({"loss": smoothed_loss, "accuracy": accuracy})
-                optimizer.zero_grad()  # Clear gradients.
-                scheduler.step(loss)
+                if (i + 1) % accumulation_steps == 0:
+                    optimizer.zero_grad()  # Clear gradients.
+                    scheduler.step(loss)
     loss_plot.send()
     torch.save(model, model_path)
     return loss_plot
@@ -147,6 +150,7 @@ def run_classification(
     gnn_class=models.GCN,
     batch_size=32,
     epochs=1,
+    accumulation_steps=4
 ):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = (
@@ -156,7 +160,7 @@ def run_classification(
     )
     logging.info(f"using {device}")
     area_tasks_path = str(upstream.get("prepare_area_grouped_tasks"))
-    dataset = pickle.load(open(upstream["gnn.prepare_dataset"], "rb"))
+    dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
 
     train_metadata_path, test_metadata_path = [
         str(upstream["prepare_repo_train_test_split"][split_part])
@@ -218,10 +222,9 @@ def run_label_similarity_model(
     similarity_model_params,
     n_features,
     gnn_class=models.GCN,
+    accumulation_steps=5
 ):
-    sentence_transformer_model_name = similarity_model_params[
-        "sentence_transformer_model_name"
-    ]
+    sentence_transformer_model_name = str(upstream["sentence_embeddings.prepare_w2v_model"])
     hidden_channels = similarity_model_params["hidden_channels"]
     epochs = similarity_model_params["epochs"]
     batch_size = similarity_model_params["batch_size"]
@@ -229,7 +232,7 @@ def run_label_similarity_model(
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(f"using {device}")
     area_tasks_path = str(upstream.get("prepare_area_grouped_tasks"))
-    dataset = pickle.load(open(upstream["gnn.prepare_dataset"], "rb"))
+    dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
 
     train_metadata_path, test_metadata_path = [
         str(upstream["prepare_repo_train_test_split"][split_part])
@@ -277,4 +280,5 @@ def run_label_similarity_model(
         config,
         str(product["plot_path"]),
         str(product["model_path"]),
+        accumulation_steps=accumulation_steps
     )
