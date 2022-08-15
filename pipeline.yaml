@@ -166,7 +166,7 @@ tasks:
     name:
       dependency_graph.prepare_records
     params:
-      sample_files_per_repo: 100
+      sample_files_per_repo: 1000
       add_repo_col: True
       use_basename: False
       python_file_path: "{{python_files_path}}"
@@ -183,6 +183,12 @@ tasks:
       use_additional_records: False
       description_mode: "{{gnn.description_mode}}" 
     product: "output/processed_dependency_records.feather"
+
+  #
+  #
+  # GRAPHS
+  #
+  #
 
   # extract python function df
   # f has columns
@@ -211,6 +217,16 @@ tasks:
     upstream: prepare_function_code_df
     product:
       "output/python_files_descriptions_{{summarization.transformer_model_name}}.feather"
+
+
+  - source: github_search.graphs.prepare_graph.prepare_from_dependency_records
+    name: graph.prepare_from_dependency_records
+    upstream:
+      - dependency_graph.prepare_records
+    params:
+      used_edges:
+        - "repo-file"
+    product: "output/dependency_records_igraph.pkl"
 
   - source: github_search.graphs.prepare_graph.prepare_from_function_code
     name: graph.prepare_from_function_code

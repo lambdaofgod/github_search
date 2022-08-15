@@ -146,10 +146,13 @@ def get_graphs_train_test_split(graph_data_list, test_size):
     )
 
 
-def prepare_dataset(upstream, product, sentence_transformer_model_name, batch_size):
-    graph_path = str(upstream["graph.prepare_from_function_code"])
-    area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
-
+def prepare_dataset(
+    graph_path,
+    area_tasks_path,
+    pickle_path,
+    sentence_transformer_model_or_path,
+    batch_size,
+):
     logging.info("loading graph object")
     with open(graph_path, "rb") as f:
         graph = pickle.load(f)
@@ -168,7 +171,7 @@ def prepare_dataset(upstream, product, sentence_transformer_model_name, batch_si
     logging.info("preparing graph records")
     logging.info("loading embedder")
     extractor = feature_extractor.SentenceEncoderFeatureExtractor(
-        sentence_transformers.SentenceTransformer(sentence_transformer_model_name)
+        sentence_transformers.SentenceTransformer(sentence_transformer_model_or_path)
     )
 
     graph_preprocessor = GraphDataPreprocessor(extractor, metadata=repo_metadata)
@@ -178,4 +181,48 @@ def prepare_dataset(upstream, product, sentence_transformer_model_name, batch_si
         graph, batch_size=batch_size, show_progress_bar=True
     )
     logging.info(f"loaded {len(data_list)} graphs")
-    pickle.dump(data_list, open(str(product), "wb"))
+    pickle.dump(data_list, open(str(pickle_path), "wb"))
+
+
+def prepare_dataset_with_transformer(
+    upstream, product, sentence_transformer_model_name, batch_size
+):
+    graph_path = str(upstream["graph.prepare_from_function_code"])
+    area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
+    prepare_dataset(
+        graph_path,
+        area_tasks_path,
+        str(product),
+        sentence_transformer_model_name,
+        batch_size,
+    )
+
+
+def prepare_dataset_with_word2vec(upstream, product, batch_size):
+    graph_path = str(upstream["graph.prepare_from_function_code"])
+    area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
+    prepare_dataset(
+        graph_path,
+        area_tasks_path,
+        str(product),
+        str(upstream["sentence_embeddings.prepare_w2v_model"]),
+        batch_size,
+    )
+
+
+def prepare_dataset_with_import_rnn(upstream, product, batch_size):
+    pass
+
+
+def prepare_dataset_split(upstream, product):
+    repos_train = pd.read_csv(str(upstream["prepare_repo_train_test_split"]["train"]))
+    with open(str(upstream["gnn.prepare_dataset_with_w2v"]), "rb") as f:
+        graph_data_list = pickle.load(f)
+    train_graph_list = [
+        g for g in graph_data_list if g.graph_name in repos_train["repo"].values
+    ]
+    test_graph_list = [
+        g for g in graph_data_list if g.graph_name not in repos_train["repo"].values
+    ]
+    pickle.dump(train_graph_list, open(str(product["train"]), "wb"))
+    pickle.dump(test_graph_list, open(str(product["test"]), "wb"))

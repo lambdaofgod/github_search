@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Tuple, Union
 
 import findkit
+import h5py
 import livelossplot
 import numpy as np
 import pandas as pd
@@ -15,19 +16,18 @@ import torch.nn.functional as F
 import torch_geometric.data as ptg_data
 import torch_geometric.nn as ptgnn
 import tqdm
-from mlutil.feature_extraction import embeddings
-from sklearn import base, metrics, preprocessing
-from toolz import partial
-from torch import nn
-
 from github_search import logging_setup, paperswithcode_task_areas, utils
-from github_search.graphs import models
+from github_search.graphs import datasets, models
 from github_search.graphs.training_config import (
     AreaClassificationTrainingConfig,
     GNNTrainingConfig,
     MultilabelTaskClassificationTrainingConfig,
     SimilarityModelTrainingConfig,
 )
+from mlutil.feature_extraction import embeddings
+from sklearn import base, metrics, preprocessing
+from toolz import partial
+from torch import nn
 
 GraphDataList = List[ptg_data.Data]
 DatasetLike = Union[GraphDataList, ptg_data.Dataset]
@@ -43,7 +43,7 @@ def train_gnn(
     config: GNNTrainingConfig,
     plot_fig_path: str,
     model_path: str,
-    accumulation_steps: int
+    accumulation_steps: int,
 ):
     loss_plot = livelossplot.PlotLosses(
         outputs=[livelossplot.outputs.MatplotlibPlot(figpath=plot_fig_path)]
@@ -145,22 +145,22 @@ def get_dataset_splits_with_labels(
 def run_classification(
     upstream,
     product,
+    dataset,
     hidden_channels,
     classification_column,
     gnn_class=models.GCN,
     batch_size=32,
     epochs=1,
-    accumulation_steps=4
+    accumulation_steps=4,
 ):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = (
-        AreaClassificationTrainingConfig()
-        if classification_column == "name"
-        else MultilabelTaskClassificationTrainingConfig()
+        MultilabelTaskClassificationTrainingConfig()
+        if classification_column == "task"
+        else AreaClassificationTrainingConfig()
     )
     logging.info(f"using {device}")
     area_tasks_path = str(upstream.get("prepare_area_grouped_tasks"))
-    dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
 
     train_metadata_path, test_metadata_path = [
         str(upstream["prepare_repo_train_test_split"][split_part])
@@ -209,11 +209,21 @@ def run_classification(
 
 
 def run_multilabel_classification(upstream, product, hidden_channels, batch_size=32):
-    run_classification(upstream, product, hidden_channels, "tasks", batch_size)
+    dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
+    run_classification(upstream, product, dataset, hidden_channels, "tasks", batch_size)
 
 
 def run_area_classification(upstream, product, hidden_channels, batch_size=32):
-    run_classification(upstream, product, hidden_channels, "area", batch_size)
+    dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
+    run_classification(upstream, product, dataset, hidden_channels, "area", batch_size)
+
+
+def run_dependency_area_classification(
+    upstream, product, hdf5_dataset_path, hidden_channels, batch_size=32
+):
+    h5file = h5py.File(hdf5_dataset_path, "r")
+    dataset = datasets.HDF5Dataset(h5file, "area")
+    run_classification(upstream, product, dataset, hidden_channels, "y", batch_size)
 
 
 def run_label_similarity_model(
@@ -222,9 +232,11 @@ def run_label_similarity_model(
     similarity_model_params,
     n_features,
     gnn_class=models.GCN,
-    accumulation_steps=5
+    accumulation_steps=5,
 ):
-    sentence_transformer_model_name = str(upstream["sentence_embeddings.prepare_w2v_model"])
+    sentence_transformer_model_name = str(
+        upstream["sentence_embeddings.prepare_w2v_model"]
+    )
     hidden_channels = similarity_model_params["hidden_channels"]
     epochs = similarity_model_params["epochs"]
     batch_size = similarity_model_params["batch_size"]
@@ -280,5 +292,5 @@ def run_label_similarity_model(
         config,
         str(product["plot_path"]),
         str(product["model_path"]),
-        accumulation_steps=accumulation_steps
+        accumulation_steps=accumulation_steps,
     )

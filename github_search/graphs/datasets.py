@@ -1,6 +1,6 @@
-import torch_geometric.data as ptg_data
 import h5py
 import torch
+import torch_geometric.data as ptg_data
 
 
 class HDF5Dataset(ptg_data.Dataset):
