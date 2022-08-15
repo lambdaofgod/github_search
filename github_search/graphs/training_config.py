@@ -30,9 +30,9 @@ class GNNTrainingConfig(ABC):
         pass
 
     def preprocess_target(self, data, device):
-        return torch.Tensor(np.array(data.encoded_label).astype(self.labels_dtype)).to(
+        return torch.Tensor(np.array(data.encoded_label)).to(
             device
-        )
+        ).type(self.labels_dtype)
 
 
 @dataclass
@@ -42,7 +42,7 @@ class MultilabelTaskClassificationTrainingConfig(GNNTrainingConfig):
     label_encoder: base.BaseEstimator = field(
         default_factory=preprocessing.MultiLabelBinarizer
     )
-    labels_dtype: torch.dtype = field(default=np.float32)
+    labels_dtype: torch.dtype = field(default=torch.float32)
 
     @classmethod
     def accuracy_function(cls, encoded_label, model_output):
@@ -54,11 +54,11 @@ class MultilabelTaskClassificationTrainingConfig(GNNTrainingConfig):
 @dataclass
 class AreaClassificationTrainingConfig(GNNTrainingConfig):
 
-    loss_function: nn.Module = field(default_factory=nn.CrossEntropyLoss())
+    loss_function: nn.Module = field(default_factory=nn.CrossEntropyLoss)
     label_encoder: base.BaseEstimator = field(
-        default_factory=preprocessing.LabelEncoder()
+        default_factory=preprocessing.LabelEncoder
     )
-    labels_dtype: torch.dtype = field(default=np.int64)
+    labels_dtype: torch.dtype = field(default=torch.int64)
 
     @classmethod
     def accuracy_function(cls, encoded_label, model_output):

@@ -47,6 +47,14 @@ def get_edges(vertices):
     )
 
 
+def prepare_from_dependency_records_df(dependency_records_df, used_edges):
+    pass
+
+
+def prepare_from_dependency_records(upstream, product, used_edges):
+    pass
+
+
 def prepare_from_function_code(upstream, product):
     function_code_df = pd.read_feather(upstream["prepare_function_code_df"])
     paperswithcode_df = pd.read_csv("data/paperswithcode_with_tasks.csv")

@@ -199,12 +199,13 @@ def run_classification(
     train_gnn(
         model,
         train_dataset,
-        epochs,
-        batch_size,
-        device,
-        config,
-        str(product["plot_path"]),
-        str(product["model_path"]),
+        epochs=epochs,
+        batch_size=batch_size,
+        device=device,
+        config=config,
+        plot_fig_path=str(product["plot_path"]),
+        model_path=str(product["model_path"]),
+        accumulation_steps=2,
     )
 
 
@@ -219,11 +220,11 @@ def run_area_classification(upstream, product, hidden_channels, batch_size=32):
 
 
 def run_dependency_area_classification(
-    upstream, product, hdf5_dataset_path, hidden_channels, batch_size=32
+    upstream, product, hdf5_dataset_path, hidden_channels, batch_size=32, epochs=2
 ):
     h5file = h5py.File(hdf5_dataset_path, "r")
-    dataset = datasets.HDF5Dataset(h5file, "area")
-    run_classification(upstream, product, dataset, hidden_channels, "y", batch_size)
+    dataset = datasets.HDF5Dataset(h5file, ["area"])
+    run_classification(upstream, product, dataset, hidden_channels, "area", batch_size)
 
 
 def run_label_similarity_model(
