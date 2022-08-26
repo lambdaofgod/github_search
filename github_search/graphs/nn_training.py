@@ -224,7 +224,15 @@ def run_dependency_area_classification(
 ):
     h5file = h5py.File(hdf5_dataset_path, "r")
     dataset = datasets.HDF5Dataset(h5file, ["area"])
-    run_classification(upstream, product, dataset, hidden_channels, "area", batch_size)
+    run_classification(
+        upstream,
+        product,
+        dataset,
+        hidden_channels,
+        classification_column="area",
+        batch_size=batch_size,
+        epochs=epochs,
+    )
 
 
 def run_label_similarity_model(

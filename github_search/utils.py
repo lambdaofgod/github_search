@@ -14,6 +14,14 @@ def load_paperswithcode_df(path, drop_na_cols=["readme", "tasks"]):
     return df
 
 
+def add_col_for_repo_from_paperswithcode(
+    df, paperswithcode_df, added_cols=["tasks"], repo_col="repo"
+):
+    return df.merge(paperswithcode_df, left_on=repo_col, right_on="repo")[
+        df.columns.to_list() + added_cols
+    ]
+
+
 def maybe_convert_to_numpy(x, dtype=np.int32):
     if type(x) is list:
         return np.array(x, dtype)
@@ -62,3 +70,12 @@ def try_run(f, default=None):
             return default
 
     return _maybe_failed_f
+
+
+def get_current_memory_usage():
+    """Memory usage in GB"""
+
+    with open("/proc/self/status") as f:
+        memusage = f.read().split("VmRSS:")[1].split("\n")[0][:-3]
+
+    return round(int(memusage.strip()) / 1024 ** 2, 2)

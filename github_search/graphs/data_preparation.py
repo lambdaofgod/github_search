@@ -1,5 +1,4 @@
 import pickle
-from dataclasses import dataclass
 from typing import Callable, Dict, List, Union
 import logging
 
@@ -8,13 +7,10 @@ import numpy as np
 import pandas as pd
 import sentence_transformers
 import torch
-import tqdm
 from findkit import feature_extractor
-from mlutil.feature_extraction import embeddings
-from sklearn import model_selection, preprocessing
+from sklearn import model_selection
 from torch_geometric import data as ptg_data
 
-from github_search import logging_setup, utils
 
 Label = Union[str, List[str]]
 
@@ -98,43 +94,6 @@ def get_graph_data(
     )
 
 
-@dataclass
-class GraphDataPreprocessor:
-    extractor: feature_extractor.SentenceEncoderFeatureExtractor
-    metadata: Dict[str, Dict[str, str]]
-
-    def get_data_list(self, graph, show_progress_bar=True, **kwargs):
-        subgraphs = (
-            graph.induced_subgraph(connected_component_vertices)
-            for connected_component_vertices in graph.components(mode="weak")
-        )
-        subgraphs_with_repo_vertices = list(
-            (subgraph, self.get_repo_vertex(subgraph)) for subgraph in subgraphs
-        )
-        if show_progress_bar:
-            subgraphs_with_repo_vertices = tqdm.auto.tqdm(subgraphs_with_repo_vertices)
-        return [
-            get_graph_data(
-                subgraph,
-                repo_vertex,
-                self.metadata[repo_vertex],
-                encoding_method=self.extractor.extract_features,
-                show_progress_bar=False,
-                **kwargs,
-            )
-            for (subgraph, repo_vertex) in subgraphs_with_repo_vertices
-            if repo_vertex in self.metadata.keys()
-        ]
-
-    def get_repo_vertex(self, subgraph):
-        names = subgraph.vs.get_attribute_values("name")
-        repo_vertices = [n for n in names if len(n.split(":")) == 1]
-        assert (
-            len(repo_vertices) == 1
-        ), f"there should be only one repo vertex per subgraph: {names}"
-        return repo_vertices[0]
-
-
 def get_graphs_train_test_split(graph_data_list, test_size):
     graph_labels = [g.label for g in graph_data_list]
     logging.info(pd.Series(graph_labels).value_counts().sort_values(ascending=False))
@@ -149,7 +108,6 @@ def get_graphs_train_test_split(graph_data_list, test_size):
 def prepare_dataset(
     graph_path,
     area_tasks_path,
-    pickle_path,
     sentence_transformer_model_or_path,
     batch_size,
 ):
@@ -177,11 +135,10 @@ def prepare_dataset(
     graph_preprocessor = GraphDataPreprocessor(extractor, metadata=repo_metadata)
 
     logging.info("preparing graph data")
-    data_list = graph_preprocessor.get_data_list(
+    data_items = graph_preprocessor.get_data_list(
         graph, batch_size=batch_size, show_progress_bar=True
     )
-    logging.info(f"loaded {len(data_list)} graphs")
-    pickle.dump(data_list, open(str(pickle_path), "wb"))
+    return data_items
 
 
 def prepare_dataset_with_transformer(
@@ -189,26 +146,27 @@ def prepare_dataset_with_transformer(
 ):
     graph_path = str(upstream["graph.prepare_from_function_code"])
     area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
-    prepare_dataset(
+    data_list = prepare_dataset(
         graph_path,
         area_tasks_path,
-        str(product),
         sentence_transformer_model_name,
         batch_size,
     )
 
+    logging.info(f"loaded {len(data_list)} graphs")
+    pickle.dump(data_list, open(str(graph_path), "wb"))
 
 def prepare_dataset_with_word2vec(upstream, product, batch_size):
     graph_path = str(upstream["graph.prepare_from_function_code"])
     area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
-    prepare_dataset(
+    data_list = prepare_dataset(
         graph_path,
         area_tasks_path,
-        str(product),
         str(upstream["sentence_embeddings.prepare_w2v_model"]),
         batch_size,
     )
-
+    logging.info(f"loaded {len(data_list)} graphs")
+    pickle.dump(data_list, open(str(graph_path), "wb"))
 
 def prepare_dataset_with_import_rnn(upstream, product, batch_size):
     pass

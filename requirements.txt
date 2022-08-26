@@ -15,4 +15,4 @@ docstring-parser
 rank-bm25
 torch
 pytorch-ignite
-gradio
+recordlinkage

@@ -270,11 +270,23 @@ tasks:
   - source: github_search.graphs.data_preparation.prepare_dataset_split
     name: gnn.prepare_dataset_splits
     upstream:
-      - gnn.prepare_dataset_with_transformer
+      - gnn.prepare_dataset_with_rnn
       - prepare_repo_train_test_split
     product:
       train: "output/train_graph_list.pkl"
       test: "output/test_graph_list.pkl"
+
+  - source: github_search.graphs.nn_training.run_dependency_area_classification
+    name: gnn.train_dep_graph
+    upstream:
+      - prepare_area_grouped_tasks
+      - prepare_repo_train_test_split
+    params:
+      hidden_channels: 128
+      hdf5_dataset_path: "notebooks/tmp/graph_records.h5"
+    product:
+      model_path: "output/models/dep_graph_nn_area_training.pth"
+      plot_path: "output/dep_graph_nn_area_training_losses.png"
 
   # train graph classification model using task area as labels
   - source: github_search.graphs.nn_training.run_area_classification

@@ -12,7 +12,6 @@ class HDF5Dataset(ptg_data.Dataset):
         self.transform = None
         self._validate_metadata()
 
-
     def len(self):
         return len(self.keys)
 
@@ -27,7 +26,7 @@ class HDF5Dataset(ptg_data.Dataset):
         graph_record_data = {
             "x": torch.Tensor(self.h5file["x"][key][()]),
             "edge_index": torch.LongTensor(self.h5file["edge_index"][key][()]),
-            "graph_name": key
+            "graph_name": key,
         }
         for meta_key in self.metadata_attrs:
             graph_record_data[meta_key] = self.h5file["x"][key].attrs[meta_key]

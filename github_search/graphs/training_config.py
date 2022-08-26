@@ -30,9 +30,11 @@ class GNNTrainingConfig(ABC):
         pass
 
     def preprocess_target(self, data, device):
-        return torch.Tensor(np.array(data.encoded_label)).to(
-            device
-        ).type(self.labels_dtype)
+        return (
+            torch.Tensor(np.array(data.encoded_label))
+            .to(device)
+            .type(self.labels_dtype)
+        )
 
 
 @dataclass

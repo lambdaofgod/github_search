@@ -8,7 +8,8 @@ import torch_geometric.data as ptg_data
 
 
 def make_graph_from_label_list(
-    label_lists: List[List[str]], feature_extractor: findkit.feature_extractor.FeatureExtractor
+    label_lists: List[List[str]],
+    feature_extractor: findkit.feature_extractor.FeatureExtractor,
 ):
     """
     prepare graphs from list of list of strings
