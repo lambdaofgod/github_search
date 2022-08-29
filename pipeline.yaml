@@ -11,7 +11,7 @@ meta:
 tasks:
 
   # download area grouped tasks
-  - source: github_search.paperswithcode_task_areas.prepare_area_grouped_tasks
+  - source: github_search.papers_with_code.paperswithcode_task_areas.prepare_area_grouped_tasks
     product: "data/paperswithcode_tasks.csv"
 
   # train-test split for tasks
@@ -240,6 +240,7 @@ tasks:
     params:
       sentence_transformer_model_name: "{{gnn.sentence_transformer_model_name}}"
       batch_size: 128
+      paperswithcode_path: "{{paperswithcode_path}}"
     upstream:
       - prepare_area_grouped_tasks
       - graph.prepare_from_function_code
@@ -247,9 +248,10 @@ tasks:
 
   # prepare graph list 
   - source: github_search.graphs.data_preparation.prepare_dataset_with_word2vec
-    name: gnn.prepare_dataset_with_w2v
+    name: gnn.prepare_dataset_with_word2vec
     params:
       batch_size: 128
+      paperswithcode_path: "{{paperswithcode_path}}"
     upstream:
       - sentence_embeddings.prepare_w2v_model
       - prepare_area_grouped_tasks
@@ -373,7 +375,6 @@ tasks:
       files_per_repo: 10
       python_files_path: "{{python_files_path}}"
     product: "output/selected_python_files.feather"
-
 
   - source: github_search.python_code_analysis.extract_python_comments
     upstream:

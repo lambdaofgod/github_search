@@ -1,15 +1,16 @@
-
 import igraph
-from typing import Callable, Dict, List, Union
+from typing import Callable, Dict, List, Union, Iterable
 from findkit import feature_extractor
 from dataclasses import dataclass
+import itertools
 
 import numpy as np
 import pandas as pd
 import torch
 import tqdm
 from torch_geometric import data as ptg_data
-
+from github_search import utils
+from github_search.papers_with_code import repo_metadata
 
 Label = Union[str, List[str]]
 
@@ -77,51 +78,59 @@ def get_repo_vertices(graph, paperswithcode_df):
     return set(vertex_names).intersection(set(paperswithcode_df["repo"].values))
 
 
-def get_graph_data(
-    graph: igraph.Graph,
-    graph_name: str,
-    metadata: Dict[str, Label],
-    encoding_method: Callable[[List[str]], np.ndarray],
-    **kwargs,
-):
-    texts = graph.vs.get_attribute_values("text")
-    names = graph.vs.get_attribute_values("name")
-    edge_index = torch.tensor(graph.get_edgelist()).T
-    features = torch.tensor(encoding_method(texts, **kwargs))
-    return ptg_data.Data(
-        features, edge_index, names=names, graph_name=graph_name, **metadata
-    )
-
-
-
-
 @dataclass
 class GraphDataPreprocessor:
     extractor: feature_extractor.SentenceEncoderFeatureExtractor
-    metadata: Dict[str, Dict[str, str]]
+    get_metadata: repo_metadata.RepoMetadata
 
-    def get_data_list(self, graph: igraph.Graph, show_progress_bar=True, **kwargs):
-        subgraphs = (
-            graph.induced_subgraph(connected_component_vertices)
-            for connected_component_vertices in graph.components(mode="weak")
-        )
-        subgraphs_with_repo_vertices = list(
-            (subgraph, self.get_repo_vertex(subgraph)) for subgraph in subgraphs
-        )
+    def get_graph_data_iter(
+        self,
+        graphs: Iterable[igraph.Graph],
+        graph_names: Iterable[str],
+        show_progress_bar=True,
+        **kwargs,
+    ) -> Iterable[ptg_data.Data]:
+        graphs_with_names = zip(graphs, graph_names)
         if show_progress_bar:
-            subgraphs_with_repo_vertices = tqdm.auto.tqdm(subgraphs_with_repo_vertices)
-        return [
-            get_graph_data(
+            graphs_with_names = tqdm.auto.tqdm(graphs_with_names)
+        return (
+            self.get_graph_data(
                 subgraph,
                 repo_vertex,
-                self.metadata[repo_vertex],
+                self.get_metadata(repo_vertex),
                 encoding_method=self.extractor.extract_features,
                 show_progress_bar=False,
                 **kwargs,
             )
-            for (subgraph, repo_vertex) in subgraphs_with_repo_vertices
-            if repo_vertex in self.metadata.keys()
-        ]
+            for (subgraph, repo_vertex) in graphs_with_names
+            if self.get_metadata.repo_exists(repo_vertex)
+        )
+
+    def get_graph_data(
+        self,
+        graph: igraph.Graph,
+        graph_name: str,
+        metadata: Dict[str, Label],
+        encoding_method: Callable[[List[str]], np.ndarray],
+        **kwargs,
+    ):
+        texts = graph.vs.get_attribute_values("text")
+        names = graph.vs.get_attribute_values("name")
+        edge_index = torch.tensor(graph.get_edgelist()).T
+        features = torch.tensor(encoding_method(texts, **kwargs))
+        return ptg_data.Data(
+            features, edge_index, names=names, graph_name=graph_name, **metadata
+        )
+
+    def get_subgraphs_with_repo_vertices(self, graph: igraph.Graph):
+        subgraphs = (
+            graph.induced_subgraph(connected_component_vertices)
+            for connected_component_vertices in graph.components(mode="weak")
+        )
+        graphs_with_names = (
+            (subgraph, self.get_repo_vertex(subgraph)) for subgraph in subgraphs
+        )
+        return utils.iunzip(graphs_with_names)
 
     def get_repo_vertex(self, subgraph):
         names = subgraph.vs.get_attribute_values("name")
@@ -130,4 +139,3 @@ class GraphDataPreprocessor:
             len(repo_vertices) == 1
         ), f"there should be only one repo vertex per subgraph: {names}"
         return repo_vertices[0]
-

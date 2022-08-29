@@ -10,88 +10,11 @@ import torch
 from findkit import feature_extractor
 from sklearn import model_selection
 from torch_geometric import data as ptg_data
-
+from github_search.graphs import graph_preprocessor
+from github_search.papers_with_code import repo_metadata
+from github_search.papers_with_code.repo_metadata import RepoMetadataFromPandas
 
 Label = Union[str, List[str]]
-
-
-def make_trivial_graph(
-    vertex_texts, vertex_encoder: feature_extractor.SentenceEncoderFeatureExtractor
-):
-    return ptg_data.Data(
-        torch.Tensor(
-            vertex_encoder.extract_features(vertex_texts, show_progress_bar=False)
-        ),
-        edge_index=torch.LongTensor([[i, i] for i in range(len(vertex_texts))]).T,
-        names=vertex_texts,
-    )
-
-
-def make_igraph(call_records_df):
-    vertices = list(
-        set(call_records_df["source"].unique()).union(
-            call_records_df["destination"].unique()
-        )
-    )
-    edges = [
-        (source, destination)
-        for (source, destination) in zip(
-            call_records_df["source"].values, call_records_df["destination"].values
-        )
-    ]
-    graph = igraph.Graph()
-    graph.add_vertices(vertices)
-    graph.add_edges(edges)
-    return graph
-
-
-def get_vertex_name(vertex):
-    return vertex.attributes()["name"]
-
-
-def get_induced_subgraph(graph: igraph.Graph, start_vertex_name: str):
-    repo_vertex = graph.vs.find(name=repo)
-    file_neighbors = set(
-        [
-            vertex
-            for vertex in repo_vertex.neighbors()
-            if not vertex.attributes()["name"] == "<ROOT>"
-        ]
-    )
-    function_edges = set(
-        [(file, function) for file in file_neighbors for function in file.neighbors()]
-    )
-    file_edges = [(repo, get_vertex_name(file)) for file in file_neighbors]
-    function_edges = set(
-        [
-            (get_vertex_name(file), get_vertex_name(function))
-            for (file, function) in function_edges
-        ]
-    )
-    return pd.DataFrame.from_records(
-        list(function_edges.union(file_edges)), columns=["source", "destination"]
-    )
-
-
-def get_repo_vertices(graph, paperswithcode_df):
-    vertex_names = (get_vertex_name(v) for v in graph.vs)
-    return set(vertex_names).intersection(set(paperswithcode_df["repo"].values))
-
-
-def get_graph_data(
-    graph: igraph.Graph,
-    graph_name: str,
-    metadata: Dict[str, Label],
-    encoding_method: Callable[[List[str]], np.ndarray],
-    **kwargs,
-):
-    texts = graph.vs.get_attribute_values("text")
-    names = graph.vs.get_attribute_values("name")
-    edge_index = torch.tensor(graph.get_edgelist()).T
-    features = torch.tensor(encoding_method(texts, **kwargs))
-    return ptg_data.Data(
-        features, edge_index, names=names, graph_name=graph_name, **metadata
-    )
 
 
 def get_graphs_train_test_split(graph_data_list, test_size):
@@ -105,8 +28,9 @@ def get_graphs_train_test_split(graph_data_list, test_size):
     )
 
 
-def prepare_dataset(
+def prepare_dataset_from_graph_file(
     graph_path,
+    paperswithcode_path,
     area_tasks_path,
     sentence_transformer_model_or_path,
     batch_size,
@@ -114,59 +38,54 @@ def prepare_dataset(
     logging.info("loading graph object")
     with open(graph_path, "rb") as f:
         graph = pickle.load(f)
-
-    area_tasks_df = pd.read_csv(area_tasks_path).set_index("task")
-    paperswithcode_df = utils.load_paperswithcode_df(
-        "data/paperswithcode_with_tasks.csv"
-    )
-    repo_metadata = (
-        paperswithcode_df[["least_common_task", "tasks", "repo"]]
-        .merge(area_tasks_df, left_on="least_common_task", right_on="task")
-        .drop_duplicates(subset="repo")
-        .set_index("repo")[["least_common_task", "tasks", "area"]]
-        .to_dict(orient="index")
-    )
-    logging.info("preparing graph records")
     logging.info("loading embedder")
     extractor = feature_extractor.SentenceEncoderFeatureExtractor(
         sentence_transformers.SentenceTransformer(sentence_transformer_model_or_path)
     )
-
-    graph_preprocessor = GraphDataPreprocessor(extractor, metadata=repo_metadata)
-
-    logging.info("preparing graph data")
-    data_items = graph_preprocessor.get_data_list(
-        graph, batch_size=batch_size, show_progress_bar=True
+    get_metadata = repo_metadata.RepoMetadataFromPandas.load_from_files(
+        paperswithcode_path, area_tasks_path
     )
-    return data_items
+    preprocessor = graph_preprocessor.GraphDataPreprocessor(
+        extractor, get_metadata=get_metadata
+    )
+    logging.info("preparing graph records")
+    graphs, graph_names = preprocessor.get_subgraphs_with_repo_vertices(graph)
+    return preprocessor.get_graph_data_iter(graphs, graph_names, batch_size)
 
 
 def prepare_dataset_with_transformer(
-    upstream, product, sentence_transformer_model_name, batch_size
+    upstream, product, sentence_transformer_model_name, paperswithcode_path, batch_size
 ):
     graph_path = str(upstream["graph.prepare_from_function_code"])
     area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
-    data_list = prepare_dataset(
-        graph_path,
-        area_tasks_path,
-        sentence_transformer_model_name,
-        batch_size,
+    data_list = list(
+        prepare_dataset_from_graph_file(
+            graph_path,
+            paperswithcode_path,
+            area_tasks_path,
+            sentence_transformer_model_name,
+            batch_size,
+        )
     )
-
     logging.info(f"loaded {len(data_list)} graphs")
     pickle.dump(data_list, open(str(graph_path), "wb"))
 
-def prepare_dataset_with_word2vec(upstream, product, batch_size):
+
+def prepare_dataset_with_word2vec(upstream, product, batch_size, paperswithcode_path):
     graph_path = str(upstream["graph.prepare_from_function_code"])
     area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
-    data_list = prepare_dataset(
-        graph_path,
-        area_tasks_path,
-        str(upstream["sentence_embeddings.prepare_w2v_model"]),
-        batch_size,
+    data_list = list(
+        prepare_dataset_from_graph_file(
+            graph_path,
+            paperswithcode_path,
+            area_tasks_path,
+            str(upstream["sentence_embeddings.prepare_w2v_model"]),
+            batch_size,
+        )
     )
     logging.info(f"loaded {len(data_list)} graphs")
     pickle.dump(data_list, open(str(graph_path), "wb"))
+
 
 def prepare_dataset_with_import_rnn(upstream, product, batch_size):
     pass
