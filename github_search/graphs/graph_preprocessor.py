@@ -78,6 +78,22 @@ def get_repo_vertices(graph, paperswithcode_df):
     return set(vertex_names).intersection(set(paperswithcode_df["repo"].values))
 
 
+def get_graph_data(
+    graph: igraph.Graph,
+    graph_name: str,
+    metadata: Dict[str, Label],
+    encoding_method: Callable[[List[str]], np.ndarray],
+    **kwargs,
+):
+    texts = graph.vs.get_attribute_values("text")
+    names = graph.vs.get_attribute_values("name")
+    edge_index = torch.tensor(graph.get_edgelist()).T
+    features = torch.tensor(encoding_method(texts, **kwargs))
+    return ptg_data.Data(
+        features, edge_index, names=names, graph_name=graph_name, **metadata
+    )
+
+
 @dataclass
 class GraphDataPreprocessor:
     extractor: feature_extractor.SentenceEncoderFeatureExtractor
@@ -94,7 +110,7 @@ class GraphDataPreprocessor:
         if show_progress_bar:
             graphs_with_names = tqdm.auto.tqdm(graphs_with_names)
         return (
-            self.get_graph_data(
+            get_graph_data(
                 subgraph,
                 repo_vertex,
                 self.get_metadata(repo_vertex),
@@ -104,22 +120,6 @@ class GraphDataPreprocessor:
             )
             for (subgraph, repo_vertex) in graphs_with_names
             if self.get_metadata.repo_exists(repo_vertex)
-        )
-
-    def get_graph_data(
-        self,
-        graph: igraph.Graph,
-        graph_name: str,
-        metadata: Dict[str, Label],
-        encoding_method: Callable[[List[str]], np.ndarray],
-        **kwargs,
-    ):
-        texts = graph.vs.get_attribute_values("text")
-        names = graph.vs.get_attribute_values("name")
-        edge_index = torch.tensor(graph.get_edgelist()).T
-        features = torch.tensor(encoding_method(texts, **kwargs))
-        return ptg_data.Data(
-            features, edge_index, names=names, graph_name=graph_name, **metadata
         )
 
     def get_subgraphs_with_repo_vertices(self, graph: igraph.Graph):

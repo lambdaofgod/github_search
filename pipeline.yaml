@@ -20,7 +20,7 @@ tasks:
     upstream:
       - prepare_area_grouped_tasks
     params:
-      test_size: 0.1
+     test_size: 0.1
     product:
       train: "output/tasks_train.csv"
       test: "output/tasks_test.csv"
@@ -258,14 +258,14 @@ tasks:
       - graph.prepare_from_function_code
     product: "output/graph_list_w2v.pkl"
 
-  - source: github_search.graphs.data_preparation.prepare_dataset_with_import_rnn
+  - source: github_search.graphs.data_preparation.prepare_dataset_with_rnn
     name: gnn.prepare_dataset_with_rnn
     params:
-      batch_size: 128
+      ulmfit_path: notebooks/tmp/learn.pkl
+      paperswithcode_path: "{{paperswithcode_path}}"
     upstream:
-      - imports.train_rnn
       - prepare_area_grouped_tasks
-      - graph.prepare_from_function_code
+      - dependency_graph.prepare_records
     product: "output/graph_list_rnn.pkl"
 
   # split graph lists

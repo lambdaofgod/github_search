@@ -1,6 +1,28 @@
 import h5py
 import torch
 import torch_geometric.data as ptg_data
+from typing import Iterable
+import torch_geometric
+import tqdm
+
+def add_graph_to_hdf_groups(
+    g: torch_geometric.data.Data, x_group: h5py.Group, edge_index_group: h5py.Group
+):
+    if not g.graph_name in x_group.keys():
+        d = x_group.create_dataset(g.graph_name, data=g.x.numpy())
+        d.attrs["tasks"] = g.tasks
+        d.attrs["least_common_task"] = g.least_common_task
+        d.attrs["area"] = g.area
+        edge_index_group.create_dataset(g.graph_name, data=g.edge_index.numpy())
+
+
+def write_graph_data_iter_to_h5_file(
+    h5py_file: h5py.File, graph_data_list: Iterable[torch_geometric.data.Data]
+):
+    x_gp = h5py_file.create_group("x")
+    edge_index_gp = h5py_file.create_group("edge_index")
+    for g in tqdm.auto.tqdm(graph_data_list):
+        add_graph_to_hdf_groups(g, x_gp, edge_index_gp)
 
 
 class HDF5Dataset(ptg_data.Dataset):

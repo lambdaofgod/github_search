@@ -1,18 +1,22 @@
+import logging
 import pickle
 from typing import Callable, Dict, List, Union
-import logging
 
+import h5py
 import igraph
 import numpy as np
 import pandas as pd
 import sentence_transformers
+import toolz
 import torch
+from fastai.text import all as text
 from findkit import feature_extractor
-from sklearn import model_selection
-from torch_geometric import data as ptg_data
-from github_search.graphs import graph_preprocessor
+from findkit.feature_extractor import FastAITextFeatureExtractor
+from github_search.graphs import dependency_graph, graph_preprocessor, datasets
 from github_search.papers_with_code import repo_metadata
 from github_search.papers_with_code.repo_metadata import RepoMetadataFromPandas
+from sklearn import model_selection
+from torch_geometric import data as ptg_data
 
 Label = Union[str, List[str]]
 
@@ -87,8 +91,28 @@ def prepare_dataset_with_word2vec(upstream, product, batch_size, paperswithcode_
     pickle.dump(data_list, open(str(graph_path), "wb"))
 
 
-def prepare_dataset_with_import_rnn(upstream, product, batch_size):
-    pass
+def prepare_dataset_with_rnn(
+    upstream, product, paperswithcode_path, ulmfit_path
+):
+    dependency_df_path = str(upstream["dependency_graph.prepare_records"])
+    dependency_gb = dependency_graph.prepare_dependency_gb(
+        pd.read_feather(dependency_df_path)
+    )
+    area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
+    metadata = repo_metadata.RepoMetadataFromPandas.load_from_files(
+        paperswithcode_path, area_tasks_path
+    )
+    fastai_learner = text.load_learner(ulmfit_path)
+    fastai_extractor = FastAITextFeatureExtractor.build_from_learner(
+        fastai_learner, max_length=48
+    )
+    encoding_fn = toolz.partial(fastai_extractor.extract_features, show_progbar=False)
+    builder = dependency_graph.DependencyDatasetBuilder(dependency_gb, metadata)
+    all_repos = dependency_gb.groups.keys()
+    repos = [repo for repo in all_repos if metadata.repo_exists(repo)]
+    data_iter = builder.get_graph_data_generator(repos, encoding_fn)
+    with h5py.File(str(product), "w") as f:
+        datasets.write_graph_data_iter_to_h5_file(f, data_iter)
 
 
 def prepare_dataset_split(upstream, product):
