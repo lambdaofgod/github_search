@@ -9,7 +9,6 @@ import pandas as pd
 import sentence_transformers
 import toolz
 import torch
-from fastai.text import all as text
 from findkit import feature_extractor
 from findkit.feature_extractor import FastAITextFeatureExtractor
 from github_search.graphs import dependency_graph, graph_preprocessor, datasets
@@ -17,6 +16,8 @@ from github_search.papers_with_code import repo_metadata
 from github_search.papers_with_code.repo_metadata import RepoMetadataFromPandas
 from sklearn import model_selection
 from torch_geometric import data as ptg_data
+from findkit.feature_extractor import FastAITextFeatureExtractor
+from fastai.text import all as fastai_text
 
 Label = Union[str, List[str]]
 
@@ -91,18 +92,19 @@ def prepare_dataset_with_word2vec(upstream, product, batch_size, paperswithcode_
     pickle.dump(data_list, open(str(graph_path), "wb"))
 
 
-def prepare_dataset_with_rnn(
-    upstream, product, paperswithcode_path, ulmfit_path
-):
+def prepare_dataset_with_rnn(upstream, product, paperswithcode_path, ulmfit_path):
     dependency_df_path = str(upstream["dependency_graph.prepare_records"])
+    logging.info("preparing dependency records groupby")
     dependency_gb = dependency_graph.prepare_dependency_gb(
         pd.read_feather(dependency_df_path)
     )
+    logging.info("preparing repo metadata")
     area_tasks_path = str(upstream["prepare_area_grouped_tasks"])
     metadata = repo_metadata.RepoMetadataFromPandas.load_from_files(
         paperswithcode_path, area_tasks_path
     )
-    fastai_learner = text.load_learner(ulmfit_path)
+    logging.info("loading fastai ULMFiT extractor")
+    fastai_learner = fastai_text.load_learner(ulmfit_path)
     fastai_extractor = FastAITextFeatureExtractor.build_from_learner(
         fastai_learner, max_length=48
     )
@@ -111,19 +113,17 @@ def prepare_dataset_with_rnn(
     all_repos = dependency_gb.groups.keys()
     repos = [repo for repo in all_repos if metadata.repo_exists(repo)]
     data_iter = builder.get_graph_data_generator(repos, encoding_fn)
+    logging.info("building graph data objects")
     with h5py.File(str(product), "w") as f:
         datasets.write_graph_data_iter_to_h5_file(f, data_iter)
 
 
 def prepare_dataset_split(upstream, product):
     repos_train = pd.read_csv(str(upstream["prepare_repo_train_test_split"]["train"]))
-    with open(str(upstream["gnn.prepare_dataset_with_w2v"]), "rb") as f:
-        graph_data_list = pickle.load(f)
-    train_graph_list = [
-        g for g in graph_data_list if g.graph_name in repos_train["repo"].values
-    ]
-    test_graph_list = [
-        g for g in graph_data_list if g.graph_name not in repos_train["repo"].values
-    ]
+    data_path = str(upstream["gnn.prepare_dataset_with_rnn"])
+    graph_dataset = datasets.load_dataset(data_path)
+
+    train_dataset = datasets.filter_dataset(graph_dataset, repos_train["repo"].values)
+    test_dataset = datasets.filter_dataset(graph_dataset, repos_test["repo"].values)
     pickle.dump(train_graph_list, open(str(product["train"]), "wb"))
     pickle.dump(test_graph_list, open(str(product["test"]), "wb"))

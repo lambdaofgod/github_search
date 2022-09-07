@@ -34,7 +34,7 @@ def _get_flattened_list_with_indices(text_lists: List[str]):
     indices = []
     texts = []
     for (i, text_list) in enumerate(text_lists):
-        texts += text_list
+        texts += list(text_list)
         indices += [i] * len(text_list)
     return texts, indices
 

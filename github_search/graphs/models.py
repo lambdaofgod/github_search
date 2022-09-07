@@ -30,15 +30,12 @@ class GCN(torch.nn.Module):
 
         self.conv1 = graph_conv_cls(n_node_features, hidden_channels)
         self.conv2 = graph_conv_cls(hidden_channels, hidden_channels)
-        self.conv3 = graph_conv_cls(hidden_channels, hidden_channels)
         self.lin = torch.nn.Linear(2 * hidden_channels, final_layer_size)
 
     def forward_pre_pooling(self, x, edge_index):
         x = self.conv1(x, edge_index)
         x = x.relu()
         x = self.conv2(x, edge_index)
-        x = x.relu()
-        x = self.conv3(x, edge_index)
         return x
 
     def forward(self, x, edge_index, batch):

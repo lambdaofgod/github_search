@@ -261,12 +261,12 @@ tasks:
   - source: github_search.graphs.data_preparation.prepare_dataset_with_rnn
     name: gnn.prepare_dataset_with_rnn
     params:
-      ulmfit_path: notebooks/tmp/learn.pkl
+      ulmfit_path: "notebooks/tmp/learn.pkl"
       paperswithcode_path: "{{paperswithcode_path}}"
     upstream:
       - prepare_area_grouped_tasks
       - dependency_graph.prepare_records
-    product: "output/graph_list_rnn.pkl"
+    product: "output/graph_list_rnn.h5"
 
   # split graph lists
   - source: github_search.graphs.data_preparation.prepare_dataset_split
@@ -322,11 +322,12 @@ tasks:
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
-      - gnn.prepare_dataset_splits
+      - gnn.prepare_dataset_with_rnn
       - sentence_embeddings.prepare_w2v_model
     params:
       similarity_model_params: "{{gnn.similarity_model_params}}"
-      n_features: 256
+      n_features: 128 
+      ulmfit_path: "notebooks/tmp/learn.pkl"
     product:
       model_path: "output/models/similarity_gnn.pth"
       plot_path: "output/graph_nn_similarity_training_losses.png"

@@ -16,6 +16,8 @@ import torch.nn.functional as F
 import torch_geometric.data as ptg_data
 import torch_geometric.nn as ptgnn
 import tqdm
+from fastai.text import all as fastai_text
+from findkit.feature_extractor import FastAITextFeatureExtractor
 from github_search import logging_setup, paperswithcode_task_areas, utils
 from github_search.graphs import datasets, models
 from github_search.graphs.training_config import (
@@ -29,14 +31,12 @@ from sklearn import base, metrics, preprocessing
 from toolz import partial
 from torch import nn
 
-GraphDataList = List[ptg_data.Data]
-DatasetLike = Union[GraphDataList, ptg_data.Dataset]
 GraphDataListWithLabels = List[Tuple[ptg_data.Data, Union[str, List[str]]]]
 
 
 def train_gnn(
     model: models.GraphNeuralNetwork,
-    dataset: DatasetLike,
+    dataset: datasets.GraphDatasetLike,
     epochs: int,
     batch_size: int,
     device: str,
@@ -50,8 +50,8 @@ def train_gnn(
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     loss_fn = config.loss_function.to(device)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, factor=0.5, patience=20
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=0.001 
     )
 
     model.train()
@@ -61,7 +61,7 @@ def train_gnn(
         train_loader = ptg_data.DataLoader(dataset, batch_size, shuffle=True)
         with tqdm.auto.tqdm(enumerate(train_loader), total=len(train_loader)) as pbar:
             for (i, data) in pbar:
-                target = config.preprocess_target(data, device)
+                target = config.preprocess_target(data)
                 out = model(
                     data.x.to(device), data.edge_index.to(device), data.batch.to(device)
                 )  # Perform a single forward pass.
@@ -69,7 +69,7 @@ def train_gnn(
                 loss.backward()  # Derive gradients.
                 optimizer.step()  # Update parameters based on gradients.
                 accuracy = config.accuracy_function(
-                    data.encoded_label, out.detach().cpu().numpy()
+                    config.get_labels(data), out.detach().cpu().numpy()
                 )
                 losses.append(loss.item())
                 smoothed_loss = np.mean(losses[-20:])
@@ -119,7 +119,7 @@ def prepare_repos_metadata_df(repo_df, classification_column, area_tasks_path):
 
 
 def get_dataset_splits_with_labels(
-    dataset: GraphDataList,
+    dataset: datasets.GraphDatasetLike,
     train_path: str,
     test_path: str,
     classification_column: str,
@@ -131,11 +131,14 @@ def get_dataset_splits_with_labels(
         )
         for path in [train_path, test_path]
     ]
+
     train_dataset_with_labels, test_dataset_with_labels = [
         [
             (g, repos_with_tasks.loc[[g.graph_name]].iloc[0])
             for g in dataset
             if g.graph_name in repos_with_tasks.index
+            and len(g.tasks) > 0
+            and type(g.least_common_task) is str
         ]
         for repos_with_tasks in [train_repos_with_tasks, test_repos_with_tasks]
     ]
@@ -155,9 +158,9 @@ def run_classification(
 ):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = (
-        MultilabelTaskClassificationTrainingConfig()
+        MultilabelTaskClassificationTrainingConfig(device)
         if classification_column == "task"
-        else AreaClassificationTrainingConfig()
+        else AreaClassificationTrainingConfig(device)
     )
     logging.info(f"using {device}")
     area_tasks_path = str(upstream.get("prepare_area_grouped_tasks"))
@@ -240,12 +243,10 @@ def run_label_similarity_model(
     product,
     similarity_model_params,
     n_features,
+    ulmfit_path,
     gnn_class=models.GCN,
     accumulation_steps=5,
 ):
-    sentence_transformer_model_name = str(
-        upstream["sentence_embeddings.prepare_w2v_model"]
-    )
     hidden_channels = similarity_model_params["hidden_channels"]
     epochs = similarity_model_params["epochs"]
     batch_size = similarity_model_params["batch_size"]
@@ -253,7 +254,9 @@ def run_label_similarity_model(
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(f"using {device}")
     area_tasks_path = str(upstream.get("prepare_area_grouped_tasks"))
-    dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
+    dataset = datasets.load_dataset(
+        upstream["gnn.prepare_dataset_with_rnn"], ["area", "least_common_task", "tasks"]
+    )
 
     train_metadata_path, test_metadata_path = [
         str(upstream["prepare_repo_train_test_split"][split_part])
@@ -275,10 +278,13 @@ def run_label_similarity_model(
         n_node_features=dim,
         final_layer_size=n_features,
     ).to(device)
-    embedder = findkit.feature_extractor.SentenceEncoderFeatureExtractor(
-        sentence_transformers.SentenceTransformer(sentence_transformer_model_name)
+    fastai_learner = fastai_text.load_learner(ulmfit_path)
+    embedder = FastAITextFeatureExtractor.build_from_learner(
+        fastai_learner, max_length=48
     )
-    config = SimilarityModelTrainingConfig.from_embedder_and_model(embedder, model)
+    config = SimilarityModelTrainingConfig.from_embedder_and_model(
+        embedder, model, device
+    )
 
     train_dataset, label_encoder = get_data_list_with_encoded_classes(
         train_dataset_with_labels, config.label_encoder
@@ -294,7 +300,7 @@ def run_label_similarity_model(
 
     train_gnn(
         model,
-        train_dataset,
+        dataset,
         epochs,
         batch_size,
         device,

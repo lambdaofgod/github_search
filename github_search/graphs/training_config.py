@@ -19,27 +19,35 @@ from github_search.graphs import label_preprocessing
 
 @dataclass
 class GNNTrainingConfig(ABC):
-
-    label_encoder: base.BaseEstimator
-    loss_function: nn.Module
-    labels_dtype: torch.dtype
-
     @classmethod
     @abstractmethod
     def accuracy_function(cls, encoded_label: np.ndarray, model_output: np.ndarray):
         pass
 
-    def preprocess_target(self, data, device):
-        return (
-            torch.Tensor(np.array(data.encoded_label))
-            .to(device)
-            .type(self.labels_dtype)
-        )
+    @classmethod
+    def get_labels(cls, data):
+        return data.encoded_label
+
+    @abstractmethod
+    def preprocess_target(self, data):
+        pass
 
 
 @dataclass
-class MultilabelTaskClassificationTrainingConfig(GNNTrainingConfig):
+class ClassificationConfig(GNNTrainingConfig):
+    def preprocess_target(self, data):
+        target = (
+            torch.Tensor(np.array(data.encoded_label))
+            .to(self.device)
+            .type(self.labels_dtype)
+        )
+        return target
 
+
+@dataclass
+class MultilabelTaskClassificationTrainingConfig(ClassificationConfig):
+
+    device: str
     loss_function: nn.Module = field(default_factory=nn.BCEWithLogitsLoss)
     label_encoder: base.BaseEstimator = field(
         default_factory=preprocessing.MultiLabelBinarizer
@@ -54,8 +62,9 @@ class MultilabelTaskClassificationTrainingConfig(GNNTrainingConfig):
 
 
 @dataclass
-class AreaClassificationTrainingConfig(GNNTrainingConfig):
+class AreaClassificationTrainingConfig(ClassificationConfig):
 
+    device: str
     loss_function: nn.Module = field(default_factory=nn.CrossEntropyLoss)
     label_encoder: base.BaseEstimator = field(
         default_factory=preprocessing.LabelEncoder
@@ -89,11 +98,13 @@ class SimilarityModelTrainingConfig(GNNTrainingConfig):
     label_encoder: base.BaseEstimator
     loss_function: nn.Module
     labels_dtype: torch.dtype
+    device: str
 
     @staticmethod
     def from_embedder_and_model(
         embedder: embeddings.EmbeddingVectorizer,
         model: nn.Module,
+        device: str,
         label_encoder_cls=preprocessing.LabelEncoder,
         loss_function_cls=multiple_negatives_ranking_loss,
         labels_dtype=torch.float32,
@@ -104,14 +115,18 @@ class SimilarityModelTrainingConfig(GNNTrainingConfig):
             loss_function=loss_function_cls(),
             label_encoder=label_encoder_cls(),
             labels_dtype=labels_dtype,
+            device=device,
         )
 
-    def preprocess_target(self, data, device):
+    def preprocess_target(self, data):
         graph_data = label_preprocessing.make_graph_from_label_list(
             data.tasks, self.embedder
-        ).to(device)
+        ).to(self.device)
         return self.model(graph_data.x, graph_data.edge_index, graph_data.batch)
 
     @classmethod
     def accuracy_function(cls, encoded_label, model_output):
         return utils.get_accuracy_from_scores(encoded_label, model_output)
+
+    def get_labels(self, data):
+        return np.arange(len(data))
