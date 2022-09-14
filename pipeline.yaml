@@ -277,15 +277,28 @@ tasks:
     product:
       train: "output/train_graph_list.pkl"
       test: "output/test_graph_list.pkl"
+  - source: github_search.graphs.nn_training.run_infomax
+    name: gnn.train_infomax
+    upstream:
+      - prepare_area_grouped_tasks
+      - prepare_repo_train_test_split
+      - gnn.prepare_dataset_with_rnn
+    params:
+      hidden_channels: 128
+      n_features: 128
+    product:
+      model_path: "output/models/infomax.pth"
+      plot_path: "output/infomax_training_losses.png"
+
 
   - source: github_search.graphs.nn_training.run_dependency_area_classification
     name: gnn.train_dep_graph
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
+      - gnn.prepare_dataset_with_rnn
     params:
       hidden_channels: 128
-      hdf5_dataset_path: "notebooks/tmp/graph_records.h5"
     product:
       model_path: "output/models/dep_graph_nn_area_training.pth"
       plot_path: "output/dep_graph_nn_area_training_losses.png"

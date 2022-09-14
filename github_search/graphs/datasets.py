@@ -7,6 +7,7 @@ import torch
 import torch_geometric
 import torch_geometric.data as ptg_data
 import tqdm
+import logging
 
 GraphDataList = List[ptg_data.Data]
 GraphDatasetLike = Union[GraphDataList, ptg_data.Dataset]
@@ -20,6 +21,7 @@ def add_graph_to_hdf_groups(
         d.attrs["tasks"] = g.tasks
         d.attrs["least_common_task"] = g.least_common_task
         d.attrs["area"] = g.area
+        d.attrs["names"] = g.names
         edge_index_group.create_dataset(g.graph_name, data=g.edge_index.numpy())
 
 
@@ -29,7 +31,10 @@ def write_graph_data_iter_to_h5_file(
     x_gp = h5py_file.create_group("x")
     edge_index_gp = h5py_file.create_group("edge_index")
     for g in tqdm.auto.tqdm(graph_data_list):
-        add_graph_to_hdf_groups(g, x_gp, edge_index_gp)
+        try:
+            add_graph_to_hdf_groups(g, x_gp, edge_index_gp)
+        except Exception as e:
+            logging.info("catched " + str(e))
 
 
 def load_dataset(file_path: str, metadata_attrs: List[str]) -> GraphDatasetLike:
@@ -40,7 +45,9 @@ def load_dataset(file_path: str, metadata_attrs: List[str]) -> GraphDatasetLike:
         return data
     elif ext == ".h5":
         f = h5py.File(file_path, "r")
-        return HDF5Dataset.from_file(f, metadata_attrs=metadata_attrs, hierarchical_keys=True)
+        return HDF5Dataset.from_file(
+            f, metadata_attrs=metadata_attrs, hierarchical_keys=True
+        )
 
 
 def filter_dataset(dataset: GraphDatasetLike, keys: List[str]):
@@ -48,7 +55,6 @@ def filter_dataset(dataset: GraphDatasetLike, keys: List[str]):
         return [data for data in dataset if data.graph_name in keys]
     elif type(dataset) is HDF5Dataset:
         return dataset.get_subset_by_keys(keys)
-
 
 
 class HDF5Dataset(ptg_data.Dataset):
@@ -84,7 +90,10 @@ class HDF5Dataset(ptg_data.Dataset):
         return self.keys
 
     def get(self, idx):
-        graph_record_data = self._get_graph_record_data(idx)
+        try:
+            graph_record_data = self._get_graph_record_data(idx)
+        except:
+            import ipdb; ipdb.set_trace()
         return self._make_graph_record(graph_record_data)
 
     def _get_graph_record_data(self, key):

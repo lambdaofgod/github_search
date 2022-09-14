@@ -3,6 +3,13 @@ import ast
 import numpy as np
 import pandas as pd
 from sklearn import metrics
+import itertools
+from operator import itemgetter
+
+
+def iunzip(iterable, n=2):
+    n_iterable = list(itertools.tee(iterable, n))
+    return [map(itemgetter(i), p) for i, p in enumerate(n_iterable)]
 
 
 def load_paperswithcode_df(path, drop_na_cols=["readme", "tasks"]):

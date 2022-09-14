@@ -48,10 +48,10 @@ def train_gnn(
     loss_plot = livelossplot.PlotLosses(
         outputs=[livelossplot.outputs.MatplotlibPlot(figpath=plot_fig_path)]
     )
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-3)
     loss_fn = config.loss_function.to(device)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=0.001 
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, factor=0.5, patience=20
     )
 
     model.train()
@@ -77,6 +77,58 @@ def train_gnn(
                     f"iteration {i}, loss: {round(smoothed_loss.item(), 3)}"
                 )
                 loss_plot.update({"loss": smoothed_loss, "accuracy": accuracy})
+                if (i + 1) % accumulation_steps == 0:
+                    optimizer.zero_grad()  # Clear gradients.
+                    scheduler.step(loss)
+    loss_plot.send()
+    torch.save(model, model_path)
+    return loss_plot
+
+
+def train_infomax(
+    model: models.GraphNeuralNetwork,
+    n_features: int,
+    dataset: datasets.GraphDatasetLike,
+    epochs: int,
+    device: str,
+    plot_fig_path: str,
+    model_path: str,
+    accumulation_steps: int,
+):
+    loss_plot = livelossplot.PlotLosses(
+        outputs=[livelossplot.outputs.MatplotlibPlot(figpath=plot_fig_path)]
+    )
+
+    def corruption(x, edge_index):
+        return x[torch.randperm(x.size(0))], edge_index
+
+    infomax_model = ptgnn.DeepGraphInfomax(
+        hidden_channels=n_features,
+        encoder=model,
+        summary=lambda z, *args, **kwargs: torch.sigmoid(z.mean(dim=0)),
+        corruption=corruption,
+    ).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-3)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, factor=0.5, patience=20
+    )
+
+    model.train()
+
+    losses = []
+    for __ in tqdm.auto.tqdm(range(epochs)):
+        train_loader = ptg_data.DataLoader(dataset, 1, shuffle=True)
+        with tqdm.auto.tqdm(enumerate(train_loader), total=len(train_loader)) as pbar:
+            for (i, data) in pbar:
+                data0 = data[0].to(device)
+                pos_z, neg_z, summary0 = infomax_model(data0.x, data0.edge_index)
+                loss = infomax_model.loss(pos_z, neg_z, summary0)
+                losses.append(loss.item())
+                smoothed_loss = np.mean(losses[-20:])
+                pbar.set_description(
+                    f"iteration {i}, loss: {round(smoothed_loss.item(), 3)}"
+                )
+                loss_plot.update({"loss": smoothed_loss})
                 if (i + 1) % accumulation_steps == 0:
                     optimizer.zero_grad()  # Clear gradients.
                     scheduler.step(loss)
@@ -212,6 +264,28 @@ def run_classification(
     )
 
 
+def run_infomax(upstream, product, hidden_channels, n_features):
+    dataset = datasets.load_dataset(
+        upstream["gnn.prepare_dataset_with_rnn"], ["area", "least_common_task", "tasks"]
+    )
+    device = "cuda"
+    dim = dataset[0].x.shape[1]
+    model = models.GCNEncoder(
+        hidden_channels=hidden_channels,
+        n_node_features=dim,
+    ).to(device)
+    train_infomax(
+        model,
+        n_features,
+        dataset,
+        epochs=1,
+        device=device,
+        plot_fig_path=str(product["plot_path"]),
+        model_path=str(product["model_path"]),
+        accumulation_steps=4,
+    )
+
+
 def run_multilabel_classification(upstream, product, hidden_channels, batch_size=32):
     dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
     run_classification(upstream, product, dataset, hidden_channels, "tasks", batch_size)
@@ -223,10 +297,11 @@ def run_area_classification(upstream, product, hidden_channels, batch_size=32):
 
 
 def run_dependency_area_classification(
-    upstream, product, hdf5_dataset_path, hidden_channels, batch_size=32, epochs=2
+    upstream, product, hidden_channels, batch_size=32, epochs=2
 ):
-    h5file = h5py.File(hdf5_dataset_path, "r")
-    dataset = datasets.HDF5Dataset(h5file, ["area"])
+    dataset = datasets.load_dataset(
+        upstream["gnn.prepare_dataset_with_rnn"], ["area", "least_common_task", "tasks"]
+    )
     run_classification(
         upstream,
         product,

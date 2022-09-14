@@ -108,7 +108,7 @@ def prepare_dataset_with_rnn(upstream, product, paperswithcode_path, ulmfit_path
     fastai_extractor = FastAITextFeatureExtractor.build_from_learner(
         fastai_learner, max_length=48
     )
-    encoding_fn = toolz.partial(fastai_extractor.extract_features, show_progbar=False)
+    encoding_fn = toolz.partial(fastai_extractor.extract_features, show_progress_bar=False)
     builder = dependency_graph.DependencyDatasetBuilder(dependency_gb, metadata)
     all_repos = dependency_gb.groups.keys()
     repos = [repo for repo in all_repos if metadata.repo_exists(repo)]

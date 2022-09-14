@@ -1,7 +1,10 @@
 import torch
+from torch import nn
 import torch.nn.functional as F
 import torch_geometric.nn as ptgnn
 from typing import Protocol
+
+ptgnn.DeepGraphInfomax
 
 
 class GraphNeuralNetwork(Protocol):
@@ -17,6 +20,29 @@ class GraphNeuralNetwork(Protocol):
         """run graph without pooling, resulting in node embeddings"""
 
 
+
+class GCNEncoder(torch.nn.Module):
+    def __init__(
+        self,
+        hidden_channels,
+        n_node_features,
+        graph_conv_cls=ptgnn.SAGEConv,
+    ):
+        super(GCNEncoder, self).__init__()
+        torch.manual_seed(12345)
+
+        self.conv1 = graph_conv_cls(n_node_features, hidden_channels)
+        self.prelu = nn.PReLU()
+        self.conv2 = graph_conv_cls(hidden_channels, hidden_channels)
+
+    def forward(self, x, edge_index):
+        x = self.conv1(x, edge_index)
+        x = self.prelu(x)
+        x = self.conv2(x, edge_index)
+        return x
+
+
+
 class GCN(torch.nn.Module):
     def __init__(
         self,
@@ -29,13 +55,12 @@ class GCN(torch.nn.Module):
         torch.manual_seed(12345)
 
         self.conv1 = graph_conv_cls(n_node_features, hidden_channels)
-        self.conv2 = graph_conv_cls(hidden_channels, hidden_channels)
         self.lin = torch.nn.Linear(2 * hidden_channels, final_layer_size)
+        self.init_weights()
 
     def forward_pre_pooling(self, x, edge_index):
         x = self.conv1(x, edge_index)
         x = x.relu()
-        x = self.conv2(x, edge_index)
         return x
 
     def forward(self, x, edge_index, batch):
@@ -56,3 +81,10 @@ class GCN(torch.nn.Module):
         x = self.forward_pre_pooling(x, edge_index)
         x = F.dropout(x, p=0.5, training=self.training)
         return self.lin(torch.column_stack([x, x]))
+
+    def init_weights(self, init_fn=nn.init.orthogonal_):
+        graph_layers = [self.conv1]
+        nn.init.orthogonal_(self.lin.weight)
+        for layer in graph_layers:
+            init_fn(layer.lin_l.weight)
+            init_fn(layer.lin_r.weight)
