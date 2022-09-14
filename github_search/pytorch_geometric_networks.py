@@ -167,21 +167,22 @@ def graph_infomax_summary(z, *args, **kwargs):
     return torch.sigmoid(z.mean(dim=0))
 
 
-def train(model, data, train_loader, optimizer, device):
+def train_step(model, data, train_loader, optimizer, device):
     model.train()
 
-    total_loss = 0
-    for batch_size, n_id, adjs in train_loader:
-        adjs = [adj.to(device) for adj in adjs]
-        optimizer.zero_grad()
-        x = data.x[n_id].to(device)
-        outs = model(x, adjs)
-        size = outs[0].size(0)
-        loss = model.loss(*outs)
-        loss.backward()
-        optimizer.step()
+    with torch.cuda.amp.autocast():
+        total_loss = 0
+        for batch_size, n_id, adjs in tqdm.auto.tqdm(train_loader):
+            adjs = [adj.to(device) for adj in adjs]
+            optimizer.zero_grad()
+            x = data.x[n_id].to(device)
+            outs = model(x, adjs)
+            size = outs[0].size(0)
+            loss = model.loss(*outs)
+            loss.backward()
+            optimizer.step()
 
-        total_loss += float(loss) * size
+            total_loss += float(loss) * size
 
     return total_loss / data.num_nodes
 

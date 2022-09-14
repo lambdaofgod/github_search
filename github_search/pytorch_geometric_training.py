@@ -19,12 +19,6 @@ from github_search.pytorch_geometric_networks import *
 
 plt.ioff()
 
-try:
-    torch.multiprocessing.set_start_method("spawn")
-except:
-    pass
-
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -96,7 +90,7 @@ def get_gnn_features(model_name, model, data):
         )
     else:
         zs = []
-        loader = get_loader(model_name, data, 2056, shuffle=False)
+        loader = get_loader(model_name, data, 256, shuffle=False)
         for i, (batch_size, n_id, adjs) in enumerate(loader):
             adjs = [adj.to("cpu") for adj in adjs]
             x = data.x[n_id].cpu()
@@ -126,7 +120,7 @@ def train_unsupervised_gnn_model(
     scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=0.5, step_size=10)
 
     for epoch in rnge:
-        loss = train(model, data, train_loader, optimizer, device)
+        loss = train_step(model, data, train_loader, optimizer, device)
         scheduler.step()
         plotlosses.update(
             {"loss": loss, "lr": optimizer.state_dict()["param_groups"][0]["lr"]}
@@ -148,7 +142,7 @@ def train_unsupervised_gnn_model(
 def run_gnn_experiment(
     product,
     upstream,
-    fasttext_model_path,
+    data_path,
     model_name,
     hidden_channels,
     num_layers,
@@ -159,18 +153,18 @@ def run_gnn_experiment(
     test_run=False,
     description_mode=True,
 ):
+
+    try:
+        torch.multiprocessing.set_start_method("spawn")
+    except:
+        pass
+
     print()
     print("using model:", model_name)
     print("hidden channels:", hidden_channels)
     print("loading data")
-    fasttext_model = fasttext.load_model(fasttext_model_path)
-    fasttext_embedder = embeddings.FastTextVectorizer(fasttext_model)
-
-    csv_paths = [upstream["postprocess_dependency_records"]]
-    dependency_graph_wrapper = get_dataset_wrapper(
-        csv_paths, fasttext_embedder, test_run, description_mode
-    )
-    data = dependency_graph_wrapper.dataset
+    
+    data = torch.load(data_path)
     print("loaded:", data.num_nodes, "nodes")
     print("dataset:", data)
 
