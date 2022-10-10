@@ -5,24 +5,20 @@ https://github.com/pyg-team/pytorch_geometric/blob/master/examples/graph_sage_un
 """
 import os
 from typing import Union
+import copy
 
-import fasttext
-import livelossplot
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
-from gensim.models import KeyedVectors
-from mlutil.feature_extraction import embeddings
-from sklearn import metrics
-from torch import Tensor, optim
 from torch_cluster import random_walk
 from torch_geometric.loader import NeighborSampler as RawNeighborSampler
 from torch_geometric.nn import SAGEConv
 from torch_geometric.typing import Adj, OptPairTensor, Size
+from torch_geometric.utils import to_undirected
 
 
 class ResidualSAGEConv(SAGEConv):
@@ -51,6 +47,15 @@ class ResidualSAGEConv(SAGEConv):
 
 
 class SAGENeighborSampler(RawNeighborSampler):
+    def __init__(self, edge_index, sizes, directed=False, **kwargs):
+        self.directed = directed
+        super(SAGENeighborSampler, self).__init__(
+            edge_index=edge_index, sizes=sizes, **kwargs
+        )
+        if not self.directed:
+            new_adj_t = self.adj_t.t() + self.adj_t
+            self.adj_t = new_adj_t
+
     def sample(self, batch):
         batch = torch.tensor(batch)
         row, col, _ = self.adj_t.coo()
@@ -117,7 +122,7 @@ class SAGE(nn.Module):
         pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
         neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
         loss = -pos_loss - neg_loss
-        return loss
+        return loss, pos_loss, neg_loss
 
 
 class Encoder(nn.Module):
@@ -167,24 +172,38 @@ def graph_infomax_summary(z, *args, **kwargs):
     return torch.sigmoid(z.mean(dim=0))
 
 
-def train_step(model, data, train_loader, optimizer, device):
+def get_loss(batch, h_src, h_dst):
+    pred = (h_src * h_dst).sum(dim=-1)
+    return F.binary_cross_entropy_with_logits(pred, batch.edge_label)
+
+
+def train_epoch(model, data, train_loader, optimizer, scheduler, device, callback):
     model.train()
 
     with torch.cuda.amp.autocast():
         total_loss = 0
-        for batch_size, n_id, adjs in tqdm.auto.tqdm(train_loader):
-            adjs = [adj.to(device) for adj in adjs]
+        for i, batch in enumerate(tqdm.tqdm(train_loader)):
+            batch = batch.to(device)
             optimizer.zero_grad()
-            x = data.x[n_id].to(device)
-            outs = model(x, adjs)
-            size = outs[0].size(0)
-            loss = model.loss(*outs)
+            h = model(batch.x, batch.edge_index)
+            h_src = h[batch.edge_label_index[0]]
+            h_dst = h[batch.edge_label_index[1]]
+            loss = get_loss(batch, h_src, h_dst)
             loss.backward()
             optimizer.step()
+            scheduler.step(i)
+            total_loss += float(loss) * h_dst.size(0)
+            lr = optimizer.state_dict()["param_groups"][0]["lr"]
+            callback(
+                {
+                    "loss": loss,
+                    "size": h_dst.size(0),
+                    "lr": lr,
+                }
+            )
 
-            total_loss += float(loss) * size
-
-    return total_loss / data.num_nodes
+    loss = total_loss / data.num_nodes
+    return loss
 
 
 @torch.no_grad()

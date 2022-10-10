@@ -181,7 +181,6 @@ tasks:
       - prepare_paperswithcode_with_imports_df
     params:
       use_additional_records: False
-      description_mode: "{{gnn.description_mode}}" 
     product: "output/processed_dependency_records.feather"
 
   #
@@ -261,7 +260,7 @@ tasks:
   - source: github_search.graphs.data_preparation.prepare_dataset_with_rnn
     name: gnn.prepare_dataset_with_rnn
     params:
-      ulmfit_path: "notebooks/tmp/learn.pkl"
+      ulmfit_path: "output/models/learn_750k.pkl"
       paperswithcode_path: "{{paperswithcode_path}}"
     upstream:
       - prepare_area_grouped_tasks
@@ -277,7 +276,7 @@ tasks:
     product:
       train: "output/train_graph_list.pkl"
       test: "output/test_graph_list.pkl"
-  - source: github_search.graphs.nn_training.run_infomax
+  - source: github_search.graphs.experiments.run_infomax
     name: gnn.train_infomax
     upstream:
       - prepare_area_grouped_tasks
@@ -291,7 +290,7 @@ tasks:
       plot_path: "output/infomax_training_losses.png"
 
 
-  - source: github_search.graphs.nn_training.run_dependency_area_classification
+  - source: github_search.graphs.experiments.run_dependency_area_classification
     name: gnn.train_dep_graph
     upstream:
       - prepare_area_grouped_tasks
@@ -304,12 +303,12 @@ tasks:
       plot_path: "output/dep_graph_nn_area_training_losses.png"
 
   # train graph classification model using task area as labels
-  - source: github_search.graphs.nn_training.run_area_classification
+  - source: github_search.graphs.experiments.run_area_classification
     name: gnn.train_area_classification
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
-      - gnn.prepare_dataset_splits
+      - gnn.prepare_dataset_with_rnn
     params:
       hidden_channels: 64
     product:
@@ -317,12 +316,12 @@ tasks:
       plot_path: "output/graph_nn_area_training_losses.png"
 
     # train graph multilabel classification model using tasks
-  - source: github_search.graphs.nn_training.run_multilabel_classification
+  - source: github_search.graphs.experiments.run_multilabel_classification
     name: gnn.train_multilabel_task_classification
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
-      - gnn.prepare_dataset_splits
+      - gnn.prepare_dataset_with_rnn
     params:
       hidden_channels: 64
     product:
@@ -330,41 +329,33 @@ tasks:
       plot_path: "output/graph_nn_task_training_losses.png"
 
   # train similarity model that uses MultipleNegativesRanking loss 
-  - source: github_search.graphs.nn_training.run_label_similarity_model
+  - source: github_search.graphs.experiments.run_label_similarity_model
     name: gnn.train_label_similarity_model
     upstream:
       - prepare_area_grouped_tasks
       - prepare_repo_train_test_split
       - gnn.prepare_dataset_with_rnn
-      - sentence_embeddings.prepare_w2v_model
     params:
       similarity_model_params: "{{gnn.similarity_model_params}}"
       n_features: 128 
-      ulmfit_path: "notebooks/tmp/learn.pkl"
+      ulmfit_path: "{{ulmfit_path}}" 
     product:
       model_path: "output/models/similarity_gnn.pth"
       plot_path: "output/graph_nn_similarity_training_losses.png"
 
-#  # train GraphSAGE model
-#  - source: github_search.pytorch_geometric_training.run_gnn_experiment
-#    upstream:
-#      - postprocess_dependency_records
-#      - train_python_token_fasttext
-#    params:
-#      fasttext_model_path: "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
-#      epochs: "{{gnn.epochs}}" 
-#      hidden_channels: "{{gnn.hidden_channels}}" 
-#      batch_size: "{{gnn.batch_size}}" 
-#      num_layers: "{{gnn.layers}}"
-#      test_run: "{{test_run}}" 
-#      lr: 0.001
-#      model_name: "{{gnn.model_name}}"
-#      use_self_connection: "{{gnn.use_self_connection}}"
-#      description_mode: "{{gnn.description_mode}}" 
-#    product:
-#      plot_file: "output/loss_{{gnn.model_name}}_fasttext_dim{{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.png"
-#      gnn_token_embeddings: "output/{{gnn.model_name}}_embeddings_fasttext_dim{fasttext.dimension}}_epochs{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.bin"
-#      model_path: "output/{{gnn.model_name}}_model_{{gnn.epochs}}_dim{{gnn.hidden_channels}}_layers{{gnn.layers}}.pth"
+  # train GraphSAGE model
+  - source: github_search.pytorch_geometric_training.run_gnn_experiment
+    name: gnn.run_unsupervised_graph_sage
+    upstream:
+      - train_python_token_fasttext
+    params:
+      params: "{{gnn.unsupervised_params}}"
+      data_path: "notebooks/tmp/graph.pth"
+      lr: 0.001
+    product:
+      plot_file: "output/loss_{{gnn.unsupervised_params.model_name}}_fasttext_dim{{fasttext.dimension}}_epochs{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.png"
+      gnn_token_embeddings: "output/{{gnn.unsupervised_params.model_name}}_embeddings_fasttext_dim{fasttext.dimension}}_epochs{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.bin"
+      model_path: "output/{{gnn.unsupervised_params.model_name}}_model_{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.pth"
 
   # task embeddings
   # prepares data for task_embeddings_app streamlit app

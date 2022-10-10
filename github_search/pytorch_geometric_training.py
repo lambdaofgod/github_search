@@ -1,41 +1,47 @@
-import os
+import math
+from dataclasses import dataclass
+from typing import List
 
-import fasttext
 import livelossplot
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 import tqdm
 from gensim.models import KeyedVectors
-from mlutil.feature_extraction import embeddings
 from sklearn import metrics
 from torch import optim
-from torch_geometric.loader import NeighborSampler
-from torch_geometric.nn import DeepGraphInfomax
+from torch_geometric import transforms
+from torch_geometric.loader import LinkNeighborLoader, NeighborSampler
+from torch_geometric.nn import DeepGraphInfomax, GraphSAGE
 
-from github_search import python_call_graph
+from github_search import neptune_util
 from github_search.pytorch_geometric_data import PygGraphWrapper
-from github_search.pytorch_geometric_networks import *
+from github_search.pytorch_geometric_networks import train_epoch
 
 plt.ioff()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def get_model(
-    model_name, num_node_features, hidden_channels, num_layers, use_self_connection
-):
+@dataclass
+class GNNTrainingArgs:
+    model_name: str
+    num_neighbors: List[int]
+    layers: int
+    batch_size: int
+    hidden_channels: int
+    epochs: int
+    lr: float
+    weight_decay: float
+
+
+def get_model(model_name, num_node_features, hidden_channels, layers):
     if model_name.startswith("graphsage"):
-        if model_name == "graphsage_skip_connections":
-            sage_layer = ResidualSAGEConv
-        elif model_name == "graphsage":
-            sage_layer = SAGEConv
-        model = SAGE(
+        model = GraphSAGE(
             num_node_features,
             hidden_channels=hidden_channels,
-            num_layers=num_layers,
-            sage_layer_cls=sage_layer,
-            use_self_connection=use_self_connection,
+            num_layers=layers,
+            dropout=0.5,
         )
     elif model_name == "graph_infomax":
         model = DeepGraphInfomax(
@@ -47,15 +53,16 @@ def get_model(
     return model
 
 
-def get_loader(model_name, data, batch_size, shuffle=True):
+def get_loader(model_name, data, num_neighbors, batch_size, shuffle=True):
     if model_name.startswith("graphsage"):
-        return SAGENeighborSampler(
-            data.edge_index,
-            sizes=[15, 5],
+        return LinkNeighborLoader(
+            data,
+            num_neighbors=num_neighbors,
             batch_size=batch_size,
+            neg_sampling_ratio=10.0,
             shuffle=shuffle,
-            num_nodes=data.num_nodes,
             num_workers=0,
+            transform=transforms.NormalizeFeatures(),
         )
     elif model_name == "graph_infomax":
         return NeighborSampler(
@@ -90,7 +97,7 @@ def get_gnn_features(model_name, model, data):
         )
     else:
         zs = []
-        loader = get_loader(model_name, data, 256, shuffle=False)
+        loader = get_loader(model_name, data, num_neighbors, 256, shuffle=False)
         for i, (batch_size, n_id, adjs) in enumerate(loader):
             adjs = [adj.to("cpu") for adj in adjs]
             x = data.x[n_id].cpu()
@@ -103,25 +110,34 @@ def train_unsupervised_gnn_model(
     model,
     data,
     train_loader,
-    hidden_channels,
-    num_layers,
-    epochs,
-    batch_size,
-    lr,
+    training_args: GNNTrainingArgs,
     plot_file,
     in_jupyter=False,
 ):
     model = model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.SGD(
+        model.parameters(),
+        momentum=0.9,
+        nesterov=True,
+        lr=training_args.lr,
+        weight_decay=training_args.weight_decay,
+    )
     # x, edge_index = data.x.to(device), data.edge_index.to(device)
-    rnge = tqdm.tqdm(range(1, epochs + 1))
+    rnge = tqdm.tqdm(range(1, training_args.epochs + 1))
 
     plotlosses = livelossplot.PlotLosses()
-    scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=0.5, step_size=10)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=math.ceil(len(data.x) / training_args.batch_size)
+    )
 
+    callback = neptune_util.get_neptune_callback(
+        tags=["unsupervised_graphsage"], param_names=["loss", "size", "lr"]
+    )
+    model_callback = lambda model: torch.save(model, )
     for epoch in rnge:
-        loss = train_step(model, data, train_loader, optimizer, device)
-        scheduler.step()
+        loss = train_epoch(
+            model, data, train_loader, optimizer, scheduler, device, callback
+        )
         plotlosses.update(
             {"loss": loss, "lr": optimizer.state_dict()["param_groups"][0]["lr"]}
         )
@@ -143,49 +159,44 @@ def run_gnn_experiment(
     product,
     upstream,
     data_path,
-    model_name,
-    hidden_channels,
-    num_layers,
-    batch_size,
-    use_self_connection,
-    epochs=50,
+    params,
     lr=0.001,
     test_run=False,
-    description_mode=True,
+    description_mode=False,
 ):
-
+    training_args = GNNTrainingArgs(**params)
     try:
         torch.multiprocessing.set_start_method("spawn")
     except:
         pass
 
     print()
-    print("using model:", model_name)
-    print("hidden channels:", hidden_channels)
+    print("using model:", training_args.model_name)
+    print("hidden channels:", training_args.hidden_channels)
     print("loading data")
-    
+
     data = torch.load(data_path)
     print("loaded:", data.num_nodes, "nodes")
     print("dataset:", data)
 
-    train_loader = get_loader(model_name, data, batch_size)
+    train_loader = get_loader(
+        training_args.model_name,
+        data,
+        training_args.num_neighbors,
+        training_args.batch_size,
+    )
     model = get_model(
-        model_name,
+        training_args.model_name,
         data.num_node_features,
-        hidden_channels,
-        num_layers,
-        use_self_connection,
+        training_args.hidden_channels,
+        training_args.layers,
     )
     plot_file = str(product["plot_file"])
     train_unsupervised_gnn_model(
         model,
         data,
         train_loader,
-        hidden_channels,
-        num_layers,
-        epochs,
-        batch_size,
-        lr,
+        training_args,
         plot_file,
     )
     torch.save(model, str(product["model_path"]))
@@ -202,7 +213,7 @@ def run_gnn_experiment(
     else:
         raw_data = data
 
-    gnn_features = get_gnn_features(model_name, model, raw_data)
+    gnn_features = get_gnn_features(training_args.model_name, model, raw_data)
     gnn_kv = KeyedVectors(gnn_features.shape[1])
     gnn_kv.add(
         dependency_graph_wrapper.inverse_vertex_mapping.str.split(":")

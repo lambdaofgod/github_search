@@ -120,9 +120,10 @@ def prepare_dataset_with_rnn(upstream, product, paperswithcode_path, ulmfit_path
 
 def prepare_dataset_split(upstream, product):
     repos_train = pd.read_csv(str(upstream["prepare_repo_train_test_split"]["train"]))
+    repos_test = pd.read_csv(str(upstream["prepare_repo_train_test_split"]["test"]))
     data_path = str(upstream["gnn.prepare_dataset_with_rnn"])
-    graph_dataset = datasets.load_dataset(data_path)
-
+    graph_dataset = datasets.load_dataset(data_path, ["area", "tasks"])
+    
     train_dataset = datasets.filter_dataset(graph_dataset, repos_train["repo"].values)
     test_dataset = datasets.filter_dataset(graph_dataset, repos_test["repo"].values)
     pickle.dump(train_graph_list, open(str(product["train"]), "wb"))

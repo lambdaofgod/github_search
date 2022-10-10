@@ -112,7 +112,10 @@ class HDF5Dataset(ptg_data.Dataset):
     def _validate_metadata(self):
         key = self.keys[0]
         for meta_key in self.metadata_attrs:
-            self.x[key].attrs[meta_key]
+            try:
+                self.x[key].attrs[meta_key]
+            except:
+                print(key, meta_key)
 
     @classmethod
     def _get_keys(cls, x, hierarchical_keys):

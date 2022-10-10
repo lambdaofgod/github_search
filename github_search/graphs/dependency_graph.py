@@ -12,10 +12,7 @@ from github_search.papers_with_code import repo_metadata
 
 def prepare_dependency_gb(dependency_df):
     dependency_df = dependency_df[dependency_df["source"] != "<ROOT>"]
-    dependency_without_leaf_functions_df = dependency_df[
-        dependency_df["edge_type"] != "function-function"
-    ]
-    return dependency_without_leaf_functions_df.groupby("repo")
+    return dependency_df.groupby("repo")
 
 
 @dataclass
@@ -55,7 +52,7 @@ class DependencyDatasetBuilder:
 
     def clean_repo_df(self, repo_df):
         repo_df["source"] = repo_df["source"].str.replace("\.py$", "")
-        repo_df["repo"] = repo_df["repo"].str.replace("\.py$", "")
+        repo_df["destination"] = repo_df["destination"].str.replace("\.py$", "")
         return repo_df
 
     @classmethod

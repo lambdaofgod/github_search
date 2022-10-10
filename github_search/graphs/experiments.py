@@ -21,8 +21,11 @@ from findkit.feature_extractor import FastAITextFeatureExtractor
 from github_search import logging_setup, paperswithcode_task_areas, utils
 from github_search.graphs import datasets, models
 from github_search.graphs.training_config import (
-    AreaClassificationTrainingConfig, GNNTrainingConfig,
-    MultilabelTaskClassificationTrainingConfig, SimilarityModelTrainingConfig)
+    AreaClassificationTrainingConfig,
+    GNNTrainingConfig,
+    MultilabelTaskClassificationTrainingConfig,
+    SimilarityModelTrainingConfig,
+)
 from mlutil.feature_extraction import embeddings
 from sklearn import base, metrics, preprocessing
 from toolz import partial
@@ -53,13 +56,37 @@ def run_infomax(upstream, product, hidden_channels, n_features):
 
 
 def run_multilabel_classification(upstream, product, hidden_channels, batch_size=32):
-    dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
-    run_classification(upstream, product, dataset, hidden_channels, "tasks", batch_size)
+    dataset = datasets.load_dataset(
+        upstream["gnn.prepare_dataset_with_rnn"], ["area", "least_common_task", "tasks"]
+    )
+    repos_train = pd.read_csv(str(upstream["prepare_repo_train_test_split"]["train"]))[
+        "repo"
+    ]
+    repos_test = pd.read_csv(str(upstream["prepare_repo_train_test_split"]["test"]))[
+        "repo"
+    ]
+    repos_train = [repo for repo in repos_train if repo in dataset.keys]
+    train_dataset = dataset.get_subset_by_keys(repos_train)
+    run_classification(
+        upstream, product, train_dataset, hidden_channels, "tasks", batch_size
+    )
 
 
 def run_area_classification(upstream, product, hidden_channels, batch_size=32):
-    dataset = pickle.load(open(upstream["gnn.prepare_dataset_splits"]["train"], "rb"))
-    run_classification(upstream, product, dataset, hidden_channels, "area", batch_size)
+    dataset = datasets.load_dataset(
+        upstream["gnn.prepare_dataset_with_rnn"], ["area", "least_common_task", "tasks"]
+    )
+    repos_train = pd.read_csv(str(upstream["prepare_repo_train_test_split"]["train"]))[
+        "repo"
+    ]
+    repos_test = pd.read_csv(str(upstream["prepare_repo_train_test_split"]["test"]))[
+        "repo"
+    ]
+    repos_train = [repo for repo in repos_train if repo in dataset.keys]
+    train_dataset = dataset.get_subset_by_keys(repos_train)
+    run_classification(
+        upstream, product, train_dataset, hidden_channels, "area", batch_size
+    )
 
 
 def run_dependency_area_classification(
