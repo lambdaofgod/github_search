@@ -9,7 +9,7 @@ def test_nbow_layer_shapes():
     seq_length = 2
     idf = torch.ones(vocab_size)
     emb = torch.nn.Embedding(vocab_size, dims)
-    nbow_model = models.NBOWLayer(idf, emb)
+    nbow_model = models.NBOWLayer(idf, emb, device="cpu")
 
     idxs = torch.arange(seq_length).reshape(1, -1)
     mask = torch.ones(seq_length).reshape(1, -1)
@@ -24,5 +24,5 @@ def test_nbow_with_encoding_fn():
         return torch.ones((len(tokens), emb_size))
 
     texts = ["foo bar", "foo baz"]
-    nbow = models.NBOW.initialize_with_encoding_fn(texts, encoding_fn)
+    nbow = models.NBOW.initialize_with_encoding_fn(texts, encoding_fn, device="cpu")
     assert nbow.transform(texts).shape == (len(texts), emb_size)
