@@ -1,9 +1,12 @@
 import os
 
 import pandas as pd
-from haystack import retriever as haystack_retriever
-from sentence_transformers import InputExample, SentenceTransformer, evaluation, models
+from haystack.nodes import retriever as haystack_retriever
+from sentence_transformers import (InputExample, SentenceTransformer,
+                                   evaluation, models)
 from toolz import partial
+
+from github_search.ir import evaluator
 
 
 def get_ir_dicts(input_df, query_col="tasks", doc_col="readme"):
@@ -41,7 +44,7 @@ def get_ir_metrics(path):
 
 def get_ir_evaluator(df, query_col="tasks", doc_col="readme"):
     ir_dicts = get_ir_dicts(df.dropna(subset=[query_col, doc_col]), query_col, doc_col)
-    ir_evaluator = evaluation.InformationRetrievalEvaluator(
+    ir_evaluator = evaluator.CustomInformationRetrievalEvaluator(
         **ir_dicts,
         main_score_function="cos_sim",
         map_at_k=[10],

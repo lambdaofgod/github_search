@@ -6,7 +6,7 @@ from mlutil.sentence_rnn import SentenceRNN
 from sentence_transformers import InputExample, SentenceTransformer, evaluation, models
 from typing import Optional
 
-from github_search.ir_utils import get_ir_evaluator
+from github_search.ir.ir_utils import get_ir_evaluator
 from github_search.imports import tokenization
 from dataclasses import dataclass
 
@@ -139,7 +139,9 @@ def build_word_embeddings_sentence_transformer_model(
         pooling_mode_mean_tokens=pooling_mode_mean_tokens,
         pooling_mode_max_tokens=pooling_mode_max_tokens,
     )
-    return SentenceTransformer(modules=[word_embeddings, pooling_model, models.Normalize()])
+    return SentenceTransformer(
+        modules=[word_embeddings, pooling_model, models.Normalize()]
+    )
 
 
 def build_word_embeddings_sentence_transformer_model_from_file(
