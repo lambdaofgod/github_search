@@ -7,15 +7,22 @@ import itertools
 from operator import itemgetter
 
 
+def round_float_dict(d, rounding=3):
+    if type(d) is dict:
+        return {k: round_float_dict(v) for k, v in d.items()}
+    else:
+        return float(round(d, rounding))
+
+
 def iunzip(iterable, n=2):
     n_iterable = list(itertools.tee(iterable, n))
     return [map(itemgetter(i), p) for i, p in enumerate(n_iterable)]
 
 
-def load_paperswithcode_df(path, drop_na_cols=["readme", "tasks"]):
+def load_paperswithcode_df(path, drop_na_cols=["tasks"]):
     df = pd.read_csv(path)
     drop_na_cols = [col for col in drop_na_cols if col in df.columns]
-    df = df.dropna(subset=drop_na_cols)
+    df = df.dropna(subset=drop_na_cols).copy()
     if "tasks" in df.columns:
         df["tasks"] = df["tasks"].apply(ast.literal_eval)
     return df

@@ -10,7 +10,7 @@ QueryType = TypeVar("QueryType")
 
 
 def get_ir_results(
-    ir_evaluator: sentence_transformers.evaluation.InformationRetrievalEvaluator,
+    ir_evaluator: evaluator.CustomInformationRetrievalEvaluator,
     model: evaluator.Encoder[CorpusType],
     corpus_representations: List[CorpusType],
     query_model: Optional[evaluator.Encoder[QueryType]] = None,
