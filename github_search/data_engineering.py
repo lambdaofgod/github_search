@@ -9,6 +9,7 @@ import ast
 import concurrent.futures
 import csv
 import json
+import logging
 import pickle
 
 import fasttext
@@ -19,15 +20,64 @@ import tqdm
 from sklearn import decomposition, feature_extraction
 
 from github_search import (
+    data_utils,
     github_readmes,
     node_embedding_evaluation,
     paperswithcode_tasks,
     parsing_imports,
     python_call_graph,
     python_function_code,
+    utils,
 )
+from github_search.papers_with_code import paperswithcode_tasks
 
 csv.field_size_limit(1000000)
+
+
+logging.basicConfig(level="INFO")
+
+
+def get_task_counts(paperswithcode_path, product):
+    papers_with_tasks_df = utils.load_paperswithcode_df(
+        paperswithcode_path, drop_na_cols=["tasks"]
+    )
+    return (
+        papers_with_tasks_df["tasks"]
+        .explode()
+        .dropna()
+        .value_counts()
+        .rename("task_count")
+        .reset_index()
+        .rename({"index": "task"}, axis=1)
+        .to_csv(str(product), index=False)
+    )
+
+
+def prepare_task_train_test_split(upstream, test_size, product):
+    area_grouped_tasks = pd.read_csv(str(upstream["prepare_area_grouped_tasks"]))
+    task_counts = pd.read_csv(str(upstream["get_task_counts"]))
+    tasks_train, tasks_test = data_utils.RepoTaskData.split_tasks(
+        area_grouped_tasks, task_counts, test_size=test_size
+    )
+    tasks_train.to_csv(product["train"], index=None)
+    tasks_test.to_csv(product["test"], index=None)
+
+
+def prepare_repo_train_test_split(upstream, paperswithcode_with_tasks_path, product):
+    papers_with_tasks_df = utils.load_paperswithcode_df(
+        paperswithcode_with_tasks_path, drop_na_cols=["tasks"]
+    )
+    test_tasks = set(
+        pd.read_csv(str(upstream["prepare_task_train_test_split"]["test"])).iloc[:, 0]
+    )
+    contains_test_tasks = papers_with_tasks_df["tasks"].apply(
+        lambda tasks: all(task in test_tasks for task in tasks)
+    )
+
+    test_repos = papers_with_tasks_df[contains_test_tasks]
+    train_repos = papers_with_tasks_df[~contains_test_tasks]
+    test_repos.to_csv(product["test"], index=False)
+    train_repos.to_csv(product["train"], index=False)
 
 
 def get_modules_string(modules):
@@ -91,24 +141,29 @@ def prepare_module_corpus(python_file_paths, product):
 
 
 def prepare_dependency_records(
-    python_file_paths, sample_files_per_repo, add_filename_repo_label, product
+    python_file_path,
+    sample_files_per_repo,
+    add_repo_col,
+    use_basename,
+    excluded_prefix,
+    product,
 ):
     """
     prepare python dependency graph records (function calls, files in repo) csv
     """
-    python_files_dfs = (
-        pd.read_feather(path).dropna(subset=["repo_name", "content"])
-        for path in python_file_paths
+    python_files_df = pd.read_feather(python_file_path).dropna(
+        subset=["repo_name", "content"]
     )
-    repo_dependency_fetcher = python_call_graph.RepoDependencyGraphFetcher()
-    for df in tqdm.tqdm(python_files_dfs, total=len(python_file_paths)):
-        sample_files_df = python_call_graph.get_sample_files_df(
-            df, n_files=sample_files_per_repo
-        )
-        dependency_records_df = repo_dependency_fetcher.prepare_dependency_records(
-            sample_files_df, add_filename_repo_label=add_filename_repo_label
-        )
-        dependency_records_df.dropna().to_csv(str(product), index=False, mode="a")
+    contains_excluded_prefix = python_files_df["path"].str.startswith(excluded_prefix)
+    python_files_df = python_files_df[~contains_excluded_prefix]
+    logging.info(f"found {len(python_files_df)}")
+    dependency_records_df = python_call_graph.get_dependency_records_df(
+        python_files_df,
+        sample_files_per_repo,
+        add_repo_col,
+        use_basename,
+    )
+    dependency_records_df.reset_index().dropna().to_feather(str(product))
 
 
 def postprocess_dependency_records(
@@ -117,7 +172,7 @@ def postprocess_dependency_records(
     """
     filter out ROOT records, add
     """
-    dependency_records_df = pd.read_csv(upstream["prepare_dependency_records"])
+    dependency_records_df = pd.read_feather(upstream["prepare_dependency_records"])
     non_root_dependency_records_df = dependency_records_df[
         dependency_records_df["source"] != "<ROOT>"
     ]
@@ -154,7 +209,9 @@ def postprocess_dependency_records(
         non_root_dependency_records_df = pd.concat(
             [shared_task_records_df, non_root_dependency_records_df]
         )
-    non_root_dependency_records_df.dropna().to_csv(str(product), index=False)
+    non_root_dependency_records_df.reset_index(drop=True).dropna().to_feather(
+        str(product)
+    )
 
 
 def train_python_token_fasttext(python_file_path, epoch, dim, n_cores, product):
@@ -176,12 +233,6 @@ def make_readmes(upstream, paperswithcode_with_tasks_path, product, max_workers)
     readmes = github_readmes.get_readmes(df, max_workers)
     df["readme"] = readmes
     df.to_csv(product)
-
-
-def make_igraph(upstream, product):
-    python_files_df = pd.read_csv(upstream["prepare_dependency_records"]).dropna()
-    graph = node_embedding_evaluation.make_igraph(python_files_df)
-    pickle.dump(graph, open(str(product), "wb"))
 
 
 def prepare_function_code_df(product, max_depth, python_file_path):

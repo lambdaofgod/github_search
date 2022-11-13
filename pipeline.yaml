@@ -13,14 +13,39 @@ tasks:
   # download area grouped tasks
   - source: github_search.papers_with_code.paperswithcode_task_areas.prepare_area_grouped_tasks
     product: "data/paperswithcode_tasks.csv"
+  
+  - source: github_search.papers_with_code.paperswithcode_tasks.prepare_paperswithcode_df
+    params:
+      paperswithcode_filename: "data/links-between-papers-and-code.json.gz"
+      papers_filename: "data/papers-with-abstracts.json.gz"
+    product:
+      paperswithcode_path: "{{paperswithcode_path}}"
+
+  # get_task_counts
+  - source: github_search.data_engineering.get_task_counts
+    params:
+      paperswithcode_path: "{{paperswithcode_path}}"
+    product:
+      "output/task_counts.csv"
+
+  - source: github_search.papers_with_code.paperswithcode_tasks.prepare_filtered_paperswithcode_df
+    upstream:
+      - prepare_paperswithcode_df
+      - get_task_counts
+    params:
+      min_task_count: 10
+    product:
+      paperswithcode_path: "data/filtered_papers_with_tasks.csv"
 
   # train-test split for tasks
   # tasks are stratified by paperswithcode area
   - source: github_search.data_engineering.prepare_task_train_test_split
     upstream:
       - prepare_area_grouped_tasks
+      - get_task_counts
+      - prepare_paperswithcode_df
     params:
-     test_size: 0.1
+     test_size: 0.4
     product:
       train: "output/tasks_train.csv"
       test: "output/tasks_test.csv"
@@ -170,6 +195,7 @@ tasks:
       add_repo_col: True
       use_basename: False
       python_file_path: "{{python_files_path}}"
+      excluded_prefix: "venv"
     product: "output/dependency_records.feather"
 
   # additional information for dependency records
@@ -181,6 +207,7 @@ tasks:
       - prepare_paperswithcode_with_imports_df
     params:
       use_additional_records: False
+      description_mode: False
     product: "output/processed_dependency_records.feather"
 
   #
@@ -260,7 +287,7 @@ tasks:
   - source: github_search.graphs.data_preparation.prepare_dataset_with_rnn
     name: gnn.prepare_dataset_with_rnn
     params:
-      ulmfit_path: "output/models/learn_750k.pkl"
+      ulmfit_path: "output/models/learn_bigger_data_longer.pkl"
       paperswithcode_path: "{{paperswithcode_path}}"
     upstream:
       - prepare_area_grouped_tasks
@@ -343,19 +370,46 @@ tasks:
       model_path: "output/models/similarity_gnn.pth"
       plot_path: "output/graph_nn_similarity_training_losses.png"
 
+  # prepare data for GraphSAGE model
+  - source: github_search.graph_sage_data.make_graphsage_data
+    name: gnn.make_graphsage_data
+    upstream:
+      - dependency_graph.prepare_records
+    params:
+      ulmfit_path: "{{ulmfit_path}}"
+    product: "output/graphsage_input_embeddings.pth"
   # train GraphSAGE model
   - source: github_search.pytorch_geometric_training.run_gnn_experiment
     name: gnn.run_unsupervised_graph_sage
     upstream:
+      - gnn.make_graphsage_data
       - train_python_token_fasttext
     params:
       params: "{{gnn.unsupervised_params}}"
-      data_path: "notebooks/tmp/graph.pth"
-      lr: 0.001
+      n_save_steps: 10000
+      lr: 0.01
     product:
       plot_file: "output/loss_{{gnn.unsupervised_params.model_name}}_fasttext_dim{{fasttext.dimension}}_epochs{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.png"
       gnn_token_embeddings: "output/{{gnn.unsupervised_params.model_name}}_embeddings_fasttext_dim{fasttext.dimension}}_epochs{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.bin"
-      model_path: "output/{{gnn.unsupervised_params.model_name}}_model_{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.pth"
+      model_path: "output/models/graphsage/{{gnn.unsupervised_params.model_name}}_model_{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.pth"
+
+  # neural bag of words
+
+  - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data
+    name: nbow.prepare_dependency_data
+    upstream:
+      - dependency_graph.prepare_records
+    product:
+      raw_text: "output/dependency_records_as_text_raw.csv"
+      text: "output/dependency_records_as_text.feather"
+
+  - source: github_search.neural_bag_of_words.sentencepiece.create_sentencepiece_model
+    name: nbow.prepare_sentencepiece_model
+    params:
+      vocab_size: 50000
+    upstream:
+      nbow.prepare_dependency_data
+    product: "output/sentencepiece/sp.model"
 
   # task embeddings
   # prepares data for task_embeddings_app streamlit app
