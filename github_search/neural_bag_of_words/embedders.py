@@ -8,35 +8,42 @@ from github_search.neural_bag_of_words.data import (
     NBOWNumericalizer,
     pack_sequences_as_tensors,
 )
+from mlutil import sentence_transformers_utils
+import sentence_transformers
+
+from typing import List, Callable
 
 
-@dataclass
-class NBOWEmbedder:
+def make_sentence_transformer_nbow_model(
+    nbow_layer,
+    vocab: List[str],
+    tokenize_fn: Callable[[str], List[str]],
+    token_weights: np.ndarray,
+    pooling_mean=True,
+    pooling_max=False,
+    max_seq_length: int = 1000 
+) -> sentence_transformers.SentenceTransformer:
+    """
+    creates a model that wraps NBOW that conforms to sentence transformer interface
+    """
+    tokenizer = sentence_transformers_utils.CustomTokenizer(
+        vocab, tokenize_fn=tokenize_fn
+    )
 
-    nbow_layer: NBOWLayer
-    numericalizer: NBOWNumericalizer
-    max_len: int = field(default=200)
+    token_weights_dict = {word: weight for (word, weight) in zip(vocab, token_weights)}
+    weights_layer = sentence_transformers.models.WordWeights(vocab, token_weights_dict)
 
-    def encode(
-        self, texts, batch_size=32, show_progress_bar=False, convert_to_tensor=True
-    ):
-        nums = self.numericalizer.numericalize_texts(texts)
-        idx_iter = tqdm.tqdm(range(0, len(nums), batch_size))
-        if show_progress_bar:
-            idx_iter = tqdm.tqdm(idx_iter)
+    embeddings_layer = sentence_transformers.models.WordEmbeddings(
+        tokenizer, nbow_layer.embedding.weight, max_seq_length=max_seq_length
+    )
+    modules = [
+        embeddings_layer,
+        weights_layer,
+        sentence_transformers.models.Pooling(
+            embeddings_layer.get_word_embedding_dimension(),
+            pooling_mode_mean_tokens=pooling_mean,
+            pooling_mode_max_tokens=pooling_max,
+        ),
+    ]
 
-        num_tensors_iter = (
-            pack_sequences_as_tensors(
-                nums[i : i + batch_size], self.numericalizer.get_padding_idx()
-            )[:, : self.max_len]
-            for i in idx_iter
-        )
-        with torch.no_grad():
-            embeddings = [
-                self.nbow_layer(b.to(self.nbow_layer.embedding.weight.device))
-                .cpu()
-                for b in num_tensors_iter
-            ]
-        if convert_to_tensor:
-            return torch.row_stack(embeddings)
-        return np.row_stack([t.numpy() for t in embeddings])
+    return sentence_transformers.SentenceTransformer(modules=modules)
