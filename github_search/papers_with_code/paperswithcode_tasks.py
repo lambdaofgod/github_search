@@ -44,7 +44,7 @@ def get_paperswithcode_dfs(
     return paper_links_df, paper_df
 
 
-def prepare_raw_paperswithcode_df(paperswithcode_filename, papers_filename, product):
+def prepare_paperswithcode_df(paperswithcode_filename, papers_filename, product):
     paper_link_df, paper_df = get_paperswithcode_dfs(
         paperswithcode_filename, papers_filename
     )
@@ -57,23 +57,29 @@ def prepare_raw_paperswithcode_df(paperswithcode_filename, papers_filename, prod
 
 
 def filter_small_tasks(df, task_counts, min_count):
-    return df.assign(
+    filtered_paperswithcode_df = df.assign(
         tasks=df["tasks"].apply(
-            lambda tasks: [t for t in tasks if task_counts.loc[t] >= min_count]
+            lambda tasks: [
+                t
+                for t in tasks
+                if t in task_counts.index and task_counts.loc[t].min() >= min_count
+            ]
         )
     )
+    return filtered_paperswithcode_df[
+        filtered_paperswithcode_df["tasks"].apply(len) > 0
+    ]
 
 
-def prepare_paperswithcode_df(upstream, min_task_count, product):
-    raw_paperswithcode_df = utils.load_paperswithcode_df(str(upstream["prepare_raw_paperswithcode_df"]["paperswithcode_path"]))
+def prepare_filtered_paperswithcode_df(upstream, min_task_count, product):
+    raw_paperswithcode_df = utils.load_paperswithcode_df(
+        str(upstream["prepare_raw_paperswithcode_df"]["paperswithcode_path"])
+    )
     task_counts = pd.read_csv(str(upstream["get_task_counts"])).set_index("task")
     filtered_paperswithcode_df = filter_small_tasks(
         raw_paperswithcode_df, task_counts, min_task_count
     )
-    paperswithcode_df = filtered_paperswithcode_df[
-        filtered_paperswithcode_df["tasks"].apply(len) > 0
-    ]
-    paperswithcode_df.to_csv(str(product["paperswithcode_path"]))
+    filtered_paperswithcode_df.to_csv(str(product["paperswithcode_path"]))
 
 
 def get_papers_with_repo_df(all_papers_df, paperswithcode_df, repo_names):
