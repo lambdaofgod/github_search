@@ -395,20 +395,29 @@ tasks:
 
   # neural bag of words
 
-  - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data
-    name: nbow.prepare_dependency_data
+  - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data_corpus
+    name: nbow.prepare_dependency_data_corpus
     upstream:
       - dependency_graph.prepare_records
     product:
-      raw_text: "output/dependency_records_as_text_raw.csv"
-      text: "output/dependency_records_as_text.feather"
+      raw_text: "output/dependency_records_corpus_raw.csv"
+      text: "output/dependency_records_corpus.parquet"
+
+  - source: github_search.neural_bag_of_words.prepare_data.prepare_nbow_dataset
+    name: nbow.prepare_dataset
+    upstream:
+      - nbow.prepare_dependency_data_corpus
+      - prepare_repo_train_test_split
+    product:
+      train: "output/nbow_data_train.parquet"
+      test: "output/nbow_data_test.parquet"
 
   - source: github_search.neural_bag_of_words.sentencepiece.create_sentencepiece_model
     name: nbow.prepare_sentencepiece_model
     params:
       vocab_size: 50000
     upstream:
-      nbow.prepare_dependency_data
+      nbow.prepare_dependency_data_corpus
     product: "output/sentencepiece/sp.model"
 
   # task embeddings
