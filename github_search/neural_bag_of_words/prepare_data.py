@@ -18,12 +18,16 @@ def get_dependency_texts(dependency_records_df):
     dependency_records_df = dependency_records_df[
         dependency_records_df["source"] != "<ROOT>"
     ]
-    return dependency_records_df.groupby("repo")["destination"].agg(" ".join).reset_index()
+    return (
+        dependency_records_df.groupby("repo")["destination"].agg(" ".join).reset_index()
+    )
 
 
-def get_dependency_nbow_dataset(paperswithcode_df, df_dependency_corpus):
+def get_dependency_nbow_dataset(
+    paperswithcode_df, df_dependency_corpus, additional_columns
+):
     dep_texts_with_tasks_df = (
-        paperswithcode_df[["repo", "tasks"]]
+        paperswithcode_df[["repo", "tasks"] + additional_columns]
         .merge(df_dependency_corpus, on="repo")
         .dropna()
     )
@@ -41,7 +45,7 @@ def prepare_dependency_data_corpus(upstream, product):
     )
 
 
-def prepare_nbow_dataset(upstream, product):
+def prepare_nbow_dataset(upstream, product, additional_columns):
     df_dependency_corpus = pd.read_parquet(
         str(upstream["nbow.prepare_dependency_data_corpus"]["text"])
     )
@@ -49,5 +53,7 @@ def prepare_nbow_dataset(upstream, product):
         df_paperswithcode = pd.read_csv(
             str(upstream["prepare_repo_train_test_split"][split_name])
         )
-        df_corpus = get_dependency_nbow_dataset(df_paperswithcode, df_dependency_corpus)
+        df_corpus = get_dependency_nbow_dataset(
+            df_paperswithcode, df_dependency_corpus, additional_columns
+        )
         df_corpus.to_parquet(str(product[split_name]))

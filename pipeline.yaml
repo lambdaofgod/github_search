@@ -408,9 +408,29 @@ tasks:
     upstream:
       - nbow.prepare_dependency_data_corpus
       - prepare_repo_train_test_split
+    params:
+      # columns that will be used in addition to 
+      additional_columns: "{{nbow.additional_columns}}" 
     product:
       train: "output/nbow_data_train.parquet"
       test: "output/nbow_data_test.parquet"
+
+  - source: github_search/neural_bag_of_words/nbow_training.py
+    name: nbow.train
+    upstream:
+      - nbow.prepare_dataset
+      - prepare_repo_train_test_split
+      - train_python_token_fasttext
+    params:
+      # columns that will be used in addition to
+      neptune_config_path: "{{neptune_config_path}}"
+      epochs: 5
+    product:
+      document_nbow: "output/models/document_nbow"
+      query_nbow: "output/models/query_nbow"
+      nb: "notebooks/NBOW_training.ipynb"
+
+
 
   - source: github_search.neural_bag_of_words.sentencepiece.create_sentencepiece_model
     name: nbow.prepare_sentencepiece_model

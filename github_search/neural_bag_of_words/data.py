@@ -23,7 +23,7 @@ def tokenize_python_code(code_text):
     toks = code_text.split()
     return [
         tok
-        for raw_tok in code_text.split()
+        for raw_tok in code_text.replace("/", " ").replace("-", "_").split()
         for tok in python_tokens.tokenize_python(raw_tok)
     ]
 
@@ -145,7 +145,7 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
             counts[nums] += 1
         return counts
 
-    def get_pair_data_loader(self, batch_size: int = 64):
+    def get_pair_data_loader(self, batch_size: int = 64, shuffle: bool = True):
         return torch.utils.data.DataLoader(
             self,
             collate_fn=partial(
@@ -154,5 +154,5 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
                 padding_value_document=self.document_numericalizer.get_padding_idx(),
             ),
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=shuffle,
         )
