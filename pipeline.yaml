@@ -58,6 +58,13 @@ tasks:
     upstream: prepare_paperswithcode_with_imports_df
     product: "output/papers_with_readmes.csv"
 
+  # THE STACK
+  - source: github_search.the_stack.prepare_the_stack_files
+    params:
+      paperswithcode_path: "data/paperswithcode_with_tasks.csv"
+      delete_temporary_files: True
+    product: "data/the_stack_paperswithcode_repos"
+
   # prepare data for similarity learning from paperswithcode
   - source: github_search.sentence_embeddings.datasets.prepare_paperswithcode_data
     name: sentence_embeddings.prepare_paperswithcode_data
@@ -423,11 +430,12 @@ tasks:
       - train_python_token_fasttext
     params:
       # columns that will be used in addition to
+      max_seq_length: 2000
       neptune_config_path: "{{neptune_config_path}}"
-      epochs: 5
+      epochs: "{{nbow.epochs}}" 
     product:
-      document_nbow: "output/models/document_nbow"
-      query_nbow: "output/models/query_nbow"
+      document_nbow: "output/models/document_nbow{{nbow.epochs}}"
+      query_nbow: "output/models/query_nbow{{nbow.epochs}}"
       nb: "notebooks/NBOW_training.ipynb"
 
 
