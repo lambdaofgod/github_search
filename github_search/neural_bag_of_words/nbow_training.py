@@ -25,8 +25,7 @@ from github_search.neural_bag_of_words import embedders
 from github_search.neural_bag_of_words import utils as nbow_utils
 from github_search.neural_bag_of_words.data import *
 from github_search.neural_bag_of_words.models import *
-from github_search.neural_bag_of_words.models import (NBOWLayer,
-                                                      PairwiseNBOWModule)
+from github_search.neural_bag_of_words.models import NBOWLayer, PairwiseNBOWModule
 from github_search.neural_bag_of_words.training import *
 from github_search.papers_with_code import paperswithcode_tasks
 from pytorch_lightning import loggers
@@ -51,6 +50,7 @@ params = None
 
 # %%
 epochs = epochs
+max_seq_length = max_seq_length
 paperswithcode_df = utils.load_paperswithcode_df(
     upstream["prepare_repo_train_test_split"]["train"]
 )
@@ -61,7 +61,10 @@ neptune_args = json.loads(open(neptune_config_path, "r").read())
 
 paperswithcode_df = utils.load_paperswithcode_df("data/paperswithcode_with_tasks.csv")
 query_corpus = pd.concat(
-    [paperswithcode_df["title"], paperswithcode_df["tasks"].apply(" ".join)]
+    [
+        paperswithcode_df["titles"].apply(" ".join),
+        paperswithcode_df["tasks"].apply(" ".join),
+    ]
 ).str.lower()
 
 
@@ -82,10 +85,9 @@ len(query_num.vocab)
 ) = model_selection.train_test_split(df_dep_texts, test_size=0.1, random_state=0)
 
 
-train_dep_texts_with_tasks_df.shape
-train_dset = QueryDocumentDataset(
-    train_dep_texts_with_tasks_df["tasks"].apply(" ".join).to_list(),
-    train_dep_texts_with_tasks_df["dependencies"].to_list(),
+
+train_dset = QueryDocumentDataset.prepare_from_dataframe(
+    train_dep_texts_with_tasks_df, ["tasks", "titles"], "dependencies",
     query_numericalizer=query_num,
 )
 val_dset = QueryDocumentDataset(
@@ -152,6 +154,7 @@ query_embedder = embedders.make_sentence_transformer_nbow_model(
     dset.query_numericalizer.vocab.vocab.itos_,
     dset.query_numericalizer.tokenizer,
     nbow_query.token_weights.cpu().numpy().tolist(),
+    max_seq_length=max_seq_length,
 )
 
 
@@ -160,6 +163,7 @@ document_embedder = embedders.make_sentence_transformer_nbow_model(
     dset.document_numericalizer.vocab.vocab.itos_,
     dset.document_numericalizer.tokenizer,
     nbow_document.token_weights.cpu().numpy().tolist(),
+    max_seq_length=max_seq_length,
 )
 
 query_embedder.save(product["query_nbow"])

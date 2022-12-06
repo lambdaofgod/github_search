@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Callable, List
 
+import pandas as pd
 import numpy as np
 import torch
 import torch.utils
@@ -155,4 +156,30 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
             ),
             batch_size=batch_size,
             shuffle=shuffle,
+        )
+
+    @classmethod
+    def prepare_from_dataframe(
+        cls,
+        df,
+        query_cols,
+        doc_col,
+        document_tokenize=python_tokens.tokenize_python_code,
+        query_numericalizer=None,
+        document_numericalizer=None,
+        min_query_token_freq=1,
+        min_document_token_freq=5,
+    ):
+        queries = pd.concat(
+            [df[query_col].apply(" ".join) for query_col in query_cols]
+        ).to_list()
+        docs = pd.concat([df[doc_col]] * len(query_cols)).to_list()
+        return QueryDocumentDataset(
+            queries,
+            docs,
+            document_tokenize,
+            query_numericalizer,
+            document_numericalizer,
+            min_document_token_freq,
+            min_document_token_freq,
         )

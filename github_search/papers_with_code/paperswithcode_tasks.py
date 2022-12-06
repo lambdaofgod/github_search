@@ -56,30 +56,58 @@ def prepare_paperswithcode_df(paperswithcode_filename, papers_filename, product)
     paperswithcode_df.to_csv(str(product["paperswithcode_path"]), index=False)
 
 
-def filter_small_tasks(df, task_counts, min_count):
-    filtered_paperswithcode_df = df.assign(
-        tasks=df["tasks"].apply(
-            lambda tasks: [
-                t
-                for t in tasks
-                if t in task_counts.index and task_counts.loc[t].min() >= min_count
-            ]
+class PapersWithCodeMetadataAggregator:
+    @classmethod
+    def get_aggregated_df(cls, gp_df):
+        repo_name = gp_df.index[0]  # .iloc[0]
+        row_df = pd.DataFrame({"repo": [repo_name]})
+        for col in ["paper_url", "paper_title", "title", "arxiv_id", "authors"]:
+            new_col_name = (col + "s").replace("ss", "s")
+            row_df[new_col_name] = [gp_df[col].to_list()]
+        row_df["tasks"] = [
+            list(set([task for tasks in gp_df["tasks"].to_list() for task in tasks]))
+        ]
+        del row_df["repo"]
+        return row_df
+
+    @classmethod
+    def filter_small_tasks(cls, df, task_counts, min_count):
+        filtered_paperswithcode_df = df.assign(
+            tasks=df["tasks"].apply(
+                lambda tasks: [
+                    t
+                    for t in tasks
+                    if t in task_counts.index and task_counts.loc[t].min() >= min_count
+                ]
+            )
         )
-    )
-    return filtered_paperswithcode_df[
-        filtered_paperswithcode_df["tasks"].apply(len) > 0
-    ]
+        return filtered_paperswithcode_df[
+            filtered_paperswithcode_df["tasks"].apply(len) > 0
+        ]
+
+    @classmethod
+    def merge_repos(cls, paperswithcode_df):
+        pwc_df = paperswithcode_df.groupby("repo").apply(cls.get_aggregated_df)
+        pwc_df.index = pwc_df.index.get_level_values("repo")
+        pwc_df = pwc_df.reset_index(drop=False)
+        return pwc_df
 
 
 def prepare_filtered_paperswithcode_df(upstream, min_task_count, product):
     raw_paperswithcode_df = utils.load_paperswithcode_df(
-        str(upstream["prepare_raw_paperswithcode_df"]["paperswithcode_path"])
+        str(upstream["prepare_paperswithcode_df"]["paperswithcode_path"])
     )
-    task_counts = pd.read_csv(str(upstream["get_task_counts"])).set_index("task")
-    filtered_paperswithcode_df = filter_small_tasks(
-        raw_paperswithcode_df, task_counts, min_task_count
+    deduplicated_paperswithcode_df = PapersWithCodeMetadataAggregator.merge_repos(
+        raw_paperswithcode_df
     )
-    filtered_paperswithcode_df.to_csv(str(product["paperswithcode_path"]))
+    task_counts = deduplicated_paperswithcode_df["tasks"].explode().value_counts()
+    filtered_paperswithcode_df = PapersWithCodeMetadataAggregator.filter_small_tasks(
+        deduplicated_paperswithcode_df, task_counts, min_task_count
+    )
+    filtered_paperswithcode_df.to_csv(str(product["paperswithcode_path"]), index=False)
+    task_counts = pd.DataFrame(task_counts).reset_index()
+    task_counts.columns = ["task", "task_count"]
+    task_counts.to_csv(str(product["task_counts_path"]))
 
 
 def get_papers_with_repo_df(all_papers_df, paperswithcode_df, repo_names):

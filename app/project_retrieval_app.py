@@ -13,6 +13,7 @@ from functools import partial
 import sentence_transformers
 import fire
 from typing import List, Dict
+import password
 
 
 def truncate_description(description, length=50):
@@ -84,10 +85,10 @@ def setup_retrieval_pipeline(
     query_encoder_path, document_encoder_path, documents, metadata
 ):
     document_encoder = feature_extractor.SentenceEncoderFeatureExtractor(
-        sentence_transformers.SentenceTransformer(document_encoder_path)
+        sentence_transformers.SentenceTransformer(document_encoder_path, device="cpu")
     )
     query_encoder = feature_extractor.SentenceEncoderFeatureExtractor(
-        sentence_transformers.SentenceTransformer(query_encoder_path)
+        sentence_transformers.SentenceTransformer(query_encoder_path, device="cpu")
     )
     retrieval_pipe = retrieval_pipeline.RetrievalPipelineFactory(
         feature_extractor=document_encoder,
@@ -97,7 +98,7 @@ def setup_retrieval_pipeline(
     return retrieval_pipe.build(documents, metadata=metadata)
 
 
-def main(query_encoder_path, document_encoder_path, data_path):
+def main_app(query_encoder_path, document_encoder_path, data_path):
     print("loading data")
     test_df = pd.read_csv(data_path)
 
@@ -133,6 +134,11 @@ def main(query_encoder_path, document_encoder_path, data_path):
         repos_by_query,
         additional_shown_cols,
     )
+
+
+def main(query_encoder_path, document_encoder_path, data_path):
+    if password.check_password():
+        main_app(query_encoder_path, document_encoder_path, data_path)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,8 @@ import tqdm
 
 from github_search import utils
 
+logging.basicConfig(level="INFO")
+
 
 @dataclass
 class TheStackPapersWithcodeDownloader:
@@ -34,16 +36,19 @@ class TheStackPapersWithcodeDownloader:
 
     def prepare_file(self, file_idx):
         filename = self.get_filename(file_idx)
-        out_filepath = "filtered_" + os.path.basename(filename)
+        out_filepath = os.path.join(
+            self.save_dir, "filtered_" + os.path.basename(filename)
+        )
         if os.path.exists(out_filepath):
-            logging.info("file already exists")
+            logging.info(f"file {out_filepath} already exists, skipping")
             return
+        logging.info(f"not found {out_filepath}")
         filepath = huggingface_hub.hf_hub_download(
             repo_id="bigcode/the-stack", filename=filename, repo_type="dataset"
         )
         ith_stack_df = pd.read_parquet(filepath)
         df = self.filter_df(self.repos, ith_stack_df)
-        df.to_parquet(os.path.join(self.save_dir, out_filepath))
+        df.to_parquet(out_filepath)
         if self.delete_temporary_files:
             os.remove(filepath)
 

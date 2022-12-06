@@ -19,31 +19,23 @@ tasks:
       paperswithcode_filename: "data/links-between-papers-and-code.json.gz"
       papers_filename: "data/papers-with-abstracts.json.gz"
     product:
-      paperswithcode_path: "{{paperswithcode_path}}"
-
-  # get_task_counts
-  - source: github_search.data_engineering.get_task_counts
-    params:
-      paperswithcode_path: "{{paperswithcode_path}}"
-    product:
-      "output/task_counts.csv"
+      paperswithcode_path: "output/raw_paperswithcode_df.csv"
 
   - source: github_search.papers_with_code.paperswithcode_tasks.prepare_filtered_paperswithcode_df
     upstream:
       - prepare_paperswithcode_df
-      - get_task_counts
     params:
       min_task_count: 10
     product:
-      paperswithcode_path: "data/filtered_papers_with_tasks.csv"
+      paperswithcode_path: "{{paperswithcode_path}}"
+      task_counts_path: "output/task_counts.csv"
 
   # train-test split for tasks
   # tasks are stratified by paperswithcode area
   - source: github_search.data_engineering.prepare_task_train_test_split
     upstream:
       - prepare_area_grouped_tasks
-      - get_task_counts
-      - prepare_paperswithcode_df
+      - prepare_filtered_paperswithcode_df
     params:
      test_size: 0.4
     product:
@@ -60,11 +52,19 @@ tasks:
 
   # THE STACK
   - source: github_search.the_stack.prepare_the_stack_files
+    name:
+      the_stack.prepare_files
     params:
       paperswithcode_path: "data/paperswithcode_with_tasks.csv"
       delete_temporary_files: True
     product: "data/the_stack_paperswithcode_repos"
 
+  - source: github_search.the_stack.prepare_the_stack_df
+    name:
+      the_stack.prepare_df
+    upstream:
+      - the_stack.prepare_files
+    product: "output/the_stack_paperswithcode_files.parquet"
   # prepare data for similarity learning from paperswithcode
   - source: github_search.sentence_embeddings.datasets.prepare_paperswithcode_data
     name: sentence_embeddings.prepare_paperswithcode_data
@@ -437,7 +437,6 @@ tasks:
       document_nbow: "output/models/document_nbow{{nbow.epochs}}"
       query_nbow: "output/models/query_nbow{{nbow.epochs}}"
       nb: "notebooks/NBOW_training.ipynb"
-
 
 
   - source: github_search.neural_bag_of_words.sentencepiece.create_sentencepiece_model
