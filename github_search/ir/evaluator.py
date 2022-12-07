@@ -2,14 +2,13 @@ from sentence_transformers.evaluation import SentenceEvaluator
 import torch
 from torch import Tensor
 import logging
-from tqdm import tqdm, trange
+from tqdm import trange
 from sentence_transformers.util import cos_sim, dot_score
 import os
 import numpy as np
-from typing import List, Tuple, Dict, Set, Callable
-from github_search import utils
-from github_search.ir import ir_utils
-import sentence_transformers
+from typing import Callable, Dict, List, Set
+
+from github_search.ir.evaluator_numba_helpers import *
 
 from typing import TypeVar, List, Optional
 import torch
@@ -181,7 +180,7 @@ class CustomInformationRetrievalEvaluator(SentenceEvaluator):
         else:
             return scores[self.main_score_function]["map@k"][max(self.map_at_k)]
 
-    def compute_metrices(
+    def get_queries_result_lists(
         self,
         encoder: Encoder,
         corpus_encoder: Optional[Encoder] = None,
@@ -259,7 +258,17 @@ class CustomInformationRetrievalEvaluator(SentenceEvaluator):
                         queries_result_list[name][query_itr].append(
                             {"corpus_id": corpus_id, "score": score}
                         )
+        return queries_result_list
 
+    def compute_metrices(
+        self,
+        encoder: Encoder,
+        corpus_encoder: Optional[Encoder] = None,
+        corpus_embeddings: Tensor = None,
+    ) -> Dict[str, float]:
+        queries_result_list = self.get_queries_result_lists(
+            encoder, corpus_encoder, corpus_embeddings
+        )
         logger.info("Queries: {}".format(len(self.queries)))
         logger.info("Corpus: {}\n".format(len(self.corpus)))
 
@@ -275,6 +284,14 @@ class CustomInformationRetrievalEvaluator(SentenceEvaluator):
             self.output_scores(scores[name])
 
         return scores
+
+    def numba_accuracy(k_vals, top_hit_corpus_ids, query_relevant_docs):
+        acc_counter = 0
+        for k_val in k_vals:
+            for hit_corpus_id in top_hits_corpus_ids:
+                if hit in query_relevant_docs:
+                    return 1
+        return 0
 
     def compute_metrics(self, queries_result_list: List[object]):
         # Init score computation values
@@ -296,28 +313,26 @@ class CustomInformationRetrievalEvaluator(SentenceEvaluator):
             query_relevant_docs = self.relevant_docs[query_id]
 
             # Accuracy@k - We count the result correct, if at least one relevant doc is accross the top-k documents
+            np_relevant_docs = np.array(list(query_relevant_docs))
             for k_val in self.accuracy_at_k:
-                for hit in top_hits[0:k_val]:
-                    if hit["corpus_id"] in query_relevant_docs:
-                        num_hits_at_k[k_val] += 1
-                        break
+                retrieved_corpus_ids = np.array([hit["corpus_id"] for hit in top_hits[0:k_val]])
+                # for hit in top_hits[0:k_val]:
+                #    if hit["corpus_id"] in query_relevant_docs:
+                #        num_hits_at_k[k_val] += 1
+                #        break
+                num_hits_at_k[k_val] += fast_count(retrieved_corpus_ids, np_relevant_docs) > 0
 
-            # Precision and Recall@k
-            for k_val in self.precision_recall_at_k:
-                num_correct = 0
-                for hit in top_hits[0:k_val]:
-                    if hit["corpus_id"] in query_relevant_docs:
-                        num_correct += 1
+                # Precision and Recall@k
+                num_correct = fast_count(retrieved_corpus_ids, np_relevant_docs)
 
                 precisions_at_k[k_val].append(num_correct / k_val)
                 recall_at_k[k_val].append(num_correct / len(query_relevant_docs))
 
             # MRR@k
             for k_val in self.mrr_at_k:
-                for rank, hit in enumerate(top_hits[0:k_val]):
-                    if hit["corpus_id"] in query_relevant_docs:
-                        MRR[k_val] += 1.0 / (rank + 1)
-                        break
+                retrieved_corpus_ids = np.array([hit["corpus_id"] for hit in top_hits[0:k_val]])
+                mrr = compute_fast_mrr(retrieved_corpus_ids, np_relevant_docs).sum()
+                MRR[k_val] += mrr
 
             # NDCG@k
             for k_val in self.ndcg_at_k:
