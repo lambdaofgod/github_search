@@ -33,6 +33,8 @@ from quaterion.loss import MultipleNegativesRankingLoss
 from sklearn import feature_extraction, model_selection
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+from mlutil.text import code_tokenization
+from nltk import tokenize
 
 # %%
 # probably for deletion
@@ -72,12 +74,8 @@ plt.style.use("dark_background")
 
 
 query_num = NBOWNumericalizer.build_from_texts(
-    query_corpus.dropna(), tokenizer=split_tokenizer
+    query_corpus.dropna(), tokenizer=tokenize.wordpunct_tokenize
 )
-
-
-len(query_num.vocab)
-
 
 (
     train_dep_texts_with_tasks_df,
@@ -85,15 +83,24 @@ len(query_num.vocab)
 ) = model_selection.train_test_split(df_dep_texts, test_size=0.1, random_state=0)
 
 
+document_num = NBOWNumericalizer.build_from_texts(
+    train_dep_texts_with_tasks_df["dependencies"],
+    tokenizer=code_tokenization.tokenize_python_code,
+)
+
 
 train_dset = QueryDocumentDataset.prepare_from_dataframe(
-    train_dep_texts_with_tasks_df, ["tasks", "titles"], "dependencies",
+    train_dep_texts_with_tasks_df,
+    ["tasks", "titles"],
+    "dependencies",
     query_numericalizer=query_num,
+    document_numericalizer=document_num,
 )
 val_dset = QueryDocumentDataset(
     val_dep_texts_with_tasks_df["tasks"].apply(" ".join).to_list(),
     val_dep_texts_with_tasks_df["dependencies"].to_list(),
     query_numericalizer=query_num,
+    document_numericalizer=document_num,
 )
 
 dset = train_dset
@@ -125,7 +132,7 @@ nbow_document = NBOWLayer.make_from_encoding_fn(
 # # TRZEBA DODAĆ STEROWANIE LABLEKAMI
 
 
-nbow_model = PairwiseNBOWModule(nbow_query, nbow_document).to("cuda")
+nbow_model = PairwiseNBOWModule(nbow_query, nbow_document, max_len=max_seq_length, max_query_len=100).to("cuda")
 
 
 train_dl = train_dset.get_pair_data_loader(shuffle=True)
@@ -135,7 +142,7 @@ val_dl = val_dset.get_pair_data_loader(shuffle=False, batch_size=256)
 neptune_logger = loggers.NeptuneLogger(
     tags=["nbow", "lightning"], log_model_checkpoints=False, **neptune_args  # optional
 )
-
+neptune_logger.log_hyperparams({"epochs": epochs, "max_seq_length": max_seq_length})
 
 trainer = pl.Trainer(
     max_epochs=epochs, accelerator="gpu", devices=1, logger=neptune_logger, precision=16

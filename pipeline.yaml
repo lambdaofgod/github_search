@@ -50,7 +50,7 @@ tasks:
     upstream: prepare_paperswithcode_with_imports_df
     product: "output/papers_with_readmes.csv"
 
-  # THE STACK
+  # the stack
   - source: github_search.the_stack.prepare_the_stack_files
     name:
       the_stack.prepare_files
@@ -65,6 +65,7 @@ tasks:
     upstream:
       - the_stack.prepare_files
     product: "output/the_stack_paperswithcode_files.parquet"
+
   # prepare data for similarity learning from paperswithcode
   - source: github_search.sentence_embeddings.datasets.prepare_paperswithcode_data
     name: sentence_embeddings.prepare_paperswithcode_data
@@ -423,20 +424,20 @@ tasks:
       test: "output/nbow_data_test.parquet"
 
   - source: github_search/neural_bag_of_words/nbow_training.py
-    name: nbow.train
+    name: nbow.train-[[epochs]]-[[max_seq_length]]
     upstream:
       - nbow.prepare_dataset
       - prepare_repo_train_test_split
       - train_python_token_fasttext
     params:
-      # columns that will be used in addition to
-      max_seq_length: 2000
       neptune_config_path: "{{neptune_config_path}}"
-      epochs: "{{nbow.epochs}}" 
+    grid:
+      max_seq_length: [1000, 2000, 3000, 5000]
+      epochs: [1, 2, 5, 10]
     product:
-      document_nbow: "output/models/document_nbow{{nbow.epochs}}"
-      query_nbow: "output/models/query_nbow{{nbow.epochs}}"
-      nb: "notebooks/NBOW_training.ipynb"
+      document_nbow: "output/models/document_nbow_[[epochs]]_[[max_seq_length]]"
+      query_nbow: "output/models/query_nbow_[[epochs]]_[[max_seq_length]]"
+      nb: "notebooks/output/NBOW_training_[[epochs]]_[[max_seq_length]].ipynb"
 
 
   - source: github_search.neural_bag_of_words.sentencepiece.create_sentencepiece_model

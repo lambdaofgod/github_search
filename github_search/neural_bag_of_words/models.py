@@ -87,6 +87,7 @@ class PairwiseNBOWModule(pl.LightningModule):
         weight_decay: float = 1e-6,
         max_grad_norm: float = 1.0,
         device="cuda",
+        max_query_len=None
     ):
         """
         lightning module for training neural bag of words model
@@ -101,6 +102,7 @@ class PairwiseNBOWModule(pl.LightningModule):
         self.max_grad_norm = max_grad_norm
         self._device = device
         self.max_len = max_len
+        self.max_query_len = max_len if max_query_len is None else max_query_len
 
     def get_params(self):
         return list(
@@ -131,7 +133,7 @@ class PairwiseNBOWModule(pl.LightningModule):
 
     def training_step(self, batch, batch_idx, name="train"):
         query_nums, document_nums = batch
-        query_emb = self.nbow_query(query_nums[:, : self.max_len])
+        query_emb = self.nbow_query(query_nums[:, : self.max_query_len])
         document_emb = self.nbow_document(document_nums[:, : self.max_len])
         embs = torch.cat([query_emb, document_emb])
         ## DO POPRAWY

@@ -8,6 +8,8 @@ import torch
 import torch.utils
 from github_search import python_tokens
 import torchtext
+from mlutil.text import code_tokenization
+from nltk import tokenize
 
 Tokenizer = Callable[[List[str]], List[List[str]]]
 
@@ -86,7 +88,7 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
         self,
         queries,
         documents,
-        document_tokenize=python_tokens.tokenize_python_code,
+        document_tokenize=code_tokenization.tokenize_python_code,
         query_numericalizer=None,
         document_numericalizer=None,
         min_query_token_freq=1,
@@ -97,7 +99,7 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
         self.query_numericalizer = self.maybe_init_numericalizer(
             queries,
             query_numericalizer,
-            tokenizer=split_tokenizer,
+            tokenizer=tokenize.wordpunct_tokenize,
             min_freq=min_query_token_freq,
         )
         self.document_numericalizer = self.maybe_init_numericalizer(
