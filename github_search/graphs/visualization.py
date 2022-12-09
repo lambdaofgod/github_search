@@ -3,8 +3,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 
-def plot_networkx(subdata):
-    fig = plt.figure(figsize=(16, 16))
+def plot_networkx(subdata, show=True, figsize=(16,16)):
+    fig = plt.figure(figsize=figsize)
 
     G = to_networkx(subdata, to_undirected=True)
     G = nx.relabel_nodes(G, mapping=dict(enumerate(subdata.vertex_names)))
@@ -19,4 +19,5 @@ def plot_networkx(subdata):
         node_color="red",
         font_size=10,
     )
-    plt.show()
+    if show:
+        plt.show()

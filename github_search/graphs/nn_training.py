@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, List, Tuple, Union
 
-import findkit
 import h5py
 import livelossplot
 import numpy as np
@@ -17,7 +16,7 @@ import torch_geometric.data as ptg_data
 import torch_geometric.nn as ptgnn
 import tqdm
 from fastai.text import all as fastai_text
-from findkit.feature_extractor import FastAITextFeatureExtractor
+from findkit.feature_extractor.fastai_feature_extractor import FastAITextFeatureExtractor
 from github_search import logging_setup, paperswithcode_task_areas, utils
 from github_search.graphs import datasets, models
 from github_search.graphs.training_config import (

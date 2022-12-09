@@ -9,15 +9,14 @@ import pandas as pd
 import sentence_transformers
 import toolz
 import torch
+from fastai.text import all as fastai_text
 from findkit import feature_extractor
-from findkit.feature_extractor import FastAITextFeatureExtractor
-from github_search.graphs import dependency_graph, graph_preprocessor, datasets
+from findkit.feature_extractor import fastai_feature_extractor
+from github_search.graphs import datasets, dependency_graph, graph_preprocessor
 from github_search.papers_with_code import repo_metadata
 from github_search.papers_with_code.repo_metadata import RepoMetadataFromPandas
 from sklearn import model_selection
 from torch_geometric import data as ptg_data
-from findkit.feature_extractor import FastAITextFeatureExtractor
-from fastai.text import all as fastai_text
 
 Label = Union[str, List[str]]
 
@@ -105,7 +104,7 @@ def prepare_dataset_with_rnn(upstream, product, paperswithcode_path, ulmfit_path
     )
     logging.info("loading fastai ULMFiT extractor")
     fastai_learner = fastai_text.load_learner(ulmfit_path)
-    fastai_extractor = FastAITextFeatureExtractor.build_from_learner(
+    fastai_extractor = fastai_feature_extractor.FastAITextFeatureExtractor.build_from_learner(
         fastai_learner, max_length=48
     )
     encoding_fn = toolz.partial(fastai_extractor.extract_features, show_progress_bar=False)

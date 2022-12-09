@@ -21,7 +21,7 @@ def add_graph_to_hdf_groups(
         d.attrs["tasks"] = g.tasks
         d.attrs["least_common_task"] = g.least_common_task
         d.attrs["area"] = g.area
-        d.attrs["names"] = g.names
+        d.attrs["vertex_names"] = g.names
         edge_index_group.create_dataset(g.graph_name, data=g.edge_index.numpy())
 
 
@@ -92,8 +92,8 @@ class HDF5Dataset(ptg_data.Dataset):
     def get(self, idx):
         try:
             graph_record_data = self._get_graph_record_data(idx)
-        except:
-            import ipdb; ipdb.set_trace()
+        except Exception as e:
+            print(e)
         return self._make_graph_record(graph_record_data)
 
     def _get_graph_record_data(self, key):

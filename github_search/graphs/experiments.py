@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, List, Tuple, Union
 
-import findkit
 import h5py
 import livelossplot
 import numpy as np
@@ -17,20 +16,16 @@ import torch_geometric.data as ptg_data
 import torch_geometric.nn as ptgnn
 import tqdm
 from fastai.text import all as fastai_text
-from findkit.feature_extractor import FastAITextFeatureExtractor
 from github_search import logging_setup, paperswithcode_task_areas, utils
 from github_search.graphs import datasets, models
+from github_search.graphs.nn_training import *
 from github_search.graphs.training_config import (
-    AreaClassificationTrainingConfig,
-    GNNTrainingConfig,
-    MultilabelTaskClassificationTrainingConfig,
-    SimilarityModelTrainingConfig,
-)
+    AreaClassificationTrainingConfig, GNNTrainingConfig,
+    MultilabelTaskClassificationTrainingConfig, SimilarityModelTrainingConfig)
 from mlutil.feature_extraction import embeddings
 from sklearn import base, metrics, preprocessing
 from toolz import partial
 from torch import nn
-from github_search.graphs.nn_training import *
 
 
 def run_infomax(upstream, product, hidden_channels, n_features):
@@ -146,8 +141,9 @@ def run_label_similarity_model(
         n_node_features=dim,
         final_layer_size=n_features,
     ).to(device)
+    from findkit.feature_extractor import fastai_feature_extractor
     fastai_learner = fastai_text.load_learner(ulmfit_path)
-    embedder = FastAITextFeatureExtractor.build_from_learner(
+    embedder = fastai_feature_extractor.FastAITextFeatureExtractor.build_from_learner(
         fastai_learner, max_length=48
     )
     config = SimilarityModelTrainingConfig.from_embedder_and_model(
