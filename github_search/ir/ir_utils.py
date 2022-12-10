@@ -9,48 +9,11 @@ from toolz import partial
 from github_search.ir import evaluator
 
 
-def get_ir_dicts(input_df, query_col="tasks", doc_col="readme"):
-    df_copy = input_df.copy()
-    queries = df_copy[query_col].explode().drop_duplicates()
-    queries = pd.DataFrame(
-        {"query": queries, "query_id": [str(s) for s in queries.index]}
-    )
-    queries.index = queries["query_id"]
-    corpus = df_copy[doc_col]
-    corpus.index = [str(i) for i in corpus.index]
-    df_copy["doc_id"] = corpus.index
-    relevant_docs_str = df_copy[["doc_id", "tasks", doc_col]].explode(column="tasks")
-    relevant_docs = (
-        relevant_docs_str.merge(queries, left_on="tasks", right_on="query")[
-            ["doc_id", "query_id"]
-        ]
-        .groupby("query_id")
-        .apply(lambda df: set(df["doc_id"]))
-        .to_dict()
-    )
-    return {
-        "queries": queries["query"].to_dict(),
-        "corpus": corpus.to_dict(),
-        "relevant_docs": relevant_docs,
-    }
-
-
 def get_ir_metrics(path):
     metrics_df = pd.read_csv(
         os.path.join(path, "Information-Retrieval_evaluation_results.csv")
     )
     return metrics_df[[col for col in metrics_df if "cos" in col]]
-
-
-def get_ir_evaluator(df, query_col="tasks", doc_col="readme"):
-    ir_dicts = get_ir_dicts(df.dropna(subset=[query_col, doc_col]), query_col, doc_col)
-    ir_evaluator = evaluator.CustomInformationRetrievalEvaluator(
-        **ir_dicts,
-        main_score_function="cos_sim",
-        map_at_k=[10],
-        corpus_chunk_size=5000,
-    )
-    return ir_evaluator
 
 
 def get_result_metadata(retriever: haystack_retriever.BaseRetriever, query, topk=100):
