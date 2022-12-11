@@ -444,8 +444,7 @@ tasks:
     name: nbow.summarize_evaluation
     upstream: nbow.train-*-*
     product:
-      #document_nbow: "output/models/best_nbow/document_nbow"
-      #query_nbow: "output/models/best_nbow/query_nbow"
+      best_model_dir: "output/models/best_nbow"
       metrics: "output/models/nbow_validation_metrics.yaml"
       nb: "output/notebooks/NBOW_Evaluation_Summary.ipynb"
 
