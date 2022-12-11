@@ -20,7 +20,7 @@ import torchtext
 import tqdm
 from findkit import feature_extractor, index
 from github_search import python_tokens, utils
-from github_search.ir import evaluation, ir_utils
+from github_search.ir import evaluator
 from github_search.neural_bag_of_words import embedders
 from github_search.neural_bag_of_words import utils as nbow_utils
 from github_search.neural_bag_of_words.data import *
@@ -35,6 +35,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from mlutil.text import code_tokenization
 from nltk import tokenize
+import yaml
 
 # %%
 # probably for deletion
@@ -127,12 +128,12 @@ nbow_document = NBOWLayer.make_from_encoding_fn(
     ),
     encoding_fn=nbow_utils.fasttext_encoding_fn(fasttext_model),
 )
-
-
 # # TRZEBA DODAĆ STEROWANIE LABLEKAMI
 
 
-nbow_model = PairwiseNBOWModule(nbow_query, nbow_document, max_len=max_seq_length, max_query_len=100).to("cuda")
+nbow_model = PairwiseNBOWModule(
+    nbow_query, nbow_document, max_len=max_seq_length, max_query_len=100
+).to("cuda")
 
 
 train_dl = train_dset.get_pair_data_loader(shuffle=True)
@@ -151,8 +152,6 @@ trainer = pl.Trainer(
 # %%
 # Training
 trainer.fit(nbow_model, train_dl, val_dl)
-
-
 # %%
 # Saving artifacts
 
@@ -175,3 +174,19 @@ document_embedder = embedders.make_sentence_transformer_nbow_model(
 
 query_embedder.save(product["query_nbow"])
 document_embedder.save(product["document_nbow"])
+
+
+# %%
+# Metrics
+
+ir_evaluator = evaluator.InformationRetrievalEvaluator(
+    document_embedder, query_embedder
+)
+ir_evaluator.setup(val_dep_texts_with_tasks_df.reset_index(), "tasks", "dependencies")
+metrics = ir_evaluator.evaluate()
+
+print("information retrieval metrics")
+print(yaml.dump(metrics["cos_sim"]))
+
+with open(str(product["metrics"]), "w") as f:
+    yaml.dump(metrics, f)

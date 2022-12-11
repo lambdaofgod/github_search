@@ -115,6 +115,7 @@ tasks:
     params:
       index: project_readmes 
     product: "output/readme_retrieval_results.csv"
+
   # run word2vec on natural language data
   - source: github_search.word2vec.train_abstract_readme_w2v
     upstream:
@@ -324,7 +325,6 @@ tasks:
       model_path: "output/models/infomax.pth"
       plot_path: "output/infomax_training_losses.png"
 
-
   - source: github_search.graphs.experiments.run_dependency_area_classification
     name: gnn.train_dep_graph
     upstream:
@@ -386,6 +386,7 @@ tasks:
     params:
       ulmfit_path: "{{ulmfit_path}}"
     product: "output/graphsage_input_embeddings.pth"
+
   # train GraphSAGE model
   - source: github_search.pytorch_geometric_training.run_gnn_experiment
     name: gnn.run_unsupervised_graph_sage
@@ -402,7 +403,6 @@ tasks:
       model_path: "output/models/graphsage/{{gnn.unsupervised_params.model_name}}_model_{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.pth"
 
   # neural bag of words
-
   - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data_corpus
     name: nbow.prepare_dependency_data_corpus
     upstream:
@@ -435,8 +435,9 @@ tasks:
       max_seq_length: [1000, 2000, 3000, 5000]
       epochs: [1, 2, 5, 10]
     product:
-      document_nbow: "output/models/document_nbow_[[epochs]]_[[max_seq_length]]"
-      query_nbow: "output/models/query_nbow_[[epochs]]_[[max_seq_length]]"
+      document_nbow: "output/models/nbow_[[epochs]]_[[max_seq_length]]/document_nbow"
+      query_nbow: "output/models/nbow_[[epochs]]_[[max_seq_length]]/query_nbow"
+      metrics: "output/models/nbow_[[epochs]]_[[max_seq_length]]/validation_metrics.yaml"
       nb: "notebooks/output/NBOW_training_[[epochs]]_[[max_seq_length]].ipynb"
 
 

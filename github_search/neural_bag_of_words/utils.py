@@ -26,3 +26,4 @@ def fasttext_encoding_fn(fasttext_model, verbose=True, to_tensor=True):
             return embeddings_matrix
 
     return encoding_fn
+

@@ -1,19 +1,10 @@
-import logging
-import os
 from dataclasses import dataclass
-from typing import Callable, Dict, Generic, List, Optional, Protocol, Set, TypeVar
+from typing import List
 
-import numpy as np
-import torch
 from github_search.ir import evaluator_impl
-from torch import Tensor
 import sentence_transformers
 
 import pandas as pd
-
-T = TypeVar("T")
-
-
 
 
 def get_ir_dicts(input_df, query_col="tasks", doc_col="readme"):
@@ -53,15 +44,24 @@ def get_ir_evaluator(df, query_col="tasks", doc_col="readme"):
     return ir_evaluator
 
 
+def round_float_dict(d, rounding=3):
+    if type(d) is dict:
+        return {k: round_float_dict(v) for k, v in d.items()}
+    else:
+        return float(round(d, rounding))
+
+
 @dataclass
 class InformationRetrievalEvaluator:
     def __init__(
         self,
         document_embedder: sentence_transformers.SentenceTransformer,
         query_embedder: sentence_transformers.SentenceTransformer,
+        rounding=6,
     ):
         self.document_embedder = document_embedder
         self.query_embedder = query_embedder
+        self.rounding = rounding
 
     def setup(self, df, query_col: str, document_col: str):
         ir_evaluator = get_ir_evaluator(df, query_col=query_col, doc_col=document_col)
@@ -71,7 +71,9 @@ class InformationRetrievalEvaluator:
         self._ir_evaluator_impl = ir_evaluator
 
     def evaluate(self):
-        return self.get_ir_results(self.df[self.document_col])
+        return round_float_dict(
+            self.get_ir_results(self.df[self.document_col]), self.rounding
+        )
 
     def get_ir_results(
         self,
