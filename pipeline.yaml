@@ -440,6 +440,14 @@ tasks:
       metrics: "output/models/nbow_[[epochs]]_[[max_seq_length]]/validation_metrics.yaml"
       nb: "notebooks/output/NBOW_training_[[epochs]]_[[max_seq_length]].ipynb"
 
+  - source: github_search/neural_bag_of_words/run_evaluation.py
+    name: nbow.summarize_evaluation
+    upstream: nbow.train-*-*
+    product:
+      #document_nbow: "output/models/best_nbow/document_nbow"
+      #query_nbow: "output/models/best_nbow/query_nbow"
+      metrics: "output/models/nbow_validation_metrics.yaml"
+      nb: "output/notebooks/NBOW_Evaluation_Summary.ipynb"
 
   - source: github_search.neural_bag_of_words.sentencepiece.create_sentencepiece_model
     name: nbow.prepare_sentencepiece_model
