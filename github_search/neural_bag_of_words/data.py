@@ -1,13 +1,14 @@
+import random
 from dataclasses import dataclass
 from functools import partial
 from typing import Callable, List
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import torch
 import torch.utils
-from github_search import python_tokens
 import torchtext
+from github_search import python_tokens
 from mlutil.text import code_tokenization
 from nltk import tokenize
 
@@ -35,19 +36,26 @@ def split_tokenizer(s):
     return s.split()
 
 
-def pack_sequences_as_tensors(sequences, padding_value):
+def shuffle_list(l):
+    return np.array(l, dtype=np.int32)[np.random.permutation(len(l))]
+
+
+def pack_sequences_as_tensors(sequences, padding_value, shuffle):
+    np_tensors = [shuffle_list(s) if shuffle else s for s in sequences]
     return torch.nn.utils.rnn.pad_sequence(
-        [torch.LongTensor(s) for s in sequences],
+        [torch.LongTensor(t) for t in np_tensors],
         batch_first=True,
         padding_value=padding_value,
     )
 
 
-def collate_fn(batch, padding_value_query, padding_value_document, device="cuda"):
+def collate_fn(
+    batch, padding_value_query, padding_value_document, shuffle, device="cuda"
+):
     queries, documents = zip(*batch)
-    return pack_sequences_as_tensors(queries, padding_value_query).to(
+    return pack_sequences_as_tensors(queries, padding_value_query, shuffle=False).to(
         device
-    ), pack_sequences_as_tensors(documents, padding_value_document).to(device)
+    ), pack_sequences_as_tensors(documents, padding_value_document, shuffle).to(device)
 
 
 @dataclass
@@ -148,13 +156,16 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
             counts[nums] += 1
         return counts
 
-    def get_pair_data_loader(self, batch_size: int = 64, shuffle: bool = True):
+    def get_pair_data_loader(
+        self, batch_size: int = 128, shuffle: bool = True, shuffle_tokens: bool = False 
+    ):
         return torch.utils.data.DataLoader(
             self,
             collate_fn=partial(
                 collate_fn,
                 padding_value_query=self.query_numericalizer.get_padding_idx(),
                 padding_value_document=self.document_numericalizer.get_padding_idx(),
+                shuffle=shuffle_tokens,
             ),
             batch_size=batch_size,
             shuffle=shuffle,

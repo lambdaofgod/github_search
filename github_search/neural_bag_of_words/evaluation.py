@@ -3,8 +3,8 @@ import yaml
 import pandas as pd
 
 
-def get_metrics_dict_with_name(path):
-    name = path.parent.name
+def get_metrics_dict_with_name(path, get_name=lambda p: p.parent.name):
+    name = get_name(path)
     with open(path, "r") as f:
         metrics = yaml.safe_load(f)
     return (name, metrics)
@@ -52,6 +52,6 @@ def get_yaml_paths(upstream_dict):
     return [list(p.glob("*yaml"))[0] for p in upstream_partial_paths]
 
 
-def get_metrics_df(yaml_paths):
-    metrics_dicts = dict(map(get_metrics_dict_with_name, yaml_paths))
+def get_metrics_df(yaml_paths, get_name=lambda p: p.parent.name):
+    metrics_dicts = dict((get_metrics_dict_with_name(p, get_name) for p in yaml_paths))
     return get_metrics_df_from_dicts(metrics_dicts)

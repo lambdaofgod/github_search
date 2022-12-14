@@ -424,21 +424,20 @@ tasks:
       test: "output/nbow_data_test.parquet"
 
   - source: github_search/neural_bag_of_words/nbow_training.py
-    name: nbow.train-[[epochs]]-[[max_seq_length]]
+    name: nbow.train-[[max_seq_length]]
     upstream:
       - nbow.prepare_dataset
       - prepare_repo_train_test_split
       - train_python_token_fasttext
     params:
       neptune_config_path: "{{neptune_config_path}}"
+      epochs: [1, 2, 5, 10, 20, 50, 100]
+      batch_size: 128 
     grid:
-      max_seq_length: [1000, 2000, 3000, 5000]
-      epochs: [1, 2, 5, 10]
+      max_seq_length: ["median", "mean"]
     product:
-      document_nbow: "output/models/nbow_[[epochs]]_[[max_seq_length]]/document_nbow"
-      query_nbow: "output/models/nbow_[[epochs]]_[[max_seq_length]]/query_nbow"
-      metrics: "output/models/nbow_[[epochs]]_[[max_seq_length]]/validation_metrics.yaml"
-      nb: "notebooks/output/NBOW_training_[[epochs]]_[[max_seq_length]].ipynb"
+      model_dir: "output/models/nbow_[[max_seq_length]]"
+      nb: "notebooks/output/NBOW_training_[[max_seq_length]].ipynb"
 
   - source: github_search/neural_bag_of_words/run_evaluation.py
     name: nbow.summarize_evaluation

@@ -1,20 +1,14 @@
-from dataclasses import dataclass
-from operator import itemgetter
-
-import numba
-import numpy as np
-import pandas as pd
-import torch
-import tqdm
-from sklearn import base, feature_extraction
-from torch import nn
 import itertools
 
+import pandas as pd
+from typing import Protocol
+import numba
+import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.utils
 from quaterion.loss import MultipleNegativesRankingLoss
-
+from torch import nn
 
 EPS = 1e-6
 
@@ -77,17 +71,32 @@ def gather_idxs(nnz_idxs, max_count):
     return m
 
 
+def get_lengths_series(idxs, padding_value):
+    non_pad_x, non_pad_y = torch.where(idxs != padding_value)
+    __, indices = torch.unique(non_pad_x, return_inverse=True, sorted=True)
+    lengths = torch.bincount(indices)
+    return pd.Series(lengths.cpu().numpy())
+
+
+class Checkpointer(Protocol):
+    def save_epoch_checkpoint(self, nbow_query, nbow_document, epoch):
+        pass
+
+
 class PairwiseNBOWModule(pl.LightningModule):
     def __init__(
         self,
         nbow_query: NBOWLayer,
         nbow_document: NBOWLayer,
-        max_len: int = 2000,
+        checkpointer: Checkpointer,
+        padding_value: int,
+        max_len: int,
         lr: float = 1e-3,
         weight_decay: float = 1e-6,
         max_grad_norm: float = 1.0,
         device="cuda",
-        max_query_len=None
+        max_query_len=None,
+        max_eval_len=2000,
     ):
         """
         lightning module for training neural bag of words model
@@ -103,6 +112,10 @@ class PairwiseNBOWModule(pl.LightningModule):
         self._device = device
         self.max_len = max_len
         self.max_query_len = max_len if max_query_len is None else max_query_len
+        self._i = 0
+        self.checkpointer = checkpointer
+        self.padding_value = padding_value
+        self.max_eval_len = max_eval_len
 
     def get_params(self):
         return list(
@@ -131,10 +144,23 @@ class PairwiseNBOWModule(pl.LightningModule):
     def get_mask(cls, nums, padding_num):
         return (nums != padding_num) * 1
 
+    @classmethod
+    def get_random_token_nums(cls, token_nums, max_nums):
+        random_idxs = np.random.randint(0, high=token_nums.shape[1], size=max_nums)
+        return token_nums[:, random_idxs]
+
     def training_step(self, batch, batch_idx, name="train"):
         query_nums, document_nums = batch
+
+        document_lengths = get_lengths_series(document_nums, self.padding_value)
+        if name == "train":
+            document_nums = self.sample_by_length(
+                document_nums, document_lengths, self.max_len, self.max_eval_len 
+            )
+        else:
+            document_nums = document_nums[:, : self.max_eval_len]
         query_emb = self.nbow_query(query_nums[:, : self.max_query_len])
-        document_emb = self.nbow_document(document_nums[:, : self.max_len])
+        document_emb = self.nbow_document(document_nums)
         embs = torch.cat([query_emb, document_emb])
         ## DO POPRAWY
         pairs = torch.row_stack(
@@ -144,8 +170,35 @@ class PairwiseNBOWModule(pl.LightningModule):
             ]
         ).T
         loss = self.loss(embs, pairs, None, None)
-        self.log(f"{name}_loss", loss)
+        self._log_to_neptune(name, loss, document_nums, document_lengths)
         return loss
 
+    def _log_to_neptune(self, name, loss, document_nums, document_lengths):
+        if name == "train":
+            max_document_length = document_nums.shape[1]
+            median_document_length = document_lengths.median()
+            pad_ratio = ((document_nums == self.padding_value) * 1.0).mean()
+            self.log(f"{name}_loss", loss)
+            self.log(f"{name}_pad_ratio", pad_ratio)
+            self.log(f"{name}_batch_max_document_length", max_document_length)
+            self.log(f"{name}_batch_median_document_length", median_document_length)
+        else:
+            self.log(f"{name}_loss", loss)
+
     def validation_step(self, batch, batch_idx):
+
+        self.checkpointer.save_epoch_checkpoint(
+            self.nbow_query, self.nbow_document, self._i
+        )
+        self._i += 1
         return self.training_step(batch, batch_idx, name="validation")
+
+    @classmethod
+    def sample_by_length(cls, nums, lengths, truncation_mode, max_length):
+        if truncation_mode == "median":
+            median = int(lengths.median())
+            return nums[:, :median]
+        elif truncation_mode == "mean":
+            mean = int(lengths.mean())
+            truncated_mean = min(mean, max_length)
+            return nums[:, :truncated_mean]
