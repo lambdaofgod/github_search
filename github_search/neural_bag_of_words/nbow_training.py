@@ -21,8 +21,9 @@ import tqdm
 import yaml
 from findkit import feature_extractor, index
 from github_search import python_tokens, utils
+from github_search.ir import evaluator
 from github_search.neural_bag_of_words import *
-from github_search.neural_bag_of_words import checkpointers
+from github_search.neural_bag_of_words import checkpointers, embedders
 from github_search.neural_bag_of_words import utils as nbow_utils
 from github_search.neural_bag_of_words.checkpointers import EncoderCheckpointer
 from github_search.neural_bag_of_words.data import *
@@ -55,6 +56,7 @@ params = None
 epochs = None
 batch_size = None
 max_seq_length = None
+loss_function_name = None
 
 # %%
 paperswithcode_df = utils.load_paperswithcode_df(
@@ -129,6 +131,7 @@ nbow_model = PairwiseNBOWModule(
     nbow_query,
     nbow_document,
     checkpointer=checkpointer,
+    loss_function_name=loss_function_name,
     max_len=max_seq_length,
     max_query_len=100,
     padding_value=train_val_data.train_dset.document_numericalizer.get_padding_idx(),
@@ -148,7 +151,7 @@ trainer = pl.Trainer(
     devices=1,
     logger=neptune_logger,
     precision=16,
-    callbacks=[EarlyStopping(monitor="validation_loss", mode="min", patience=2)],
+    callbacks=[EarlyStopping(monitor="accuracy@10", mode="max", patience=3)],
 )
 
 
@@ -161,6 +164,10 @@ trainer.fit(
 
 # %% [markdown]
 # ## Save final model
-checkpointer.save_epoch_checkpoint(
-    nbow_model.nbow_query, nbow_model.nbow_document, "final"
+
+# %%
+checkpointer.unconditionally_save_epoch_checkpoint(
+    query_nbow=nbow_model.nbow_query,
+    document_nbow=nbow_model.nbow_document,
+    epoch="final",
 )

@@ -1,10 +1,33 @@
 import os
 from typing import List
 
+from torch import nn
 from toolz import partial
 import yaml
 from github_search.ir import evaluator
-from github_search.neural_bag_of_words import embedders
+from github_search.neural_bag_of_words import embedders, evaluation
+from dataclasses import dataclass
+import sentence_transformers
+
+
+@dataclass
+class EmbedderPair:
+
+    query_embedder: sentence_transformers.SentenceTransformer
+    document_embedder: sentence_transformers.SentenceTransformer
+    query_nbow: nn.Module
+    document_nbow: nn.Module
+
+    @staticmethod
+    def build_from_nbows(
+        query_nbow, document_nbow, query_embedder_fn, document_embedder_fn
+    ):
+        return EmbedderPair(
+            query_embedder_fn(query_nbow),
+            document_embedder_fn(document_nbow),
+            query_nbow,
+            document_nbow,
+        )
 
 
 class EncoderCheckpointer:
@@ -19,13 +42,14 @@ class EncoderCheckpointer:
         eval_max_seq_length: int = 5000,
         save_models=True,
     ):
+        self.dset = dset
         self.save_models = save_models
         self.get_query_embedder = partial(
             embedders.make_sentence_transformer_nbow_model,
             vocab=dset.query_numericalizer.vocab.vocab.itos_,
             tokenize_fn=dset.query_numericalizer.tokenizer,
             token_weights=nbow_query.token_weights.cpu().numpy().tolist(),
-            max_seq_length=100,
+            max_seq_length=eval_max_seq_length,
         )
 
         self.get_document_embedder = partial(
@@ -48,26 +72,54 @@ class EncoderCheckpointer:
 
     def save_epoch_checkpoint(self, nbow_query, nbow_document, epoch):
         if epoch in self.epochs:
-            query_embedder = self.get_query_embedder(nbow_query)
-            document_embedder = self.get_document_embedder(nbow_document)
-            embedders = (query_embedder, document_embedder)
-            metrics = self.get_epoch_metrics(*embedders)
+            embedder_pair = EmbedderPair.build_from_nbows(
+                nbow_query,
+                nbow_document,
+                self.get_query_embedder,
+                self.get_document_embedder,
+            )
             self.unconditionally_save_epoch_checkpoint(
-                epoch, *embedders, metrics=metrics
+                epoch=epoch, embedder_pair=embedder_pair
             )
 
-    def get_epoch_metrics(self, query_embedder, document_embedder):
+    def get_epoch_metrics_from_embedders(self, query_embedder, document_embedder):
         ir_evaluator = self.get_ir_evaluator(query_embedder, document_embedder)
         return ir_evaluator.evaluate()
 
+    def get_metrics_df(self, nbow_query, nbow_document, epoch):
+        query_embedder = self.get_query_embedder(nbow_query)
+        document_embedder = self.get_document_embedder(nbow_document)
+        metrics_dict = self.get_epoch_metrics_from_embedders(
+            query_embedder, document_embedder
+        )
+        return evaluation.get_single_metrics_df(
+            f"{epoch}", metrics_dict["cos_sim"]
+        ).iloc[0]
+
     def unconditionally_save_epoch_checkpoint(
-        self, epoch, query_embedder, document_embedder, metrics
+        self, epoch, query_nbow=None, document_nbow=None, embedder_pair=None
     ):
+        if embedder_pair is not None:
+            query_nbow = embedder_pair.query_nbow
+            document_nbow = embedder_pair.document_nbow
+        else:
+            embedder_pair = EmbedderPair.build_from_nbows(
+                query_nbow,
+                document_nbow,
+                self.get_query_embedder,
+                self.get_document_embedder,
+            )
+
         if self.save_models:
-            query_embedder.save(os.path.join(self.save_dir, f"nbow_query_{epoch}"))
-            document_embedder.save(
+            embedder_pair.query_embedder.save(
+                os.path.join(self.save_dir, f"nbow_query_{epoch}")
+            )
+            embedder_pair.document_embedder.save(
                 os.path.join(self.save_dir, f"nbow_document_{epoch}")
             )
+        metrics = self.get_epoch_metrics_from_embedders(
+            embedder_pair.query_embedder, embedder_pair.document_embedder
+        )
 
         metrics_path = os.path.join(self.save_dir, f"metrics_{epoch}.yaml")
         print(yaml.dump(metrics["cos_sim"]))

@@ -7,10 +7,16 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.utils
-from quaterion.loss import MultipleNegativesRankingLoss
+from quaterion.loss import MultipleNegativesRankingLoss, TripletLoss
 from torch import nn
 
 EPS = 1e-6
+
+
+LOSSES = {
+    "multiple_negatives_ranking_loss": MultipleNegativesRankingLoss,
+    "triplet_loss": TripletLoss,
+}
 
 
 class NBOWLayer(nn.Module):
@@ -82,6 +88,9 @@ class Checkpointer(Protocol):
     def save_epoch_checkpoint(self, nbow_query, nbow_document, epoch):
         pass
 
+    def get_metrics_df(self, nbow_query, nbow_document, epoch) -> pd.DataFrame:
+        pass
+
 
 class PairwiseNBOWModule(pl.LightningModule):
     def __init__(
@@ -89,6 +98,7 @@ class PairwiseNBOWModule(pl.LightningModule):
         nbow_query: NBOWLayer,
         nbow_document: NBOWLayer,
         checkpointer: Checkpointer,
+        loss_function_name: str,
         padding_value: int,
         max_len: int,
         lr: float = 1e-3,
@@ -105,7 +115,7 @@ class PairwiseNBOWModule(pl.LightningModule):
         super().__init__()
         self.nbow_query = nbow_query
         self.nbow_document = nbow_document
-        self.loss = MultipleNegativesRankingLoss()
+        self.loss = LOSSES[loss_function_name]()
         self.weight_decay = weight_decay
         self.lr = lr
         self.max_grad_norm = max_grad_norm
@@ -149,16 +159,39 @@ class PairwiseNBOWModule(pl.LightningModule):
         random_idxs = np.random.randint(0, high=token_nums.shape[1], size=max_nums)
         return token_nums[:, random_idxs]
 
-    def training_step(self, batch, batch_idx, name="train"):
+    def training_step(self, batch, batch_idx):
+        return self.step(batch, batch_idx, "train")
+
+    def validation_step(self, batch, batch_idx):
+        self.checkpointer.save_epoch_checkpoint(
+            self.nbow_query, self.nbow_document, self._i
+        )
+        metrics_dict = self.checkpointer.get_metrics_df(
+            self.nbow_query, self.nbow_document, self._i
+        ).to_dict()
+        del metrics_dict["name"]
+        self.log("ir_metrics", metrics_dict)
+        self.log("accuracy@10", metrics_dict["accuracy@10"])
+        self._i += 1
+        return self.step(batch, batch_idx, name="validation")
+
+    def step(self, batch, batch_idx, name):
         query_nums, document_nums = batch
 
         document_lengths = get_lengths_series(document_nums, self.padding_value)
         if name == "train":
-            document_nums = self.sample_by_length(
-                document_nums, document_lengths, self.max_len, self.max_eval_len 
+            document_nums = self.truncate_by_length(
+                document_nums, document_lengths, self.max_len, self.max_eval_len
             )
         else:
             document_nums = document_nums[:, : self.max_eval_len]
+
+        model_inputs = self.prepare_model_inputs(query_nums, document_nums)
+        loss = self.loss(**model_inputs, labels=None, subgroups=None)
+        self._log_to_neptune(name, loss, document_nums, document_lengths)
+        return loss
+
+    def prepare_model_inputs(self, query_nums, document_nums):
         query_emb = self.nbow_query(query_nums[:, : self.max_query_len])
         document_emb = self.nbow_document(document_nums)
         embs = torch.cat([query_emb, document_emb])
@@ -169,9 +202,7 @@ class PairwiseNBOWModule(pl.LightningModule):
                 torch.arange(len(query_emb)) + len(query_emb),
             ]
         ).T
-        loss = self.loss(embs, pairs, None, None)
-        self._log_to_neptune(name, loss, document_nums, document_lengths)
-        return loss
+        return {"embeddings": embs, "pairs": pairs}
 
     def _log_to_neptune(self, name, loss, document_nums, document_lengths):
         if name == "train":
@@ -185,16 +216,8 @@ class PairwiseNBOWModule(pl.LightningModule):
         else:
             self.log(f"{name}_loss", loss)
 
-    def validation_step(self, batch, batch_idx):
-
-        self.checkpointer.save_epoch_checkpoint(
-            self.nbow_query, self.nbow_document, self._i
-        )
-        self._i += 1
-        return self.training_step(batch, batch_idx, name="validation")
-
     @classmethod
-    def sample_by_length(cls, nums, lengths, truncation_mode, max_length):
+    def truncate_by_length(cls, nums, lengths, truncation_mode, max_length):
         if truncation_mode == "median":
             median = int(lengths.median())
             return nums[:, :median]
@@ -202,3 +225,6 @@ class PairwiseNBOWModule(pl.LightningModule):
             mean = int(lengths.mean())
             truncated_mean = min(mean, max_length)
             return nums[:, :truncated_mean]
+        elif type(truncation_mode) is int:
+            max_length = truncation_mode
+            return nums[:, :max_length]

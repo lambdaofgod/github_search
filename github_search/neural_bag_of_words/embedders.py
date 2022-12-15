@@ -21,7 +21,7 @@ def make_sentence_transformer_nbow_model(
     token_weights: np.ndarray,
     pooling_mean=True,
     pooling_max=False,
-    max_seq_length: int = 1000 
+    max_seq_length: int = 1000,
 ) -> sentence_transformers.SentenceTransformer:
     """
     creates a model that wraps NBOW that conforms to sentence transformer interface

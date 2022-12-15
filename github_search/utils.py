@@ -19,12 +19,13 @@ def iunzip(iterable, n=2):
     return [map(itemgetter(i), p) for i, p in enumerate(n_iterable)]
 
 
-def load_paperswithcode_df(path, drop_na_cols=["tasks"]):
+def load_paperswithcode_df(path, drop_na_cols=["tasks"], list_cols=["tasks", "titles"]):
     df = pd.read_csv(path)
     drop_na_cols = [col for col in drop_na_cols if col in df.columns]
     df = df.dropna(subset=drop_na_cols).copy()
-    if "tasks" in df.columns:
-        df["tasks"] = df["tasks"].apply(ast.literal_eval)
+    for col in list_cols:
+        if col in df.columns:
+            df[col] = df[col].apply(ast.literal_eval)
     return df
 
 
@@ -92,4 +93,4 @@ def get_current_memory_usage():
     with open("/proc/self/status") as f:
         memusage = f.read().split("VmRSS:")[1].split("\n")[0][:-3]
 
-    return round(int(memusage.strip()) / 1024 ** 2, 2)
+    return round(int(memusage.strip()) / 1024**2, 2)
