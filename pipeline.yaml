@@ -431,6 +431,7 @@ tasks:
       - train_python_token_fasttext
     params:
       loss_function_name: "multiple_negatives_ranking_loss"
+      validation_metric_name: "accuracy@10"
       neptune_config_path: "{{neptune_config_path}}"
       epochs: [1, 2, 5, 10, 20, 50, 100]
       batch_size: 128 

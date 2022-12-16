@@ -180,7 +180,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         encoder: Encoder,
         corpus_encoder: Optional[Encoder] = None,
         corpus_embeddings: Tensor = None,
-    ) -> Dict[str, float]:
+    ) -> Dict[str, List[Dict[str, float]]]:
         if corpus_encoder is None:
             corpus_encoder = encoder
 
@@ -422,3 +422,6 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         for i in range(min(len(relevances), k)):
             dcg += relevances[i] / np.log2(i + 2)  # +2 as we start our idx at 0
         return dcg
+
+    def get_queries_dict(self):
+        return dict(zip(self.queries_ids, self.queries))

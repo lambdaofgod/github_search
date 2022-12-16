@@ -39,6 +39,7 @@ from quaterion.loss import MultipleNegativesRankingLoss
 from sklearn import feature_extraction, model_selection
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+from github_search.neural_bag_of_words.embedders import NBOWPair
 
 # %%
 # probably for deletion
@@ -57,6 +58,7 @@ epochs = None
 batch_size = None
 max_seq_length = None
 loss_function_name = None
+validation_metric_name = None
 
 # %%
 paperswithcode_df = utils.load_paperswithcode_df(
@@ -116,20 +118,21 @@ nbow_document = NBOWLayer.make_from_encoding_fn(
     ),
     encoding_fn=nbow_utils.fasttext_encoding_fn(fasttext_model),
 )
+
+nbow_pair = NBOWPair(query_nbow=nbow_query, document_nbow=nbow_document)
 # # TRZEBA DODAĆ STEROWANIE LABLEKAMI
 
 checkpointer = EncoderCheckpointer(
     train_val_data.train_dset,
     val_dep_texts_with_tasks_df,
-    nbow_query,
-    nbow_document,
-    product["model_dir"],
+    nbow_pair=nbow_pair,
+    save_dir=product["model_dir"],
     epochs=epochs,
 )
 
 nbow_model = PairwiseNBOWModule(
-    nbow_query,
-    nbow_document,
+    nbow_pair,
+    validation_metric_name=validation_metric_name,
     checkpointer=checkpointer,
     loss_function_name=loss_function_name,
     max_len=max_seq_length,
@@ -141,7 +144,9 @@ nbow_model = PairwiseNBOWModule(
 neptune_logger = loggers.NeptuneLogger(
     tags=["nbow", "lightning"], log_model_checkpoints=False, **neptune_args  # optional
 )
-neptune_logger.log_hyperparams({"epochs": epochs, "max_seq_length": max_seq_length})
+neptune_logger.log_hyperparams(
+    {"epochs": epochs, "max_seq_length": str(max_seq_length)}
+)
 
 # %%
 
@@ -151,7 +156,7 @@ trainer = pl.Trainer(
     devices=1,
     logger=neptune_logger,
     precision=16,
-    callbacks=[EarlyStopping(monitor="accuracy@10", mode="max", patience=3)],
+    callbacks=[EarlyStopping(monitor=validation_metric_name, mode="max", patience=3)],
 )
 
 
@@ -167,7 +172,6 @@ trainer.fit(
 
 # %%
 checkpointer.unconditionally_save_epoch_checkpoint(
-    query_nbow=nbow_model.nbow_query,
-    document_nbow=nbow_model.nbow_document,
+    nbow_pair=nbow_model.nbow_pair,
     epoch="final",
 )

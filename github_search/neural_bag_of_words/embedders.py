@@ -1,17 +1,25 @@
 from dataclasses import dataclass, field
+from typing import Callable, List
 
-import torch
 import numpy as np
-import tqdm
-from github_search.neural_bag_of_words.models import NBOWLayer
-from github_search.neural_bag_of_words.data import (
-    NBOWNumericalizer,
-    pack_sequences_as_tensors,
-)
-from mlutil import sentence_transformers_utils
 import sentence_transformers
+import torch
+import tqdm
+from github_search.ir.models import *
+from github_search.neural_bag_of_words.layers import NBOWLayer
+from github_search.utils import kwargs_only
+from mlutil import sentence_transformers_utils
 
-from typing import List, Callable
+NBOWToEmbedderConverter = Callable[
+    [NBOWLayer], sentence_transformers.SentenceTransformer
+]
+
+
+@kwargs_only
+@dataclass
+class NBOWPair:
+    query_nbow: NBOWLayer
+    document_nbow: NBOWLayer
 
 
 def make_sentence_transformer_nbow_model(
@@ -47,3 +55,15 @@ def make_sentence_transformer_nbow_model(
     ]
 
     return sentence_transformers.SentenceTransformer(modules=modules)
+
+
+def make_embedders_from_nbow_pair(
+    nbow_pair: NBOWPair,
+    *,
+    query_embedder_fn: NBOWToEmbedderConverter,
+    document_embedder_fn: NBOWToEmbedderConverter,
+):
+    return EmbedderPair(
+        query_embedder=query_embedder_fn(nbow_pair.query_nbow),
+        document_embedder=document_embedder_fn(nbow_pair.document_nbow),
+    )

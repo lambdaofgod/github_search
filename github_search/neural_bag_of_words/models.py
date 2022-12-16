@@ -9,6 +9,8 @@ import torch
 import torch.utils
 from quaterion.loss import MultipleNegativesRankingLoss, TripletLoss
 from torch import nn
+from github_search.neural_bag_of_words.layers import NBOWLayer
+from github_search.neural_bag_of_words.embedders import NBOWPair
 
 EPS = 1e-6
 
@@ -19,64 +21,6 @@ LOSSES = {
 }
 
 
-class NBOWLayer(nn.Module):
-    def __init__(
-        self,
-        token_weights: torch.FloatTensor,
-        embedding: nn.Embedding,
-        padding_idx: int = 0,
-    ):
-        super().__init__()
-        assert len(token_weights) == embedding.num_embeddings
-        self.token_weights = token_weights
-        self.embedding = embedding
-        self.padding_idx = padding_idx
-
-    def forward(self, idxs):
-        mask = 1 * (idxs != self.padding_idx)
-        embs = self.embedding(idxs) * mask.unsqueeze(-1)
-        token_weights = self.token_weights[idxs] * mask
-        return torch.einsum("ijk,ij->ik", embs, token_weights)
-
-    def to(self, device):
-        self.embedding = self.embedding.to(device)
-        self.token_weights = self.token_weights.to(device)
-        return self
-
-    @classmethod
-    def make_from_encoding_fn(
-        cls,
-        vocab,
-        df_weights,
-        encoding_fn,
-        padding_idx: int = 0,
-        device="cuda",
-        scaling="log",
-    ):
-        if scaling == "log":
-            df_weights = np.log2(df_weights + 1)
-        inv_weights = 1 / df_weights
-        weights = torch.Tensor(np.clip(inv_weights, 0, 1)).to(device)
-        sorted_vocab = vocab.vocab.itos_
-        embedded_vocab = encoding_fn(sorted_vocab)
-        embeddings = nn.Embedding.from_pretrained(embedded_vocab).to(device)
-        return cls(weights, embeddings)
-
-
-# WARNING
-# assumes that each row has at least one nonzero value
-@numba.jit
-def gather_idxs(nnz_idxs, max_count):
-    row_idxs = np.unique(nnz_idxs[0])
-    m = np.zeros((len(row_idxs), max_count), dtype="int64")
-    nnz_x = nnz_idxs[0]
-    nnz_y = nnz_idxs[1]
-    for i in row_idxs:
-        values = nnz_y[nnz_x == i]
-        m[i, : len(values)] = values
-    return m
-
-
 def get_lengths_series(idxs, padding_value):
     non_pad_x, non_pad_y = torch.where(idxs != padding_value)
     __, indices = torch.unique(non_pad_x, return_inverse=True, sorted=True)
@@ -85,22 +29,22 @@ def get_lengths_series(idxs, padding_value):
 
 
 class Checkpointer(Protocol):
-    def save_epoch_checkpoint(self, nbow_query, nbow_document, epoch):
+    def save_epoch_checkpoint(self, nbow_pair: NBOWPair):
         pass
 
-    def get_metrics_df(self, nbow_query, nbow_document, epoch) -> pd.DataFrame:
+    def get_metrics_df(self, nbow_pair: NBOWPair, epoch: int) -> pd.DataFrame:
         pass
 
 
 class PairwiseNBOWModule(pl.LightningModule):
     def __init__(
         self,
-        nbow_query: NBOWLayer,
-        nbow_document: NBOWLayer,
+        nbow_pair: NBOWPair,
         checkpointer: Checkpointer,
         loss_function_name: str,
         padding_value: int,
         max_len: int,
+        validation_metric_name: str,
         lr: float = 1e-3,
         weight_decay: float = 1e-6,
         max_grad_norm: float = 1.0,
@@ -113,8 +57,8 @@ class PairwiseNBOWModule(pl.LightningModule):
         query and document models are potentially different NBOWLayers
         """
         super().__init__()
-        self.nbow_query = nbow_query
-        self.nbow_document = nbow_document
+        self.validation_metric_name = validation_metric_name
+        self.nbow_pair = nbow_pair
         self.loss = LOSSES[loss_function_name]()
         self.weight_decay = weight_decay
         self.lr = lr
@@ -131,8 +75,8 @@ class PairwiseNBOWModule(pl.LightningModule):
         return list(
             itertools.chain.from_iterable(
                 (
-                    self.nbow_query.nbow_layer.embedding.parameters(),
-                    self.nbow_document.nbow_layer.embedding.parameters(),
+                    self.nbow_pair.query_nbow.nbow_layer.embedding.parameters(),
+                    self.nbow_pair.document_nbow.nbow_layer.embedding.parameters(),
                 )
             )
         )
@@ -140,7 +84,10 @@ class PairwiseNBOWModule(pl.LightningModule):
     def configure_optimizers(self):
         parameters = list(
             itertools.chain.from_iterable(
-                [self.nbow_query.parameters(), self.nbow_document.parameters()]
+                [
+                    self.nbow_pair.query_nbow.parameters(),
+                    self.nbow_pair.document_nbow.parameters(),
+                ]
             )
         )
         for p in parameters:
@@ -164,16 +111,18 @@ class PairwiseNBOWModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         self.checkpointer.save_epoch_checkpoint(
-            self.nbow_query, self.nbow_document, self._i
+            self.nbow_pair, self._i
         )
         metrics_dict = self.checkpointer.get_metrics_df(
-            self.nbow_query, self.nbow_document, self._i
+            self.nbow_pair, self._i
         ).to_dict()
         del metrics_dict["name"]
         self.log("ir_metrics", metrics_dict)
-        self.log("accuracy@10", metrics_dict["accuracy@10"])
+        validation_metric_value = metrics_dict[self.validation_metric_name]
+        self.log(self.validation_metric_name, validation_metric_value)
         self._i += 1
-        return self.step(batch, batch_idx, name="validation")
+        __ = self.step(batch, batch_idx, name="validation")
+        return validation_metric_value
 
     def step(self, batch, batch_idx, name):
         query_nums, document_nums = batch
@@ -192,8 +141,8 @@ class PairwiseNBOWModule(pl.LightningModule):
         return loss
 
     def prepare_model_inputs(self, query_nums, document_nums):
-        query_emb = self.nbow_query(query_nums[:, : self.max_query_len])
-        document_emb = self.nbow_document(document_nums)
+        query_emb = self.nbow_pair.query_nbow(query_nums[:, : self.max_query_len])
+        document_emb = self.nbow_pair.document_nbow(document_nums)
         embs = torch.cat([query_emb, document_emb])
         ## DO POPRAWY
         pairs = torch.row_stack(
