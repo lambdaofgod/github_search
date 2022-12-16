@@ -441,13 +441,15 @@ tasks:
       model_dir: "output/models/nbow_[[max_seq_length]]"
       nb: "notebooks/output/NBOW_training_[[max_seq_length]].ipynb"
 
-  - source: github_search/neural_bag_of_words/run_evaluation.py
-    name: nbow.summarize_evaluation
-    upstream: nbow.train-*
+  - source: github_search/neural_bag_of_words/nbow_test.py
+    name: nbow.test
+    upstream:
+      - nbow.prepare_dataset
+      - nbow.train-*
+      - prepare_area_grouped_tasks
     product:
       best_model_dir: "output/models/best_nbow"
-      metrics: "output/models/nbow_validation_metrics.yaml"
-      nb: "output/notebooks/NBOW_Evaluation_Summary.ipynb"
+      nb: "output/notebooks/NBOW_Test_Summary.ipynb"
 
   - source: github_search.neural_bag_of_words.sentencepiece.create_sentencepiece_model
     name: nbow.prepare_sentencepiece_model

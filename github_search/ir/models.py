@@ -3,6 +3,7 @@ import sentence_transformers
 
 from github_search.utils import kwargs_only
 
+
 @kwargs_only
 @dataclass
 class EmbedderPairConfig:
@@ -13,12 +14,21 @@ class EmbedderPairConfig:
     query_max_length: int = field(default=100)
 
 
-@kwargs_only
 @dataclass
 class EmbedderPair:
 
     query_embedder: sentence_transformers.SentenceTransformer
     document_embedder: sentence_transformers.SentenceTransformer
+
+    def init(
+        self,
+        *,
+        query_embedder: sentence_transformers.SentenceTransformer,
+        document_embedder: sentence_transformers.SentenceTransformer,
+    ):
+        return EmbedderPair(
+            query_embedder=query_embedder, document_embedder=document_embedder
+        )
 
     @staticmethod
     def from_config(pair_config: EmbedderPairConfig):
