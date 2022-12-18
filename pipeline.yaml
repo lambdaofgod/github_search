@@ -14,14 +14,14 @@ tasks:
   - source: github_search.papers_with_code.paperswithcode_task_areas.prepare_area_grouped_tasks
     product: "data/paperswithcode_tasks.csv"
   
-  - source: github_search.papers_with_code.paperswithcode_tasks.prepare_paperswithcode_df
+  - source: github_search.papers_with_code.ploomber.prepare_paperswithcode_df
     params:
       paperswithcode_filename: "data/links-between-papers-and-code.json.gz"
       papers_filename: "data/papers-with-abstracts.json.gz"
     product:
       paperswithcode_path: "output/raw_paperswithcode_df.csv"
 
-  - source: github_search.papers_with_code.paperswithcode_tasks.prepare_filtered_paperswithcode_df
+  - source: github_search.papers_with_code.ploomber.prepare_filtered_paperswithcode_df
     upstream:
       - prepare_paperswithcode_df
     params:
