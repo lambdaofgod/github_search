@@ -15,6 +15,7 @@ tasks:
     product: "data/paperswithcode_tasks.csv"
   
   - source: github_search.papers_with_code.ploomber.prepare_paperswithcode_df
+    name: pwc_data.prepare_raw_paperswithcode_df
     params:
       paperswithcode_filename: "data/links-between-papers-and-code.json.gz"
       papers_filename: "data/papers-with-abstracts.json.gz"
@@ -22,33 +23,35 @@ tasks:
       paperswithcode_path: "output/raw_paperswithcode_df.csv"
 
   - source: github_search.papers_with_code.ploomber.prepare_filtered_paperswithcode_df
+    name: pwc_data.prepare_final_paperswithcode_df
     upstream:
-      - prepare_paperswithcode_df
+      - pwc_data.prepare_raw_paperswithcode_df
     params:
       min_task_count: 10
     product:
       paperswithcode_path: "{{paperswithcode_path}}"
       task_counts_path: "output/task_counts.csv"
 
+  # get github readmes
+  - source: github_search.papers_with_code.ploomber.prepare_paperswithcode_with_readmes_df
+    name: pwc_data.prepare_paperswithcode_with_readmes_df
+    upstream:
+      - pwc_data.prepare_final_paperswithcode_df
+    params:
+      max_workers: 24
+    product: "output/papers_with_readmes.csv"
+
   # train-test split for tasks
   # tasks are stratified by paperswithcode area
-  - source: github_search.data_engineering.prepare_task_train_test_split
+  - source: github_search.train_test_split.prepare_task_train_test_split
     upstream:
       - prepare_area_grouped_tasks
-      - prepare_filtered_paperswithcode_df
+      - pwc_data.prepare_final_paperswithcode_df
     params:
      test_size: 0.4
     product:
       train: "output/tasks_train.csv"
       test: "output/tasks_test.csv"
-
-  # get github readmes
-  - source: github_search.data_engineering.make_readmes
-    params:
-      paperswithcode_with_tasks_path: "data/paperswithcode_with_tasks.csv"
-      max_workers: 24
-    upstream: prepare_paperswithcode_with_imports_df
-    product: "output/papers_with_readmes.csv"
 
   # the stack
   - source: github_search.the_stack.prepare_the_stack_files
@@ -86,7 +89,7 @@ tasks:
     product: "data/sentence_similarity_data.csv"
 
   #
-  - source: github_search.data_engineering.prepare_repo_train_test_split
+  - source: github_search.train_test_split.prepare_repo_train_test_split
     params:
       paperswithcode_with_tasks_path: "data/paperswithcode_with_tasks.csv"
     upstream:
@@ -119,7 +122,7 @@ tasks:
   # run word2vec on natural language data
   - source: github_search.word2vec.train_abstract_readme_w2v
     upstream:
-      - make_readmes
+      - pwc_data.prepare_paperswithcode_with_readmes_df
     params:
       embedding_dim: "{{word2vec.dimension}}"
       epochs: "{{word2vec.epochs}}"
@@ -403,10 +406,20 @@ tasks:
       model_path: "output/models/graphsage/{{gnn.unsupervised_params.model_name}}_model_{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.pth"
 
   # neural bag of words
-  - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data_corpus
-    name: nbow.prepare_dependency_data_corpus
+  - source: github_search.neural_bag_of_words.prepare_data.prepare_raw_dependency_data_corpus
+    name: nbow.prepare_raw_dependency_data_corpus
     upstream:
       - dependency_graph.prepare_records
+    product:
+      raw_text: "output/raw_dependency_records_corpus_raw.csv"
+      text: "output/raw_dependency_records_corpus.parquet"
+
+  - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data_corpus
+    name: nbow.prepare_dependency_data_corpus
+    params:
+      max_workers: 12 
+    upstream:
+      - nbow.prepare_raw_dependency_data_corpus
     product:
       raw_text: "output/dependency_records_corpus_raw.csv"
       text: "output/dependency_records_corpus.parquet"
@@ -443,6 +456,8 @@ tasks:
 
   - source: github_search/neural_bag_of_words/nbow_test.py
     name: nbow.test
+    params:
+      document_cols: ["titles", "dependencies"]
     upstream:
       - nbow.prepare_dataset
       - nbow.train-*
@@ -475,7 +490,7 @@ tasks:
   # similarity is cosine similarity in provided model
   - source: github_search.python_code_analysis.select_repo_files
     upstream:
-      - make_readmes 
+      - pwc_data.prepare_paperswithcode_with_readmes_df
     params:
       similar_col: "readme"
       bow_vectorizer_class: "CountVectorizer"
@@ -500,7 +515,7 @@ tasks:
   - source: github_search.seq2seq_utils.prepare_path_docid_seq2seq_df
     upstream:
       - select_repo_files
-      - make_readmes
+      - pwc_data.prepare_paperswithcode_with_readmes_df
     params:
       max_source_length: "{{transformer.max_source_length}}" 
       max_target_length: "{{transformer.max_target_length}}" 

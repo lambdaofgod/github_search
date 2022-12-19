@@ -1,7 +1,11 @@
 import pandas as pd
 from github_search import utils
 from github_search.papers_with_code.paperswithcode_tasks import (
-    PapersWithCodeMetadataAggregator, clean_task_name, get_paperswithcode_dfs)
+    PapersWithCodeMetadataAggregator,
+    clean_task_name,
+    get_paperswithcode_dfs,
+)
+from github_search import github_readmes
 
 
 def prepare_paperswithcode_df(paperswithcode_filename, papers_filename, product):
@@ -18,7 +22,7 @@ def prepare_paperswithcode_df(paperswithcode_filename, papers_filename, product)
 
 def prepare_filtered_paperswithcode_df(upstream, min_task_count, product):
     raw_paperswithcode_df = utils.load_paperswithcode_df(
-        str(upstream["prepare_paperswithcode_df"]["paperswithcode_path"])
+        str(upstream["pwc_data.prepare_raw_paperswithcode_df"]["paperswithcode_path"])
     )
     deduplicated_paperswithcode_df = PapersWithCodeMetadataAggregator.merge_repos(
         raw_paperswithcode_df
@@ -31,3 +35,13 @@ def prepare_filtered_paperswithcode_df(upstream, min_task_count, product):
     task_counts = pd.DataFrame(task_counts).reset_index()
     task_counts.columns = ["task", "task_count"]
     task_counts.to_csv(str(product["task_counts_path"]))
+
+
+def prepare_paperswithcode_with_readmes_df(upstream, product, max_workers):
+    path = str(
+        upstream["pwc_data.prepare_final_paperswithcode_df"]["paperswithcode_path"]
+    )
+    df = pd.read_csv(path)
+    readmes = github_readmes.get_readmes(df, max_workers)
+    df["readme"] = readmes
+    df.to_csv(product)
