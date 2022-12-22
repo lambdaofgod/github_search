@@ -7,19 +7,13 @@ import torch
 import tqdm
 from github_search.ir.models import *
 from github_search.neural_bag_of_words.layers import NBOWLayer
+from github_search.neural_bag_of_words.training_utils import NBOWPair
 from github_search.utils import kwargs_only
 from mlutil import sentence_transformers_utils
 
 NBOWToEmbedderConverter = Callable[
     [NBOWLayer], sentence_transformers.SentenceTransformer
 ]
-
-
-@kwargs_only
-@dataclass
-class NBOWPair:
-    query_nbow: NBOWLayer
-    document_nbow: NBOWLayer
 
 
 def make_sentence_transformer_nbow_model(

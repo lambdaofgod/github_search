@@ -1,10 +1,11 @@
 import ast
+import itertools
+from functools import wraps
+from operator import itemgetter
 
 import numpy as np
 import pandas as pd
-from sklearn import metrics
-import itertools
-from operator import itemgetter
+import os
 
 
 def round_float_dict(d, rounding=3):
@@ -94,3 +95,48 @@ def get_current_memory_usage():
         memusage = f.read().split("VmRSS:")[1].split("\n")[0][:-3]
 
     return round(int(memusage.strip()) / 1024**2, 2)
+
+
+def kwargs_only(cls):
+    @wraps(cls)
+    def call(**kwargs):
+        return cls(**kwargs)
+
+    return call
+
+
+def pd_read_star(fname):
+    extension = os.path.splitext(fname)[1]
+    if extension == ".parquet":
+        return pd.read_parquet(fname)
+    elif extension == ".csv":
+        return pd.read_csv(fname)
+    else:
+        raise ValueError(f"unsupported extension, {extension}")
+
+
+def flatten_str_list_cols(df, str_list_cols):
+    df = df.copy()
+    for col in str_list_cols:
+        types = list(df["titles"].apply(type).unique())
+        assert len(types) == 1
+        col_type = types[0]
+        if col_type is str:
+            df[col] = df[col].apply(ast.literal_eval).apply(" ".join)
+        elif col_type is list:
+            df[col] = df[col].apply(" ".join)
+    return df
+
+
+def concatenate_flattened_list_cols(
+    df, str_list_cols, concat_cols, target_col, sep=" "
+):
+    df = flatten_str_list_cols(df, str_list_cols)
+    return concatenate_cols(df, concat_cols, target_col, sep)
+
+
+def concatenate_cols(df, cols, target_col, sep=" "):
+    df[target_col] = df[cols[0]]
+    for col in cols[1:]:
+        df[target_col] = df[target_col] + sep + df[col]
+    return df

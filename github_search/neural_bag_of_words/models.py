@@ -10,7 +10,7 @@ import torch.utils
 from quaterion.loss import MultipleNegativesRankingLoss, TripletLoss
 from torch import nn
 from github_search.neural_bag_of_words.layers import NBOWLayer
-from github_search.neural_bag_of_words.embedders import NBOWPair
+from github_search.neural_bag_of_words.training_utils import NBOWPair
 
 EPS = 1e-6
 

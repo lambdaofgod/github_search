@@ -184,7 +184,7 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
         min_document_token_freq=5,
     ):
         queries = pd.concat(
-            [df[query_col].apply(" ".join) for query_col in query_cols]
+            [df[query_col] for query_col in query_cols]
         ).to_list()
         docs = pd.concat([df[doc_col]] * len(query_cols)).to_list()
         return QueryDocumentDataset(

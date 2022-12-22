@@ -23,6 +23,7 @@ from github_search.neural_bag_of_words import evaluation
 import sentence_transformers
 from github_search.neural_bag_of_words.evaluation import *
 from github_search.ir.models import *
+from github_search.ir import EmbedderPairConfig, InformationRetrievalColumnConfig
 
 from collections import Counter
 
@@ -79,11 +80,11 @@ def round_float_dict(d, rounding=3):
 
 
 def setup_ir_evaluator_from_config(
-    searched_dep_texts: pd.DataFrame, config: EmbedderPairConfig
+    searched_dep_texts: pd.DataFrame, config: EmbedderPairConfig, embedded_cols: str
 ):
     embedder_pair = EmbedderPair.from_config(config)
     ir_evaluator = evaluator.InformationRetrievalEvaluator(embedder_pair)
-    ir_evaluator.setup(searched_dep_texts, "tasks", "dependencies", name_col="repo")
+    ir_evaluator.setup(searched_dep_texts, "tasks", embedded_col, name_col="repo")
     return ir_evaluator
 
 
@@ -91,12 +92,11 @@ def setup_ir_evaluator_from_config(
 
 product = None
 upstream = dict()
+document_cols = ["dependencies"]
 
 # %%
 tasks_path = str(upstream["prepare_area_grouped_tasks"])
-upstream_paths = [
-    P(v["model_dir"]) for v in upstream["nbow.train-*"].values()
-]
+upstream_paths = [P(v["model_dir"]) for v in upstream["nbow.train-*-*"].values()]
 search_data_path = str(upstream["nbow.prepare_dataset"]["test"])
 
 # %% [markdown]
@@ -114,9 +114,10 @@ best_model_directory = eval_df.index[0]
 best_model_config = get_best_model_config(best_model_directory)
 ir_config = evaluator.InformationRetrievalEvaluatorConfig(
     search_data_path,
-    "dependencies",
-    "tasks",
-    best_model_config
+    best_model_config,
+    InformationRetrievalColumnConfig(
+        document_cols=document_cols, query_col="tasks", list_cols=["titles"]
+    ),
 )
 ir_evaluator = evaluator.InformationRetrievalEvaluator.setup_from_config(ir_config)
 ir_metrics = ir_evaluator.evaluate()
@@ -153,14 +154,8 @@ if out_dir.exists():
     shutil.rmtree(out_dir)
 out_dir.mkdir()
 
-shutil.copytree(
-    best_model_config.query_embedder_path,
-    out_dir / "query_embedder"
-)
-shutil.copytree(
-    best_model_config.document_embedder_path,
-    out_dir / "document_embedder"
-)
+shutil.copytree(best_model_config.query_embedder_path, out_dir / "query_embedder")
+shutil.copytree(best_model_config.document_embedder_path, out_dir / "document_embedder")
 
 for (item_name, item) in best_worst_results.items():
     item.to_csv(os.path.join(out_dir, f"{item_name}.csv"))

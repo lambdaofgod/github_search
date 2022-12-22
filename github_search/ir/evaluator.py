@@ -5,13 +5,18 @@ from typing import Dict, List, Optional
 import pandas as pd
 import sentence_transformers
 from github_search import utils
-from github_search.ir import evaluator_impl
-from github_search.ir.models import EmbedderPair, EmbedderPairConfig
+from github_search.ir import (
+    evaluator_impl,
+    InformationRetrievalEvaluatorConfig,
+    EmbedderPairConfig,
+    InformationRetrievalColumnConfig,
+)
+from github_search.ir.models import EmbedderPair
 
 
 def get_ir_dicts(input_df, query_col="tasks", doc_col="readme"):
     df_copy = input_df.copy()
-    queries = df_copy[query_col].explode().drop_duplicates()
+    queries = df_copy[query_col].explode().drop_duplicates().reset_index(drop=True)
     queries = pd.DataFrame(
         {"query": queries, "query_id": [str(s) for s in queries.index]}
     )
@@ -37,65 +42,76 @@ def get_ir_dicts(input_df, query_col="tasks", doc_col="readme"):
 
 def round_float_dict(d, rounding=3):
     if type(d) is dict:
-        return {k: round_float_dict(v) for k, v in d.items()}
+        return {k: round_float_dict(v, rounding) for k, v in d.items()}
     else:
         return float(round(d, rounding))
 
 
-@dataclass
-class InformationRetrievalEvaluatorConfig:
-
-    search_df_path: str
-    document_col: str
-    query_col: str
-    embedder_config: EmbedderPairConfig
-
-
-@dataclass
 class InformationRetrievalEvaluator:
 
     """
     evaluate information retrieval metrics on unseen data
     """
 
+    doc_col = "document"
+
     def __init__(
-        self,
-        embedder_pair: EmbedderPair,
-        rounding=6,
+        self, embedder_pair: EmbedderPair, rounding=4, use_test_time_augmentation=False
     ):
         self.document_embedder = embedder_pair.document_embedder
         self.query_embedder = embedder_pair.query_embedder
         self.rounding = rounding
+        self.use_test_time_augmentation = use_test_time_augmentation
 
-    def setup(self, df, query_col: str, document_col: str):
+    def setup(self, df, column_config: InformationRetrievalColumnConfig):
         """
         prepare search dataset from `df`
         each row in `df` is a corpus object (document)
         each entry in `query_col` is assumed to be a list of queries for a document
         `document_col` will be used for retrieval
         """
-        ir_evaluator = self._get_ir_evaluator_impl(
-            df, query_col=query_col, doc_col=document_col
+        self.df = self.prepare_search_df(df, column_config).reset_index(
+            drop=True
         )
-        self.query_col = query_col
-        self.document_col = document_col
-        self.df = df
+        ir_evaluator = self._get_ir_evaluator_impl(
+            self.df, query_col=column_config.query_col, doc_col=self.doc_col
+        )
+        self.query_col = column_config.query_col
+        self.document_cols = column_config.document_cols
         self._ir_evaluator_impl = ir_evaluator
+
+    @classmethod
+    def prepare_search_df(cls, df, column_config: InformationRetrievalColumnConfig):
+        search_df = utils.concatenate_flattened_list_cols(
+            df,
+            str_list_cols=column_config.list_cols,
+            concat_cols=column_config.document_cols,
+            target_col=InformationRetrievalEvaluator.doc_col,
+        )
+        query_col = column_config.query_col
+        query_type = type(search_df[query_col].iloc[0])
+        if query_type is str:
+            return search_df.assign(
+                **{query_col: search_df[query_col].apply(ast.literal_eval)}
+            )
+        else:
+            assert query_type is list, "column {} unsupported query type"
+            return search_df
 
     @staticmethod
     def setup_from_config(ir_config: InformationRetrievalEvaluatorConfig):
-        search_df = utils.pd_read_star(ir_config.search_df_path)
-        search_df[ir_config.query_col] = search_df[ir_config.query_col].apply(
-            ast.literal_eval
-        )
+        raw_search_df = utils.pd_read_star(ir_config.search_df_path)
         embedder_pair = EmbedderPair.from_config(ir_config.embedder_config)
         ir_evaluator = InformationRetrievalEvaluator(embedder_pair)
-        ir_evaluator.setup(search_df, ir_config.query_col, ir_config.document_col)
+        ir_evaluator.setup(
+            raw_search_df,
+            ir_config.column_config,
+        )
         return ir_evaluator
 
     def evaluate(self):
         return round_float_dict(
-            self.get_ir_results(self.df[self.document_col]), self.rounding
+            self.get_ir_results(self.df[self.doc_col].to_list()), self.rounding
         )
 
     def get_ir_results(
@@ -112,9 +128,11 @@ class InformationRetrievalEvaluator:
         )
 
     @classmethod
-    def _get_ir_evaluator_impl(cls, df, query_col="tasks", doc_col="readme"):
+    def _get_ir_evaluator_impl(cls, df, query_col="tasks", doc_col="doc"):
         ir_dicts = get_ir_dicts(
-            df.dropna(subset=[query_col, doc_col]), query_col, doc_col
+            df.dropna(subset=[query_col, doc_col]).reset_index(drop=True),
+            query_col,
+            doc_col,
         )
         ir_evaluator = evaluator_impl.CustomInformationRetrievalEvaluatorImpl(
             **ir_dicts,

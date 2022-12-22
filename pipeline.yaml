@@ -38,7 +38,7 @@ tasks:
     upstream:
       - pwc_data.prepare_final_paperswithcode_df
     params:
-      max_workers: 24
+      max_workers: 4
     product: "output/papers_with_readmes.csv"
 
   # train-test split for tasks
@@ -414,12 +414,19 @@ tasks:
       raw_text: "output/raw_dependency_records_corpus_raw.csv"
       text: "output/raw_dependency_records_corpus.parquet"
 
-  - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data_corpus
-    name: nbow.prepare_dependency_data_corpus
+  - source: github_search.neural_bag_of_words.prepare_data.prepare_readmes
+    name: nbow.prepare_readmes
     params:
-      max_workers: 12 
+        max_workers: 16 
     upstream:
       - nbow.prepare_raw_dependency_data_corpus
+    product: "output/dependency_corpus_readmes.csv"
+
+  - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data_corpus
+    name: nbow.prepare_dependency_data_corpus
+    upstream:
+      - nbow.prepare_raw_dependency_data_corpus
+      - nbow.prepare_readmes
     product:
       raw_text: "output/dependency_records_corpus_raw.csv"
       text: "output/dependency_records_corpus.parquet"
@@ -437,34 +444,36 @@ tasks:
       test: "output/nbow_data_test.parquet"
 
   - source: github_search/neural_bag_of_words/nbow_training.py
-    name: nbow.train-[[max_seq_length]]
+    name: nbow.train-[[max_seq_length]]-[[document_cols]]
     upstream:
       - nbow.prepare_dataset
       - prepare_repo_train_test_split
       - train_python_token_fasttext
     params:
       loss_function_name: "multiple_negatives_ranking_loss"
-      validation_metric_name: "accuracy@10"
+      validation_metric_name: "{{metrics.information_retrieval_metric}}"
       neptune_config_path: "{{neptune_config_path}}"
-      epochs: [1, 2, 5, 10, 20, 50, 100]
+      epochs: [1, 20]
       batch_size: 128 
     grid:
-      max_seq_length: ["median", "mean", 1000, 2000]
+      document_cols: ["titles#dependencies", "dependencies", "titles"]
+      max_seq_length: [1000, "median"]
     product:
-      model_dir: "output/models/nbow_[[max_seq_length]]"
-      nb: "notebooks/output/NBOW_training_[[max_seq_length]].ipynb"
+      model_dir: "output/models/nbow_[[max_seq_length]]-[[document_cols]]"
+      nb: "notebooks/output/NBOW_training_[[max_seq_length]]-[[document_cols]].ipynb"
 
   - source: github_search/neural_bag_of_words/nbow_test.py
     name: nbow.test
     params:
-      document_cols: ["titles", "dependencies"]
+      validation_metric_name: "{{metrics.information_retrieval_metric}}"
+      document_cols: ["dependencies"]
     upstream:
       - nbow.prepare_dataset
-      - nbow.train-*
+      - nbow.train-*-*
       - prepare_area_grouped_tasks
     product:
       best_model_dir: "output/models/best_nbow"
-      nb: "output/notebooks/NBOW_Test_Summary.ipynb"
+      nb: "notebooks/output/NBOW_Test_Summary.ipynb"
 
   - source: github_search.neural_bag_of_words.sentencepiece.create_sentencepiece_model
     name: nbow.prepare_sentencepiece_model

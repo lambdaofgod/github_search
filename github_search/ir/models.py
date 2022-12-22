@@ -1,17 +1,6 @@
 from dataclasses import field, dataclass
 import sentence_transformers
-
-from github_search.utils import kwargs_only
-
-
-@kwargs_only
-@dataclass
-class EmbedderPairConfig:
-
-    query_embedder_path: str
-    document_embedder_path: str
-    doc_max_length: int = field(default=5000)
-    query_max_length: int = field(default=100)
+from github_search import ir
 
 
 @dataclass
@@ -31,7 +20,7 @@ class EmbedderPair:
         )
 
     @staticmethod
-    def from_config(pair_config: EmbedderPairConfig):
+    def from_config(pair_config: ir.EmbedderPairConfig):
         query_embedder = sentence_transformers.SentenceTransformer(
             pair_config.query_embedder_path
         )

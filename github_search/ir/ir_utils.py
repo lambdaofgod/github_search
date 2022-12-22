@@ -2,11 +2,19 @@ import os
 
 import pandas as pd
 from haystack.nodes import retriever as haystack_retriever
-from sentence_transformers import (InputExample, SentenceTransformer,
-                                   evaluation, models)
+from sentence_transformers import InputExample, SentenceTransformer, evaluation, models
 from toolz import partial
 
 from github_search.ir import evaluator
+from github_search import utils
+
+def make_search_df(df, ir_config, doc_col):
+    return utils.concatenate_flattened_list_cols(
+        df,
+        [ir_config.query_col] + ir_config.document_cols,
+        ir_config.document_cols,
+        doc_col,
+    )
 
 
 def get_ir_metrics(path):

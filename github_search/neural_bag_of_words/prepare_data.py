@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from github_search import python_tokens, utils
+from github_search import python_tokens, utils, github_readmes
 from github_search.neural_bag_of_words.data import prepare_dependency_texts
 
 
@@ -29,12 +29,11 @@ def get_dependency_nbow_dataset(
     dep_texts_with_tasks_df = (
         paperswithcode_df[["repo", "tasks"] + additional_columns]
         .merge(df_dependency_corpus, on="repo")
-        .dropna()
     )
     return dep_texts_with_tasks_df
 
 
-def prepare_dependency_data_corpus(upstream, product):
+def prepare_raw_dependency_data_corpus(upstream, product):
     dependency_records_path = str(upstream["dependency_graph.prepare_records"])
     dependency_records_df = pd.read_feather(dependency_records_path)
     dep_texts = get_dependency_texts(dependency_records_df)
@@ -45,8 +44,31 @@ def prepare_dependency_data_corpus(upstream, product):
     )
 
 
+def prepare_readmes(upstream, product, max_workers):
+    dep_texts_df = pd.read_parquet(
+        str(upstream["nbow.prepare_raw_dependency_data_corpus"]["text"])
+    )
+    readmes = github_readmes.get_readmes(dep_texts_df, max_workers)
+    dep_texts_df["readme"] = readmes
+    dep_texts_df[["repo", "readme"]].to_csv(product)
+
+
+def prepare_dependency_data_corpus(upstream, product):
+    dep_texts = pd.read_csv(
+        str(upstream["nbow.prepare_raw_dependency_data_corpus"]["raw_text"])
+    )
+    dep_texts_df = pd.read_parquet(
+        str(upstream["nbow.prepare_raw_dependency_data_corpus"]["text"])
+    )
+    dep_texts_df["readme"] = pd.read_csv(str(upstream["nbow.prepare_readmes"]))[
+        "readme"
+    ]
+    dep_texts_df.to_csv(product["text"])
+    dep_texts.to_csv(product["raw_text"])
+
+
 def prepare_nbow_dataset(upstream, product, additional_columns):
-    df_dependency_corpus = pd.read_parquet(
+    df_dependency_corpus = pd.read_csv(
         str(upstream["nbow.prepare_dependency_data_corpus"]["text"])
     )
     for split_name in ["train", "test"]:
