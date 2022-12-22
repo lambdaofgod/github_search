@@ -5,9 +5,9 @@ import pandas as pd
 import numpy as np
 import torch.utils
 from findkit import feature_extractor, index
-from github_search.ir import InformationRetrievalColumnConfig
+from github_search.ir import InformationRetrievalColumnConfig, models
 from github_search import python_tokens, utils
-from github_search.neural_bag_of_words import utils as nbow_utils, layers
+from github_search.neural_bag_of_words import utils as nbow_utils, layers, embedders
 from github_search.neural_bag_of_words.data import (
     NBOWNumericalizer,
     QueryDocumentDataset,
@@ -97,12 +97,49 @@ class NBOWTrainValData:
             shuffle=shuffle, batch_size=batch_size, shuffle_tokens=False
         )
 
+    def get_document_padding_idx(self):
+        return self.train_dset.document_numericalizer.get_padding_idx()
+
+    def get_query_padding_idx(self):
+        return self.train_dset.query_numericalizer.get_padding_idx()
+
+
 
 @utils.kwargs_only
 @dataclass
 class NBOWPair:
     query_nbow: layers.NBOWLayer
     document_nbow: layers.NBOWLayer
+
+
+@dataclass
+class EmbedderConfigurator:
+
+    encoding_fn: Callable[[List[str]], np.ndarray]
+    train_val_data: NBOWTrainValData
+    max_seq_length: int
+
+    def get_embedder_pair(self):
+        nbow_configurator = NBOWLayerConfigurator(self.encoding_fn, self.train_val_data)
+        nbow_pair = nbow_configurator.get_nbow_pair()
+        dset = self.train_val_data.train_dset
+        query_embedder = embedders.make_sentence_transformer_nbow_model(
+            nbow_pair.query_nbow,
+            vocab=dset.query_numericalizer.vocab.vocab.itos_,
+            tokenize_fn=dset.query_numericalizer.tokenizer,
+            token_weights=nbow_pair.query_nbow.token_weights.cpu().numpy().tolist(),
+            max_seq_length=self.max_seq_length,
+        )
+        document_embedder = embedders.make_sentence_transformer_nbow_model(
+            nbow_pair.document_nbow,
+            vocab=dset.document_numericalizer.vocab.vocab.itos_,
+            tokenize_fn=dset.document_numericalizer.tokenizer,
+            token_weights=nbow_pair.document_nbow.token_weights.cpu().numpy().tolist(),
+            max_seq_length=self.max_seq_length,
+        )
+        return models.EmbedderPair(
+            query_embedder=query_embedder, document_embedder=document_embedder
+        )
 
 
 @dataclass

@@ -28,7 +28,7 @@ from github_search.neural_bag_of_words import utils as nbow_utils
 from github_search.neural_bag_of_words.checkpointers import EncoderCheckpointer
 from github_search.neural_bag_of_words.data import *
 from github_search.neural_bag_of_words.models import *
-from github_search.neural_bag_of_words.models import NBOWLayer, PairwiseNBOWModule
+from github_search.neural_bag_of_words.models import PairwiseEmbedderModule
 from github_search.neural_bag_of_words.training_utils import (
     NBOWLayerConfigurator,
     NBOWTrainValData,
@@ -90,12 +90,14 @@ list_cols = [col for col in document_cols if col == "titles"]
     val_dep_texts_with_tasks_df,
 ) = model_selection.train_test_split(df_dep_texts, test_size=0.1, random_state=0)
 
-#if not "titles" in document_cols:
+# if not "titles" in document_cols:
 train_query_cols = ["tasks", "titles"]
-#else:
+# else:
 #    train_query_cols = ["tasks"]
 
-train_val_config = TrainValColumnConfig(train_query_cols, "tasks", document_cols, list_cols)
+train_val_config = TrainValColumnConfig(
+    train_query_cols, "tasks", document_cols, list_cols
+)
 train_val_data = NBOWTrainValData.build(
     query_corpus,
     train_dep_texts_with_tasks_df,
@@ -110,15 +112,15 @@ train_val_data = NBOWTrainValData.build(
 
 fasttext_model = fasttext.load_model(fasttext_model_path)
 encoding_fn = nbow_utils.fasttext_encoding_fn(fasttext_model)
-nbow_pair = training_utils.NBOWLayerConfigurator(
-    encoding_fn, train_val_data
-).get_nbow_pair()
+embedder_pair = training_utils.EmbedderConfigurator(
+    encoding_fn, train_val_data, 1000
+).get_embedder_pair()
 # # TRZEBA DODAĆ STEROWANIE LABLEKAMI
 
 checkpointer = EncoderCheckpointer(
     train_val_data.train_dset,
     val_dep_texts_with_tasks_df,
-    nbow_pair=nbow_pair,
+    embedder_pair=embedder_pair,
     column_config=train_val_config.get_information_retrieval_column_config(),
     save_dir=product["model_dir"],
     epochs=epochs,
@@ -126,14 +128,15 @@ checkpointer = EncoderCheckpointer(
 
 # %%
 
-nbow_model = PairwiseNBOWModule(
-    nbow_pair,
+nbow_model = PairwiseEmbedderModule(
+    embedder_pair=embedder_pair,
     validation_metric_name=validation_metric_name,
     checkpointer=checkpointer,
     loss_function_name=loss_function_name,
     max_len=max_seq_length,
     max_query_len=100,
-    padding_value=train_val_data.train_dset.document_numericalizer.get_padding_idx(),
+    query_padding_idx=train_val_data.get_query_padding_idx(),
+    document_padding_idx=train_val_data.get_document_padding_idx(),
 ).to("cuda")
 
 
@@ -170,6 +173,6 @@ trainer.fit(
 
 # %%
 checkpointer.unconditionally_save_epoch_checkpoint(
-    nbow_pair=nbow_model.nbow_pair,
+    embedder_pair=nbow_model.embedder_pair,
     epoch="final",
 )
