@@ -1,9 +1,15 @@
 from dataclasses import dataclass, field
-from typing import List, Callable
+from typing import List, Callable, Optional, Union
 
+import pickle
+import tqdm
+from collections import Counter
+import sentence_transformers
+import fasttext
 import pandas as pd
 import numpy as np
 import torch.utils
+from mlutil import sentence_transformers_utils
 from findkit import feature_extractor, index
 from github_search.ir import InformationRetrievalColumnConfig, models
 from github_search import python_tokens, utils
@@ -79,8 +85,6 @@ class NBOWTrainValData:
         val_dset = QueryDocumentDataset(
             val_df[config.val_query_col].to_list(),
             val_df[config.doc_col].to_list(),
-            query_numericalizer=query_num,
-            document_numericalizer=document_num,
         )
         return NBOWTrainValData(train_dset, val_dset, train_df, val_df, config)
 
@@ -103,73 +107,64 @@ class NBOWTrainValData:
     def get_query_padding_idx(self):
         return self.train_dset.query_numericalizer.get_padding_idx()
 
-
-
-@utils.kwargs_only
 @dataclass
-class NBOWPair:
-    query_nbow: layers.NBOWLayer
-    document_nbow: layers.NBOWLayer
+class TokenizerWithWeights:
 
-
-@dataclass
-class EmbedderConfigurator:
-
-    encoding_fn: Callable[[List[str]], np.ndarray]
-    train_val_data: NBOWTrainValData
+    tokenizer: sentence_transformers_utils.CustomTokenizer
+    frequency_weights: np.ndarray
     max_seq_length: int
 
-    def get_embedder_pair(self):
-        nbow_configurator = NBOWLayerConfigurator(self.encoding_fn, self.train_val_data)
-        nbow_pair = nbow_configurator.get_nbow_pair()
-        dset = self.train_val_data.train_dset
-        query_embedder = embedders.make_sentence_transformer_nbow_model(
-            nbow_pair.query_nbow,
-            vocab=dset.query_numericalizer.vocab.vocab.itos_,
-            tokenize_fn=dset.query_numericalizer.tokenizer,
-            token_weights=nbow_pair.query_nbow.token_weights.cpu().numpy().tolist(),
-            max_seq_length=self.max_seq_length,
+    @classmethod
+    def make_from_data(
+        cls,
+        tokenize_fn: Callable[[str], List[str]],
+        min_freq: int,
+        data: List[str],
+        max_seq_length: int,
+    ):
+        token_counter = cls.get_token_counter(
+            data, tokenize_fn, max_seq_length
         )
-        document_embedder = embedders.make_sentence_transformer_nbow_model(
-            nbow_pair.document_nbow,
-            vocab=dset.document_numericalizer.vocab.vocab.itos_,
-            tokenize_fn=dset.document_numericalizer.tokenizer,
-            token_weights=nbow_pair.document_nbow.token_weights.cpu().numpy().tolist(),
-            max_seq_length=self.max_seq_length,
-        )
-        return models.EmbedderPair(
-            query_embedder=query_embedder, document_embedder=document_embedder
+        vocab = cls.get_vocab_from_counter(token_counter, min_freq)
+        tokenizer = cls.get_tokenizer(vocab, tokenize_fn)
+        frequency_weights = cls.get_frequency_weights(token_counter, vocab)
+        return TokenizerWithWeights(
+            tokenizer=tokenizer,
+            frequency_weights=frequency_weights,
+            max_seq_length=max_seq_length,
         )
 
+    @classmethod
+    def get_token_counter(cls, data, tokenize_fn, max_seq_length):
+        all_tokens = (
+            tok.lower()
+            for doc in tqdm.auto.tqdm(data)
+            for tok in tokenize_fn(doc)[:max_seq_length]
+        )
+        return Counter(all_tokens)
 
-@dataclass
-class NBOWLayerConfigurator:
+    @classmethod
+    def get_vocab_from_counter(cls, counter, min_freq):
+        return [item for (item, cnt) in counter.items() if cnt >= min_freq]
 
-    encoding_fn: Callable[[List[str]], np.ndarray]
-    train_val_data: NBOWTrainValData
-
-    def get_nbow_pair(self):
-        return NBOWPair(
-            query_nbow=self.get_query_nbow_layer(),
-            document_nbow=self.get_document_nbow_layer(),
+    @classmethod
+    def get_tokenizer(cls, vocab, tokenize_fn):
+        return sentence_transformers_utils.CustomTokenizer(
+            vocab=vocab, tokenize_fn=tokenize_fn, do_lower_case=True
         )
 
-    def get_document_nbow_layer(self):
-        return layers.NBOWLayer.make_from_encoding_fn(
-            vocab=self.train_val_data.train_dset.get_document_vocab(),
-            df_weights=self.train_val_data.train_dset.get_document_frequency_weights(
-                self.train_val_data.train_dset.numericalized_documents,
-                self.train_val_data.train_dset.get_document_vocab(),
-            ),
-            encoding_fn=self.encoding_fn,
-        )
+    @classmethod
+    def get_frequency_weights(cls, counter, vocab):
+        freqs = np.array([counter.get(t, 0) for t in vocab])
+        return freqs
 
-    def get_query_nbow_layer(self):
-        return layers.NBOWLayer.make_from_encoding_fn(
-            vocab=self.train_val_data.train_dset.get_query_vocab(),
-            df_weights=self.train_val_data.train_dset.get_document_frequency_weights(
-                self.train_val_data.train_dset.numericalized_queries,
-                self.train_val_data.train_dset.get_query_vocab(),
-            ),
-            encoding_fn=self.encoding_fn,
-        )
+    def save(self, path):
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load(cls, path):
+        with open(path, "rb") as f:
+            obj = pickle.load(f)
+        return obj
+

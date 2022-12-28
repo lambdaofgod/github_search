@@ -29,14 +29,14 @@ from github_search.neural_bag_of_words.checkpointers import EncoderCheckpointer
 from github_search.neural_bag_of_words.data import *
 from github_search.neural_bag_of_words.models import *
 from github_search.neural_bag_of_words.models import PairwiseEmbedderModule
-from github_search.neural_bag_of_words.training_utils import (
-    NBOWLayerConfigurator,
-    NBOWTrainValData,
-    TrainValColumnConfig,
+from github_search.neural_bag_of_words.training_utils import TrainValColumnConfig, TokenizerWithWeights, NBOWTrainValData
+from github_search.neural_bag_of_words.embedders import (
+    EmbedderFactory,
+    NBOWEmbedderConfig,
+    QueryDocumentDataConfig,
+    EmbedderDataConfig
 )
 from github_search.papers_with_code import paperswithcode_tasks
-from mlutil.text import code_tokenization
-from nltk import tokenize
 from pytorch_lightning import loggers
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from quaterion.loss import MultipleNegativesRankingLoss
@@ -63,8 +63,11 @@ max_seq_length = None
 loss_function_name = None
 validation_metric_name = None
 document_cols = ""
+query_embedder = None
 
 # %%
+query_embedder_path = query_embedder if not query_embedder == "None" else None
+
 paperswithcode_df = utils.load_paperswithcode_df(
     upstream["prepare_repo_train_test_split"]["train"]
 )
@@ -107,15 +110,52 @@ train_val_data = NBOWTrainValData.build(
 
 # %% [markdown]
 # ## Setup
-
+# Tokenizers
 # %%
+document_tokenizer = embedders.TokenizerWithWeights.load(
+    str(upstream["nbow.prepare_tokenizers"]["document_tokenizer"])
+)
+query_tokenizer = embedders.TokenizerWithWeights.load(
+    str(upstream["nbow.prepare_tokenizers"]["query_tokenizer"])
+)
 
-fasttext_model = fasttext.load_model(fasttext_model_path)
-encoding_fn = nbow_utils.fasttext_encoding_fn(fasttext_model)
-embedder_pair = training_utils.EmbedderConfigurator(
-    encoding_fn, train_val_data, 1000
-).get_embedder_pair()
-# # TRZEBA DODAĆ STEROWANIE LABLEKAMI
+
+# %% [markdown]
+# Embedders
+# %%
+embedder_config = NBOWEmbedderConfig(
+    query_embedder_path=query_embedder_path,
+    fasttext_path=fasttext_model_path,
+    max_seq_length=1000,
+)
+
+
+def get_fasttext_encoding_fn(fasttext_path):
+    fasttext_model = fasttext.load_model(fasttext_path)
+    return nbow_utils.fasttext_encoding_fn(fasttext_model)
+
+
+fasttext_encoding_fn = get_fasttext_encoding_fn(fasttext_model_path)
+
+query_config = EmbedderDataConfig(
+    encoding_fn=fasttext_encoding_fn, max_length=100, tokenizer=query_tokenizer
+)
+document_config = EmbedderDataConfig(
+    encoding_fn=fasttext_encoding_fn,
+    max_length=max_seq_length,
+    tokenizer=document_tokenizer,
+)
+
+
+query_document_data_config = QueryDocumentDataConfig(
+    query_config=query_config, document_config=document_config
+)
+
+embedder_pair = EmbedderFactory(
+    query_document_data_config
+).get_embedder_pair(
+    train_val_data.train_dset.queries, train_val_data.train_dset.documents
+)
 
 checkpointer = EncoderCheckpointer(
     train_val_data.train_dset,
@@ -135,13 +175,15 @@ nbow_model = PairwiseEmbedderModule(
     loss_function_name=loss_function_name,
     max_len=max_seq_length,
     max_query_len=100,
-    query_padding_idx=train_val_data.get_query_padding_idx(),
-    document_padding_idx=train_val_data.get_document_padding_idx(),
+    train_query_embedder=query_embedder_path is None,
 ).to("cuda")
 
+# %%
 
 neptune_logger = loggers.NeptuneLogger(
-    tags=["nbow", "lightning"] + train_val_config.doc_cols,
+    tags=["nbow", "lightning"] + train_val_config.doc_cols + [query_embedder_path]
+    if query_embedder_path is not None
+    else [],
     log_model_checkpoints=False,
     **neptune_args  # optional
 )

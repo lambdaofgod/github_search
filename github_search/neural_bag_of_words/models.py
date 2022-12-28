@@ -1,5 +1,6 @@
 import itertools
 
+from sentence_transformers.util import batch_to_device
 import pandas as pd
 from typing import Protocol
 import numba
@@ -43,14 +44,13 @@ class PairwiseEmbedderModule(pl.LightningModule):
         checkpointer: Checkpointer,
         loss_function_name: str,
         max_len: int,
+        max_query_len: int,
         validation_metric_name: str,
-        query_padding_idx: int,
-        document_padding_idx: int,
         lr: float = 1e-3,
+        train_query_embedder=True,
         weight_decay: float = 1e-6,
         max_grad_norm: float = 1.0,
         device="cuda",
-        max_query_len=None,
         max_eval_len=2000,
     ):
         """
@@ -60,28 +60,27 @@ class PairwiseEmbedderModule(pl.LightningModule):
         super().__init__()
         self.validation_metric_name = validation_metric_name
         self.embedder_pair = embedder_pair
+        self.query_embedder = embedder_pair.query_embedder
+        self.document_embedder = embedder_pair.document_embedder
         self.loss = LOSSES[loss_function_name]()
         self.weight_decay = weight_decay
         self.lr = lr
         self.max_grad_norm = max_grad_norm
         self._device = device
-        self.max_len = max_len
-        self.max_query_len = max_len if max_query_len is None else max_query_len
+        self.max_document_len = max_len
+        self.max_query_len = max_query_len
         self._i = 0
         self.checkpointer = checkpointer
         self.max_eval_len = max_eval_len
-        self.query_padding_idx = query_padding_idx
-        self.document_padding_idx = document_padding_idx
+        self.train_query_embedder = train_query_embedder
 
     def get_params(self):
-        return list(
-            itertools.chain.from_iterable(
-                (
-                    self.embedder_pair.query_embedder[0].parameters(),
-                    self.embedder_pair.document_embedder[0].parameters(),
-                )
-            )
-        )
+        query_params = list(self.embedder_pair.query_embedder.parameters())
+        document_params = list(self.embedder_pair.document_embedder[0].parameters())
+        if self.train_query_embedder:
+            return query_params + document_params
+        else:
+            return document_params
 
     def configure_optimizers(self):
         parameters = self.get_params()
@@ -93,15 +92,14 @@ class PairwiseEmbedderModule(pl.LightningModule):
         return optimizer
 
     @classmethod
-    def get_mask(cls, nums, padding_num):
-        return (nums != padding_num) * 1
-
-    @classmethod
     def get_random_token_nums(cls, token_nums, max_nums):
         random_idxs = np.random.randint(0, high=token_nums.shape[1], size=max_nums)
         return token_nums[:, random_idxs]
 
     def training_step(self, batch, batch_idx):
+        """
+        lightning training step
+        """
         return self.step(batch, batch_idx, "train")
 
     def validation_step(self, batch, batch_idx):
@@ -110,47 +108,51 @@ class PairwiseEmbedderModule(pl.LightningModule):
             self.embedder_pair, self._i
         ).to_dict()
         del metrics_dict["name"]
-        self.log("ir_metrics", metrics_dict)
+        self.log("ir_metrics", metrics_dict, batch_size=1)
         validation_metric_value = metrics_dict[self.validation_metric_name]
-        self.log(self.validation_metric_name, validation_metric_value)
+        self.log(self.validation_metric_name, validation_metric_value, batch_size=1)
         self._i += 1
         __ = self.step(batch, batch_idx, name="validation")
         return validation_metric_value
 
     def step(self, batch, batch_idx, name):
-        query_nums, document_nums = batch
+        """
+        step that also logs document length in training
+        """
+        queries, documents = batch
 
-        document_lengths = get_lengths_series(document_nums, self.document_padding_idx)
-        if name == "train":
-            document_nums = self.truncate_by_length(
-                document_nums, document_lengths, self.max_len, self.max_eval_len
-            )
-        else:
-            document_nums = document_nums[:, : self.max_eval_len]
-
-        query_embeddings = self.get_query_embeddings(query_nums)
-        document_embeddings = self.get_document_embeddings(document_nums)
+        query_embeddings = self.get_query_embeddings(queries)
+        documents_tokenized = self.prepare_token_inputs(
+            documents, self.document_embedder, self.max_document_len
+        )
+        document_embeddings = self.get_document_embeddings(documents_tokenized)
         loss_inputs = self.prepare_loss_inputs(query_embeddings, document_embeddings)
         loss = self.loss(**loss_inputs, labels=None, subgroups=None)
-        self._log_to_neptune(name, loss, document_nums, document_lengths)
+        self._log_to_neptune(name, loss, documents_tokenized)
         return loss
 
-    def prepare_embedder_inputs(self, nums, padding_idx):
-        return {"input_ids": nums, "attention_mask": nums != padding_idx}
+    def prepare_token_inputs(self, token_batch, embedder, max_seq_length):
+        batch = embedder.tokenize(token_batch)
+        for key in batch:
+            if isinstance(batch[key], torch.Tensor):
+                tensor = batch[key]
+                if len(tensor.shape) > 1:
+                    tensor = tensor[:, :max_seq_length]
+                batch[key] = tensor.to(self.device)
+        return batch
 
-    def get_query_embeddings(self, query_nums):
-        return self.embedder_pair.query_embedder(
-            self.prepare_embedder_inputs(
-                query_nums[:, : self.max_query_len], self.query_padding_idx
-            )
+    def get_query_embeddings(self, queries):
+        return self.query_embedder(
+            self.prepare_token_inputs(queries, self.query_embedder, self.max_query_len)
         )["sentence_embedding"]
 
-    def get_document_embeddings(self, document_nums):
-        return self.embedder_pair.document_embedder(
-            self.prepare_embedder_inputs(document_nums, self.document_padding_idx)
-        )["sentence_embedding"]
+    def get_document_embeddings(self, documents_tokenized):
+        return self.document_embedder(documents_tokenized)["sentence_embedding"]
 
     def prepare_loss_inputs(self, query_embeddings, document_embeddings):
+        """
+        prepare inpots for our nonstandard loss function that works on pairs
+        """
         embeddings = torch.cat([query_embeddings, document_embeddings])
         ## DO POPRAWY
         pairs = torch.row_stack(
@@ -161,17 +163,24 @@ class PairwiseEmbedderModule(pl.LightningModule):
         ).T
         return {"embeddings": embeddings, "pairs": pairs}
 
-    def _log_to_neptune(self, name, loss, document_nums, document_lengths):
+    def _log_to_neptune(self, name, loss, documents_tokenized):
+        document_lengths = documents_tokenized["sentence_lengths"].cpu().numpy()
         if name == "train":
-            max_document_length = document_nums.shape[1]
-            median_document_length = document_lengths.median()
-            pad_ratio = ((document_nums == self.document_padding_idx) * 1.0).mean()
-            self.log(f"{name}_loss", loss)
-            self.log(f"{name}_pad_ratio", pad_ratio)
-            self.log(f"{name}_batch_max_document_length", max_document_length)
-            self.log(f"{name}_batch_median_document_length", median_document_length)
+            max_document_length = document_lengths.max()
+            median_document_length = np.median(document_lengths)
+            pad_ratio = (1.0 * documents_tokenized["attention_mask"]).mean()
+            self.log(f"{name}_loss", loss, batch_size=1)
+            self.log(f"{name}_pad_ratio", pad_ratio, batch_size=1)
+            self.log(
+                f"{name}_batch_max_document_length", max_document_length, batch_size=1
+            )
+            self.log(
+                f"{name}_batch_median_document_length",
+                median_document_length,
+                batch_size=1,
+            )
         else:
-            self.log(f"{name}_loss", loss)
+            self.log(f"{name}_loss", loss, batch_size=1)
 
     @classmethod
     def truncate_by_length(cls, nums, lengths, truncation_mode, max_length):

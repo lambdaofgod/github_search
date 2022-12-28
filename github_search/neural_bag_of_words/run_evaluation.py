@@ -58,7 +58,7 @@ save_best_model(best_model_dir, dest_best_model_dir)
 
 
 # %% [markdown]
-# # Validate model files are cleaned 
+# # Validate model files are cleaned
 
 # %%
 file_names = [
@@ -66,5 +66,5 @@ file_names = [
     for p in P(dest_best_model_dir).glob("*")
     if not p.name.startswith(".")  # exclude hidden files
 ]
-expected_file_names = ['document_nbow', 'query_nbow', 'validation_metrics.yaml']
+expected_file_names = ["document_nbow", "query_nbow", "validation_metrics.yaml"]
 assert set(file_names) == set(expected_file_names)

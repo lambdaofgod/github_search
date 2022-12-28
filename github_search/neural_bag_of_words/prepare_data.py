@@ -1,7 +1,13 @@
+import ast
 import numpy as np
 import pandas as pd
 from github_search import python_tokens, utils, github_readmes
 from github_search.neural_bag_of_words.data import prepare_dependency_texts
+from github_search.neural_bag_of_words import embedders
+
+from mlutil.text import code_tokenization
+from nltk import tokenize
+import logging
 
 
 def tokenize_python_code(code_text):
@@ -26,10 +32,9 @@ def get_dependency_texts(dependency_records_df):
 def get_dependency_nbow_dataset(
     paperswithcode_df, df_dependency_corpus, additional_columns
 ):
-    dep_texts_with_tasks_df = (
-        paperswithcode_df[["repo", "tasks"] + additional_columns]
-        .merge(df_dependency_corpus, on="repo")
-    )
+    dep_texts_with_tasks_df = paperswithcode_df[
+        ["repo", "tasks"] + additional_columns
+    ].merge(df_dependency_corpus, on="repo")
     return dep_texts_with_tasks_df
 
 
@@ -79,3 +84,28 @@ def prepare_nbow_dataset(upstream, product, additional_columns):
             df_paperswithcode, df_dependency_corpus, additional_columns
         )
         df_corpus.to_parquet(str(product[split_name]))
+
+
+def prepare_tokenizers(upstream, product, min_freq, max_seq_length):
+    logging.basicConfig(level="INFO")
+    df_corpus = pd.read_parquet(str(upstream["nbow.prepare_dataset"]["train"]))
+    titles = df_corpus["titles"].apply(lambda ts: " ".join(ast.literal_eval(ts)))
+    tasks = df_corpus["tasks"].apply(lambda ts: " ".join(ast.literal_eval(ts)))
+    query_corpus = pd.concat([titles, tasks])
+    document_corpus = pd.concat([df_corpus["dependencies"], titles])
+    logging.info("preparing query tokenizer")
+    query_tokenizer = embedders.TokenizerWithWeights.make_from_data(
+        tokenize_fn=tokenize.wordpunct_tokenize,
+        min_freq=min_freq,
+        max_seq_length=max_seq_length,
+        data=query_corpus,
+    )
+    logging.info("preparing document tokenizer")
+    document_tokenizer = embedders.TokenizerWithWeights.make_from_data(
+        tokenize_fn=code_tokenization.tokenize_python_code,
+        min_freq=min_freq,
+        max_seq_length=max_seq_length,
+        data=document_corpus,
+    )
+    query_tokenizer.save(str(product["query_tokenizer"]))
+    document_tokenizer.save(str(product["document_tokenizer"]))

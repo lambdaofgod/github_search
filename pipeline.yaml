@@ -443,9 +443,21 @@ tasks:
       train: "output/nbow_data_train.parquet"
       test: "output/nbow_data_test.parquet"
 
-  - source: github_search/neural_bag_of_words/nbow_training.py
-    name: nbow.train-[[max_seq_length]]-[[document_cols]]
+  - source: github_search.neural_bag_of_words.prepare_data.prepare_tokenizers
+    name: nbow.prepare_tokenizers
     upstream:
+      - nbow.prepare_dataset
+    params:
+      min_freq: 5
+      max_seq_length: 1000
+    product:
+      query_tokenizer: "output/query_tokenizer.pkl"
+      document_tokenizer: "output/document_tokenizer.pkl"
+
+  - source: github_search/neural_bag_of_words/nbow_training.py
+    name: nbow.train-[[max_seq_length]]-[[document_cols]]-[[query_embedder]]
+    upstream:
+      - nbow.prepare_tokenizers
       - nbow.prepare_dataset
       - prepare_repo_train_test_split
       - train_python_token_fasttext
@@ -457,10 +469,11 @@ tasks:
       batch_size: 128 
     grid:
       document_cols: ["titles#dependencies", "dependencies", "titles"]
+      query_embedder: ["None", "sentence-transformers/all-MiniLM-L6-v2"]
       max_seq_length: [1000, "median"]
     product:
-      model_dir: "output/models/nbow_[[max_seq_length]]-[[document_cols]]"
-      nb: "notebooks/output/NBOW_training_[[max_seq_length]]-[[document_cols]].ipynb"
+      model_dir: "output/models/nbow_[[max_seq_length]]-[[document_cols]]-[[query_embedder]]"
+      nb: "notebooks/output/NBOW_training_[[max_seq_length]]-[[document_cols]]-[[query_embedder]].ipynb"
 
   - source: github_search/neural_bag_of_words/nbow_test.py
     name: nbow.test

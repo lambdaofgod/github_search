@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Callable, List
 
+from collections import Counter
+
 import numpy as np
 import pandas as pd
 import torch
@@ -20,16 +22,6 @@ def prepare_dependency_texts(dependency_records_df):
         dependency_records_df["source"] != "<ROOT>"
     ]
     return dependency_records_df.groupby("repo")["destination"].agg(" ".join)
-
-
-def tokenize_python_code(code_text):
-    """tokenize each word in code_text as python token"""
-    toks = code_text.split()
-    return [
-        tok
-        for raw_tok in code_text.replace("/", " ").replace("-", "_").split()
-        for tok in python_tokens.tokenize_python(raw_tok)
-    ]
 
 
 def split_tokenizer(s):
@@ -50,7 +42,7 @@ def pack_sequences_as_tensors(sequences, padding_value, shuffle):
 
 
 def collate_fn(
-    batch, padding_value_query, padding_value_document, shuffle, device="cuda"
+    batch, padding_value_query, padding_value_document, shuffle=False, device="cuda"
 ):
     queries, documents = zip(*batch)
     return pack_sequences_as_tensors(queries, padding_value_query, shuffle=False).to(
@@ -93,35 +85,17 @@ class NBOWNumericalizer:
 
 class QueryDocumentDataset(torch.utils.data.Dataset):
     def __init__(
-        self,
-        queries,
-        documents,
-        document_tokenize=code_tokenization.tokenize_python_code,
-        query_numericalizer=None,
-        document_numericalizer=None,
-        min_query_token_freq=1,
-        min_document_token_freq=5,
+        self, queries, documents, shuffle_documents=True, max_split_token_length=1000
     ):
         assert len(queries) == len(documents)
 
-        self.query_numericalizer = self.maybe_init_numericalizer(
-            queries,
-            query_numericalizer,
-            tokenizer=tokenize.wordpunct_tokenize,
-            min_freq=min_query_token_freq,
-        )
-        self.document_numericalizer = self.maybe_init_numericalizer(
-            documents,
-            document_numericalizer,
-            tokenizer=document_tokenize,
-            min_freq=min_document_token_freq,
-        )
-        self.numericalized_queries = self.query_numericalizer.numericalize_texts(
-            queries
-        )
-        self.numericalized_documents = self.document_numericalizer.numericalize_texts(
-            documents
-        )
+        self.shuffle_documents = shuffle_documents
+        assert len(queries) == len(documents)
+        self.len = len(documents)
+        self.queries = [" ".join(q.split()[:max_split_token_length]) for q in queries]
+        self.documents = [
+            " ".join(d.split()[:max_split_token_length]) for d in documents
+        ]
 
     @classmethod
     def maybe_init_numericalizer(
@@ -139,34 +113,19 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
             return numericalizer
 
     def __len__(self):
-        return len(self.numericalized_documents)
+        return self.len
 
     def __getitem__(self, i):
-        return self.numericalized_queries[i], self.numericalized_documents[i]
-
-    def get_query_vocab(self):
-        return self.query_numericalizer.vocab
-
-    def get_document_vocab(self):
-        return self.document_numericalizer.vocab
-
-    def get_document_frequency_weights(self, numericalized_texts, vocab):
-        counts = np.zeros(len(vocab.vocab.itos_), dtype=np.int32)
-        for nums in numericalized_texts:
-            counts[nums] += 1
-        return counts
+        return self.queries[i], self.documents[i]
 
     def get_pair_data_loader(
-        self, batch_size: int = 128, shuffle: bool = True, shuffle_tokens: bool = False 
+        self,
+        batch_size: int = 128,
+        shuffle: bool = True,
+        shuffle_tokens: bool = False,
     ):
         return torch.utils.data.DataLoader(
             self,
-            collate_fn=partial(
-                collate_fn,
-                padding_value_query=self.query_numericalizer.get_padding_idx(),
-                padding_value_document=self.document_numericalizer.get_padding_idx(),
-                shuffle=shuffle_tokens,
-            ),
             batch_size=batch_size,
             shuffle=shuffle,
         )
@@ -183,16 +142,9 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
         min_query_token_freq=1,
         min_document_token_freq=5,
     ):
-        queries = pd.concat(
-            [df[query_col] for query_col in query_cols]
-        ).to_list()
+        queries = pd.concat([df[query_col] for query_col in query_cols]).to_list()
         docs = pd.concat([df[doc_col]] * len(query_cols)).to_list()
         return QueryDocumentDataset(
             queries,
             docs,
-            document_tokenize,
-            query_numericalizer,
-            document_numericalizer,
-            min_document_token_freq,
-            min_document_token_freq,
         )
