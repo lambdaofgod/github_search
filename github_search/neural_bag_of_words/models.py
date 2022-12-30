@@ -8,25 +8,18 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.utils
-from quaterion.loss import MultipleNegativesRankingLoss, TripletLoss
 from torch import nn
 from github_search.neural_bag_of_words.layers import NBOWLayer
+from github_search.neural_bag_of_words import losses
 from github_search.ir.models import EmbedderPair
 
 EPS = 1e-6
 
 
 LOSSES = {
-    "multiple_negatives_ranking_loss": MultipleNegativesRankingLoss,
-    "triplet_loss": TripletLoss,
+    "multiple_negatives_ranking_loss": losses.MultipleNegativesRankingLossWrapper(),
+    "mse_loss": losses.EmbeddingMSELoss(),
 }
-
-
-def get_lengths_series(idxs, padding_value):
-    non_pad_x, non_pad_y = torch.where(idxs != padding_value)
-    __, indices = torch.unique(non_pad_x, return_inverse=True, sorted=True)
-    lengths = torch.bincount(indices)
-    return pd.Series(lengths.cpu().numpy())
 
 
 class Checkpointer(Protocol):
@@ -62,7 +55,7 @@ class PairwiseEmbedderModule(pl.LightningModule):
         self.embedder_pair = embedder_pair
         self.query_embedder = embedder_pair.query_embedder
         self.document_embedder = embedder_pair.document_embedder
-        self.loss = LOSSES[loss_function_name]()
+        self.loss = LOSSES[loss_function_name]
         self.weight_decay = weight_decay
         self.lr = lr
         self.max_grad_norm = max_grad_norm
@@ -73,10 +66,11 @@ class PairwiseEmbedderModule(pl.LightningModule):
         self.checkpointer = checkpointer
         self.max_eval_len = max_eval_len
         self.train_query_embedder = train_query_embedder
+        self.shuffle_documents = True
 
     def get_params(self):
         query_params = list(self.embedder_pair.query_embedder.parameters())
-        document_params = list(self.embedder_pair.document_embedder[0].parameters())
+        document_params = list(self.embedder_pair.document_embedder.parameters())
         if self.train_query_embedder:
             return query_params + document_params
         else:
@@ -119,56 +113,53 @@ class PairwiseEmbedderModule(pl.LightningModule):
         """
         step that also logs document length in training
         """
-        queries, documents = batch
+        queries_batch, documents_batch = batch
 
-        query_embeddings = self.get_query_embeddings(queries)
+        query_embeddings = self.get_query_embeddings(queries_batch)
         documents_tokenized = self.prepare_token_inputs(
-            documents, self.document_embedder, self.max_document_len
+            documents_batch,
+            self.max_document_len,
+            self.shuffle_documents,
         )
         document_embeddings = self.get_document_embeddings(documents_tokenized)
-        loss_inputs = self.prepare_loss_inputs(query_embeddings, document_embeddings)
-        loss = self.loss(**loss_inputs, labels=None, subgroups=None)
-        self._log_to_neptune(name, loss, documents_tokenized)
-        return loss
+        loss_inputs = self.loss.prepare_loss_inputs(
+            query_embeddings, document_embeddings
+        )
+        loss_value = self.loss(loss_inputs)
+        self._log_to_neptune(
+            name,
+            loss_value,
+            documents_tokenized["sentence_lengths"],
+            documents_tokenized["attention_mask"],
+        )
+        return loss_value
 
-    def prepare_token_inputs(self, token_batch, embedder, max_seq_length):
-        batch = embedder.tokenize(token_batch)
+    def prepare_token_inputs(self, batch, max_seq_length, shuffle):
+        batch_length = batch["input_ids"].shape[1]
+        shuffled_idxs = torch.randperm(batch_length)
         for key in batch:
             if isinstance(batch[key], torch.Tensor):
                 tensor = batch[key]
                 if len(tensor.shape) > 1:
+                    if shuffle:
+                        tensor = tensor[:, shuffled_idxs]
                     tensor = tensor[:, :max_seq_length]
                 batch[key] = tensor.to(self.device)
         return batch
 
     def get_query_embeddings(self, queries):
         return self.query_embedder(
-            self.prepare_token_inputs(queries, self.query_embedder, self.max_query_len)
+            self.prepare_token_inputs(queries, self.max_query_len, shuffle=False)
         )["sentence_embedding"]
 
     def get_document_embeddings(self, documents_tokenized):
         return self.document_embedder(documents_tokenized)["sentence_embedding"]
 
-    def prepare_loss_inputs(self, query_embeddings, document_embeddings):
-        """
-        prepare inpots for our nonstandard loss function that works on pairs
-        """
-        embeddings = torch.cat([query_embeddings, document_embeddings])
-        ## DO POPRAWY
-        pairs = torch.row_stack(
-            [
-                torch.arange(len(query_embeddings)),
-                torch.arange(len(query_embeddings)) + len(query_embeddings),
-            ]
-        ).T
-        return {"embeddings": embeddings, "pairs": pairs}
-
-    def _log_to_neptune(self, name, loss, documents_tokenized):
-        document_lengths = documents_tokenized["sentence_lengths"].cpu().numpy()
-        if name == "train":
+    def _log_to_neptune(self, name, loss, document_lengths, attention_mask):
+        if name == "validation":
             max_document_length = document_lengths.max()
-            median_document_length = np.median(document_lengths)
-            pad_ratio = (1.0 * documents_tokenized["attention_mask"]).mean()
+            median_document_length = torch.median(document_lengths)
+            pad_ratio = 1 - (1.0 * attention_mask).mean()
             self.log(f"{name}_loss", loss, batch_size=1)
             self.log(f"{name}_pad_ratio", pad_ratio, batch_size=1)
             self.log(

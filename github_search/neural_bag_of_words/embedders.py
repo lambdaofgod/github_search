@@ -5,7 +5,7 @@ import numpy as np
 import sentence_transformers
 import torch
 from torch import nn
-from github_search.ir.models import *
+from github_search.ir import models
 from github_search.utils import kwargs_only
 from mlutil import sentence_transformers_utils
 from collections import Counter
@@ -14,15 +14,7 @@ import tqdm
 from bounter import bounter
 
 import logging
-from github_search.neural_bag_of_words.training_utils import *
-
-
-@dataclass
-class NBOWEmbedderConfig:
-
-    query_embedder_path: Optional[str]
-    fasttext_path: Optional[str]
-    max_seq_length: int
+from github_search.neural_bag_of_words.tokenization import TokenizerWithWeights
 
 
 @dataclass

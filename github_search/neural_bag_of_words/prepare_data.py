@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from github_search import python_tokens, utils, github_readmes
 from github_search.neural_bag_of_words.data import prepare_dependency_texts
-from github_search.neural_bag_of_words import embedders
+from github_search.neural_bag_of_words import embedders, tokenization
 
 from mlutil.text import code_tokenization
 from nltk import tokenize
@@ -94,14 +94,14 @@ def prepare_tokenizers(upstream, product, min_freq, max_seq_length):
     query_corpus = pd.concat([titles, tasks])
     document_corpus = pd.concat([df_corpus["dependencies"], titles])
     logging.info("preparing query tokenizer")
-    query_tokenizer = embedders.TokenizerWithWeights.make_from_data(
+    query_tokenizer = tokenization.TokenizerWithWeights.make_from_data(
         tokenize_fn=tokenize.wordpunct_tokenize,
         min_freq=min_freq,
         max_seq_length=max_seq_length,
         data=query_corpus,
     )
     logging.info("preparing document tokenizer")
-    document_tokenizer = embedders.TokenizerWithWeights.make_from_data(
+    document_tokenizer = tokenization.TokenizerWithWeights.make_from_data(
         tokenize_fn=code_tokenization.tokenize_python_code,
         min_freq=min_freq,
         max_seq_length=max_seq_length,

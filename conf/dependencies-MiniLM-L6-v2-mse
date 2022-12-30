@@ -1,0 +1,9 @@
+document_cols:
+- dependencies
+loss_function_name: mse_loss
+max_seq_length: 1000
+query_cols:
+- titles
+- tasks
+query_embedder: sentence-transformers/all-MiniLM-L6-v2
+val_query_col: tasks

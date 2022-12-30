@@ -1,7 +1,7 @@
 import random
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, List
+from typing import Callable, List, Dict
 
 from collections import Counter
 
@@ -120,12 +120,14 @@ class QueryDocumentDataset(torch.utils.data.Dataset):
 
     def get_pair_data_loader(
         self,
+        collate_fn,
         batch_size: int = 128,
         shuffle: bool = True,
         shuffle_tokens: bool = False,
     ):
         return torch.utils.data.DataLoader(
             self,
+            collate_fn=collate_fn,
             batch_size=batch_size,
             shuffle=shuffle,
         )

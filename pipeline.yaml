@@ -455,25 +455,22 @@ tasks:
       document_tokenizer: "output/document_tokenizer.pkl"
 
   - source: github_search/neural_bag_of_words/nbow_training.py
-    name: nbow.train-[[max_seq_length]]-[[document_cols]]-[[query_embedder]]
+    name: nbow.train-[[config_name]]
     upstream:
       - nbow.prepare_tokenizers
       - nbow.prepare_dataset
       - prepare_repo_train_test_split
       - train_python_token_fasttext
     params:
-      loss_function_name: "multiple_negatives_ranking_loss"
       validation_metric_name: "{{metrics.information_retrieval_metric}}"
       neptune_config_path: "{{neptune_config_path}}"
       epochs: [1, 20]
       batch_size: 128 
     grid:
-      document_cols: ["titles#dependencies", "dependencies", "titles"]
-      query_embedder: ["None", "sentence-transformers/all-MiniLM-L6-v2"]
-      max_seq_length: [1000, "median"]
+      config_name: "{{nbow.config_names}}"
     product:
-      model_dir: "output/models/nbow_[[max_seq_length]]-[[document_cols]]-[[query_embedder]]"
-      nb: "notebooks/output/NBOW_training_[[max_seq_length]]-[[document_cols]]-[[query_embedder]].ipynb"
+      model_dir: "output/models/nbow_[[config_name]]"
+      nb: "notebooks/output/NBOW_training_[[config_name]].ipynb"
 
   - source: github_search/neural_bag_of_words/nbow_test.py
     name: nbow.test

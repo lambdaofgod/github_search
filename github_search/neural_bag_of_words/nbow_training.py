@@ -1,4 +1,5 @@
 # %%
+import os
 import ast
 import itertools
 import json
@@ -29,12 +30,16 @@ from github_search.neural_bag_of_words.checkpointers import EncoderCheckpointer
 from github_search.neural_bag_of_words.data import *
 from github_search.neural_bag_of_words.models import *
 from github_search.neural_bag_of_words.models import PairwiseEmbedderModule
-from github_search.neural_bag_of_words.training_utils import TrainValColumnConfig, TokenizerWithWeights, NBOWTrainValData
+from github_search.neural_bag_of_words.tokenization import TokenizerWithWeights
+from github_search.neural_bag_of_words.training_utils import (
+    TrainValConfig,
+    NBOWTrainValData,
+    QueryDocumentCollator,
+)
 from github_search.neural_bag_of_words.embedders import (
     EmbedderFactory,
-    NBOWEmbedderConfig,
     QueryDocumentDataConfig,
-    EmbedderDataConfig
+    EmbedderDataConfig,
 )
 from github_search.papers_with_code import paperswithcode_tasks
 from pytorch_lightning import loggers
@@ -59,14 +64,18 @@ upstream = []
 params = None
 epochs = None
 batch_size = None
-max_seq_length = None
-loss_function_name = None
 validation_metric_name = None
-document_cols = ""
-query_embedder = None
+config_name = None
 
+# %% [markdown]
+# ## Load config
 # %%
-query_embedder_path = query_embedder if not query_embedder == "None" else None
+train_val_config = TrainValConfig.load(config_name)
+max_seq_length = train_val_config.max_seq_length
+
+# %% [markdown]
+# ## Load data
+# %%
 
 paperswithcode_df = utils.load_paperswithcode_df(
     upstream["prepare_repo_train_test_split"]["train"]
@@ -85,22 +94,13 @@ query_corpus = pd.concat(
 
 # %%
 
-document_cols = document_cols.split("#")
-list_cols = [col for col in document_cols if col == "titles"]
-
 (
     train_dep_texts_with_tasks_df,
     val_dep_texts_with_tasks_df,
 ) = model_selection.train_test_split(df_dep_texts, test_size=0.1, random_state=0)
-
-# if not "titles" in document_cols:
-train_query_cols = ["tasks", "titles"]
-# else:
-#    train_query_cols = ["tasks"]
-
-train_val_config = TrainValColumnConfig(
-    train_query_cols, "tasks", document_cols, list_cols
-)
+# %% [markdown]
+# ## Prepare train and validation data
+# %%
 train_val_data = NBOWTrainValData.build(
     query_corpus,
     train_dep_texts_with_tasks_df,
@@ -123,11 +123,6 @@ query_tokenizer = embedders.TokenizerWithWeights.load(
 # %% [markdown]
 # Embedders
 # %%
-embedder_config = NBOWEmbedderConfig(
-    query_embedder_path=query_embedder_path,
-    fasttext_path=fasttext_model_path,
-    max_seq_length=1000,
-)
 
 
 def get_fasttext_encoding_fn(fasttext_path):
@@ -137,9 +132,13 @@ def get_fasttext_encoding_fn(fasttext_path):
 
 fasttext_encoding_fn = get_fasttext_encoding_fn(fasttext_model_path)
 
-query_config = EmbedderDataConfig(
-    encoding_fn=fasttext_encoding_fn, max_length=100, tokenizer=query_tokenizer
-)
+if train_val_config.query_embedder is None:
+    query_config = EmbedderDataConfig(
+        encoding_fn=fasttext_encoding_fn, max_length=100, tokenizer=query_tokenizer
+    )
+else:
+    query_config = train_val_config.query_embedder
+
 document_config = EmbedderDataConfig(
     encoding_fn=fasttext_encoding_fn,
     max_length=max_seq_length,
@@ -151,11 +150,11 @@ query_document_data_config = QueryDocumentDataConfig(
     query_config=query_config, document_config=document_config
 )
 
-embedder_pair = EmbedderFactory(
-    query_document_data_config
-).get_embedder_pair(
+embedder_pair = EmbedderFactory(query_document_data_config).get_embedder_pair(
     train_val_data.train_dset.queries, train_val_data.train_dset.documents
 )
+
+collator = QueryDocumentCollator.from_embedder_pair(embedder_pair)
 
 checkpointer = EncoderCheckpointer(
     train_val_data.train_dset,
@@ -172,24 +171,29 @@ nbow_model = PairwiseEmbedderModule(
     embedder_pair=embedder_pair,
     validation_metric_name=validation_metric_name,
     checkpointer=checkpointer,
-    loss_function_name=loss_function_name,
+    loss_function_name=train_val_config.loss_function_name,
     max_len=max_seq_length,
     max_query_len=100,
-    train_query_embedder=query_embedder_path is None,
+    train_query_embedder="mnrl" in train_val_config.loss_function_name,
 ).to("cuda")
 
 # %%
 
+tags = ["nbow", "lightning"] + train_val_config.document_cols
+if train_val_config.query_embedder is not None:
+    tags.append(train_val_config.query_embedder)
+
+print(tags)
+
+# %%
+
 neptune_logger = loggers.NeptuneLogger(
-    tags=["nbow", "lightning"] + train_val_config.doc_cols + [query_embedder_path]
-    if query_embedder_path is not None
-    else [],
-    log_model_checkpoints=False,
-    **neptune_args  # optional
+    tags=tags, log_model_checkpoints=False, **neptune_args  # optional
 )
 neptune_logger.log_hyperparams(
-    {"epochs": epochs, "max_seq_length": str(max_seq_length)}
+    {"epochs": epochs, "max_seq_length": str(max_seq_length), "conf_name": config_name}
 )
+neptune_logger.experiment["config"].upload(os.path.join("conf"), config_name)
 
 # %%
 
@@ -206,8 +210,12 @@ trainer = pl.Trainer(
 # %% [markdown]
 # ## Training
 # %%
+
+
 trainer.fit(
-    nbow_model, train_val_data.get_train_dl(batch_size), train_val_data.get_val_dl()
+    nbow_model,
+    train_val_data.get_train_dl(batch_size=batch_size, collator=collator),
+    train_val_data.get_val_dl(batch_size=256, collator=collator),
 )
 
 # %% [markdown]

@@ -1,6 +1,8 @@
-from dataclasses import dataclass, field
-from typing import List, Callable, Optional, Union
+from dataclasses import dataclass, field, asdict
+from typing import List, Callable, Optional, Union, Dict
 
+import yaml
+import os
 import pickle
 import tqdm
 from collections import Counter
@@ -23,17 +25,51 @@ from nltk import tokenize
 
 
 @dataclass
-class TrainValColumnConfig:
-    train_query_cols: List[str]
+class TrainValConfig:
+    loss_function_name: str
+    document_cols: List[str]
+    query_embedder: Optional[str]
+    max_seq_length: int
+    query_cols: List[str]
     val_query_col: str
-    doc_cols: List[str]
-    list_cols: List[str]
-    doc_col = "document"
+
+    @classmethod
+    def load(cls, name, conf_path="conf"):
+        path = os.path.join(conf_path, name)
+        with open(path, "r") as f:
+            config = yaml.safe_load(f)
+        return TrainValConfig(**config)
 
     def get_information_retrieval_column_config(self):
         return InformationRetrievalColumnConfig(
-            self.doc_cols, self.val_query_col, self.list_cols
+            self.document_cols, self.val_query_col, self.get_list_cols()
         )
+
+    def get_list_cols(self):
+        return ["titles"] if "titles" in self.document_cols else []
+
+    def save(self, name, conf_path="conf"):
+        path = os.path.join(conf_path, name)
+        with open(path, "r") as f:
+            yaml.dump(f, asdict(self))
+
+
+@dataclass
+class QueryDocumentCollator:
+
+    query_tokenize_fn: Callable[[List[str]], Dict[str, torch.Tensor]]
+    document_tokenize_fn: Callable[[List[str]], Dict[str, torch.Tensor]]
+
+    @classmethod
+    def from_embedder_pair(cls, embedder_pair):
+        return QueryDocumentCollator(
+            query_tokenize_fn=embedder_pair.query_embedder.tokenize,
+            document_tokenize_fn=embedder_pair.document_embedder.tokenize,
+        )
+
+    def collate_fn(self, batch):
+        queries, documents = zip(*batch)
+        return self.query_tokenize_fn(queries), self.document_tokenize_fn(documents)
 
 
 @dataclass
@@ -43,16 +79,20 @@ class NBOWTrainValData:
     val_dset: QueryDocumentDataset
     _train_df: pd.DataFrame
     val_df: pd.DataFrame
-    column_config: TrainValColumnConfig
+    column_config: TrainValConfig
 
     @classmethod
     def _prepare_df(cls, df, config):
         return utils.concatenate_flattened_list_cols(
             df,
-            concat_cols=config.doc_cols,
-            target_col=config.doc_col,
-            str_list_cols=config.list_cols + [config.val_query_col],
+            concat_cols=config.document_cols,
+            target_col=cls.get_doc_col(),
+            str_list_cols=config.get_list_cols() + [config.val_query_col],
         )
+
+    @classmethod
+    def get_doc_col(cls):
+        return "document"
 
     @classmethod
     def build(
@@ -61,7 +101,6 @@ class NBOWTrainValData:
         train_df,
         val_df,
         config,
-        document_tokenizer=code_tokenization.tokenize_python_code,
     ):
 
         query_num = NBOWNumericalizer.build_from_texts(
@@ -71,34 +110,45 @@ class NBOWTrainValData:
         train_df = cls._prepare_df(train_df, config)
         val_df = cls._prepare_df(val_df, config)
         document_num = NBOWNumericalizer.build_from_texts(
-            train_df[config.doc_col],
+            train_df[cls.get_doc_col()],
             tokenizer=code_tokenization.tokenize_python_code,
         )
 
         train_dset = QueryDocumentDataset.prepare_from_dataframe(
             train_df,
-            config.train_query_cols,
-            config.doc_col,
+            config.query_cols,
+            cls.get_doc_col(),
             query_numericalizer=query_num,
             document_numericalizer=document_num,
         )
         val_dset = QueryDocumentDataset(
             val_df[config.val_query_col].to_list(),
-            val_df[config.doc_col].to_list(),
+            val_df[cls.get_doc_col()].to_list(),
         )
         return NBOWTrainValData(train_dset, val_dset, train_df, val_df, config)
 
-    def get_train_dl(self, batch_size=128, shuffle=True, shuffle_tokens=True, **kwargs):
+    def get_train_dl(
+        self,
+        collator: QueryDocumentCollator,
+        batch_size=128,
+        shuffle=True,
+        shuffle_tokens=True,
+        **kwargs
+    ):
         return self.train_dset.get_pair_data_loader(
+            collate_fn=collator.collate_fn,
             shuffle=shuffle,
             batch_size=batch_size,
             shuffle_tokens=shuffle_tokens,
             **kwargs
         )
 
-    def get_val_dl(self, batch_size=256, shuffle=False, **kwargs):
+    def get_val_dl(self, collator, batch_size=256, shuffle=False, **kwargs):
         return self.val_dset.get_pair_data_loader(
-            shuffle=shuffle, batch_size=batch_size, shuffle_tokens=False
+            collate_fn=collator.collate_fn,
+            shuffle=shuffle,
+            batch_size=batch_size,
+            shuffle_tokens=False,
         )
 
     def get_document_padding_idx(self):
@@ -106,65 +156,3 @@ class NBOWTrainValData:
 
     def get_query_padding_idx(self):
         return self.train_dset.query_numericalizer.get_padding_idx()
-
-@dataclass
-class TokenizerWithWeights:
-
-    tokenizer: sentence_transformers_utils.CustomTokenizer
-    frequency_weights: np.ndarray
-    max_seq_length: int
-
-    @classmethod
-    def make_from_data(
-        cls,
-        tokenize_fn: Callable[[str], List[str]],
-        min_freq: int,
-        data: List[str],
-        max_seq_length: int,
-    ):
-        token_counter = cls.get_token_counter(
-            data, tokenize_fn, max_seq_length
-        )
-        vocab = cls.get_vocab_from_counter(token_counter, min_freq)
-        tokenizer = cls.get_tokenizer(vocab, tokenize_fn)
-        frequency_weights = cls.get_frequency_weights(token_counter, vocab)
-        return TokenizerWithWeights(
-            tokenizer=tokenizer,
-            frequency_weights=frequency_weights,
-            max_seq_length=max_seq_length,
-        )
-
-    @classmethod
-    def get_token_counter(cls, data, tokenize_fn, max_seq_length):
-        all_tokens = (
-            tok.lower()
-            for doc in tqdm.auto.tqdm(data)
-            for tok in tokenize_fn(doc)[:max_seq_length]
-        )
-        return Counter(all_tokens)
-
-    @classmethod
-    def get_vocab_from_counter(cls, counter, min_freq):
-        return [item for (item, cnt) in counter.items() if cnt >= min_freq]
-
-    @classmethod
-    def get_tokenizer(cls, vocab, tokenize_fn):
-        return sentence_transformers_utils.CustomTokenizer(
-            vocab=vocab, tokenize_fn=tokenize_fn, do_lower_case=True
-        )
-
-    @classmethod
-    def get_frequency_weights(cls, counter, vocab):
-        freqs = np.array([counter.get(t, 0) for t in vocab])
-        return freqs
-
-    def save(self, path):
-        with open(path, "wb") as f:
-            pickle.dump(self, f)
-
-    @classmethod
-    def load(cls, path):
-        with open(path, "rb") as f:
-            obj = pickle.load(f)
-        return obj
-
