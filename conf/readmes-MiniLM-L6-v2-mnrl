@@ -1,6 +1,0 @@
-loss_function_name: "multiple_negatives_ranking_loss"
-document_cols: [readme]
-query_embedder: "sentence-transformers/all-MiniLM-L6-v2" 
-max_seq_length: 1000 
-query_cols: [titles, tasks]
-val_query_col: "tasks"

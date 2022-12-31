@@ -1,6 +1,0 @@
-loss_function_name: "multiple_negatives_ranking_loss"
-document_cols: ["titles", "dependencies"]
-query_embedder: null 
-max_seq_length: 1000 
-query_cols: [titles, tasks]
-val_query_col: "tasks"

@@ -439,6 +439,7 @@ tasks:
     params:
       # columns that will be used in addition to 
       additional_columns: "{{nbow.additional_columns}}" 
+      n_readme_lines: "{{nbow.n_readme_lines}}" 
     product:
       train: "output/nbow_data_train.parquet"
       test: "output/nbow_data_test.parquet"
@@ -479,7 +480,7 @@ tasks:
       document_cols: ["dependencies"]
     upstream:
       - nbow.prepare_dataset
-      - nbow.train-*-*
+      - nbow.train-*-*-*
       - prepare_area_grouped_tasks
     product:
       best_model_dir: "output/models/best_nbow"

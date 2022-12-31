@@ -1,9 +1,0 @@
-document_cols:
-- titles
-loss_function_name: mse_loss
-max_seq_length: 1000
-query_cols:
-- titles
-- tasks
-query_embedder: null
-val_query_col: tasks

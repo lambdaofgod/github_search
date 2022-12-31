@@ -1,6 +1,7 @@
 document_cols:
-- dependencies
-loss_function_name: mse_loss
+- titles
+document_embedder: nbow
+loss_function_name: multiple_negatives_ranking_loss
 max_seq_length: 1000
 query_cols:
 - titles
