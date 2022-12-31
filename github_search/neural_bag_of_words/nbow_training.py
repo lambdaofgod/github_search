@@ -193,7 +193,7 @@ neptune_logger = loggers.NeptuneLogger(
 neptune_logger.log_hyperparams(
     {"epochs": epochs, "max_seq_length": str(max_seq_length), "conf_name": config_name}
 )
-neptune_logger.experiment["config"].upload(os.path.join("conf"), config_name)
+neptune_logger.experiment["config"].upload(os.path.join("conf", config_name))
 
 # %%
 
@@ -222,6 +222,7 @@ trainer.fit(
 # ## Save final model
 
 # %%
+
 checkpointer.unconditionally_save_epoch_checkpoint(
     embedder_pair=nbow_model.embedder_pair,
     epoch="final",

@@ -96,8 +96,9 @@ document_cols = ["dependencies"]
 
 # %%
 tasks_path = str(upstream["prepare_area_grouped_tasks"])
-upstream_paths = [P(v["model_dir"]) for v in upstream["nbow.train-*-*"].values()]
+upstream_paths = [P(v["model_dir"]) for v in upstream["nbow.train-*-*-*"].values()]
 search_data_path = str(upstream["nbow.prepare_dataset"]["test"])
+out_dir = P(product["best_model_dir"])
 
 # %% [markdown]
 
@@ -121,8 +122,17 @@ ir_config = evaluator.InformationRetrievalEvaluatorConfig(
 )
 ir_evaluator = evaluator.InformationRetrievalEvaluator.setup_from_config(ir_config)
 ir_metrics = ir_evaluator.evaluate()
+ir_metrics_yaml = yaml.dump(ir_metrics["cos_sim"])
 
-print(yaml.dump(ir_metrics["cos_sim"]))
+# %% [markdown]
+# ## Results
+
+# %%
+print(ir_metrics_yaml)
+
+# %%
+with open(out_dir / "results.yaml", "w") as f:
+    f.write(ir_metrics_yaml)
 
 # %% [markdown]
 
@@ -149,7 +159,6 @@ best_worst_results["worst_tasks"].head()
 
 # %%
 
-out_dir = P(product["best_model_dir"])
 if out_dir.exists():
     shutil.rmtree(out_dir)
 out_dir.mkdir()

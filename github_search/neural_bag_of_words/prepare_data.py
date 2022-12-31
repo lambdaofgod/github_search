@@ -29,12 +29,29 @@ def get_dependency_texts(dependency_records_df):
     )
 
 
+def truncate_readme(readme, n_lines):
+    return " ".join([l for l in readme.split("\n") if l != ""][:n_lines])
+
+
+def truncate_and_impute_readmes(readmes, imputing_col, n_lines):
+    return readmes.fillna(imputing_col).apply(lambda r: truncate_readme(r, n_lines))
+
+
 def get_dependency_nbow_dataset(
-    paperswithcode_df, df_dependency_corpus, additional_columns
+    paperswithcode_df, df_dependency_corpus, additional_columns, n_readme_lines
 ):
+    additional_paperswithcode_columns = [
+        col for col in additional_columns if col in paperswithcode_df
+    ]
     dep_texts_with_tasks_df = paperswithcode_df[
-        ["repo", "tasks"] + additional_columns
+        ["repo", "tasks"] + additional_paperswithcode_columns
     ].merge(df_dependency_corpus, on="repo")
+    if "readme" in additional_columns:
+        dep_texts_with_tasks_df["readme"] = truncate_and_impute_readmes(
+            dep_texts_with_tasks_df["readme"],
+            dep_texts_with_tasks_df["repo"],
+            n_readme_lines,
+        )
     return dep_texts_with_tasks_df
 
 
@@ -72,7 +89,7 @@ def prepare_dependency_data_corpus(upstream, product):
     dep_texts.to_csv(product["raw_text"])
 
 
-def prepare_nbow_dataset(upstream, product, additional_columns):
+def prepare_nbow_dataset(upstream, product, additional_columns, n_readme_lines):
     df_dependency_corpus = pd.read_csv(
         str(upstream["nbow.prepare_dependency_data_corpus"]["text"])
     )
@@ -81,7 +98,7 @@ def prepare_nbow_dataset(upstream, product, additional_columns):
             str(upstream["prepare_repo_train_test_split"][split_name])
         )
         df_corpus = get_dependency_nbow_dataset(
-            df_paperswithcode, df_dependency_corpus, additional_columns
+            df_paperswithcode, df_dependency_corpus, additional_columns, n_readme_lines
         )
         df_corpus.to_parquet(str(product[split_name]))
 
