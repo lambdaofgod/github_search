@@ -37,6 +37,20 @@ def truncate_and_impute_readmes(readmes, imputing_col, n_lines):
     return readmes.fillna(imputing_col).apply(lambda r: truncate_readme(r, n_lines))
 
 
+def add_inputed_readmes(df, n_readme_lines):
+    df["readme"] = truncate_and_impute_readmes(
+        df["readme"],
+        df["repo"],
+        n_readme_lines,
+    )
+    return df
+
+
+def add_repo_name_to_dependencies(df):
+    df["dependencies"] = df["repo"] + " " + df["dependencies"]
+    return df
+
+
 def get_dependency_nbow_dataset(
     paperswithcode_df, df_dependency_corpus, additional_columns, n_readme_lines
 ):
@@ -47,11 +61,11 @@ def get_dependency_nbow_dataset(
         ["repo", "tasks"] + additional_paperswithcode_columns
     ].merge(df_dependency_corpus, on="repo")
     if "readme" in additional_columns:
-        dep_texts_with_tasks_df["readme"] = truncate_and_impute_readmes(
-            dep_texts_with_tasks_df["readme"],
-            dep_texts_with_tasks_df["repo"],
-            n_readme_lines,
+        dep_texts_with_tasks_df = add_inputed_readmes(
+            dep_texts_with_tasks_df, n_readme_lines
         )
+    if "dependencies" in additional_columns:
+        add_repo_name_to_dependencies(dep_texts_with_tasks_df)
     return dep_texts_with_tasks_df
 
 

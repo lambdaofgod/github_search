@@ -51,9 +51,14 @@ class EmbedderFactory:
                 self.data_config.query_config
             )
             target_dim = query_embedder.get_sentence_embedding_dimension()
-        document_embedder = self.get_embedder(
-            document_data, self.data_config.document_config, target_dim
-        )
+
+        if type(self.data_config.document_config) is not str:
+            document_embedder = self.get_embedder(
+                document_data, self.data_config.document_config, target_dim
+            )
+        else:
+            assert self.data_config.document_config == self.data_config.query_config
+            document_embedder = query_embedder
         return models.EmbedderPair(
             query_embedder=query_embedder, document_embedder=document_embedder
         )

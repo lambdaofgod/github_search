@@ -28,7 +28,8 @@ from nltk import tokenize
 class TrainValConfig:
     loss_function_name: str
     document_cols: List[str]
-    query_embedder: Optional[str]
+    query_embedder: str
+    document_embedder: str
     max_seq_length: int
     query_cols: List[str]
     val_query_col: str

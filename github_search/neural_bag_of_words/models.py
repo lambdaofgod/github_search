@@ -129,8 +129,7 @@ class PairwiseEmbedderModule(pl.LightningModule):
         self._log_to_neptune(
             name,
             loss_value,
-            documents_tokenized["sentence_lengths"],
-            documents_tokenized["attention_mask"],
+            documents_tokenized,
         )
         return loss_value
 
@@ -155,23 +154,26 @@ class PairwiseEmbedderModule(pl.LightningModule):
     def get_document_embeddings(self, documents_tokenized):
         return self.document_embedder(documents_tokenized)["sentence_embedding"]
 
-    def _log_to_neptune(self, name, loss, document_lengths, attention_mask):
+    def _log_to_neptune(self, name, loss, tokenized_documents):
         if name == "validation":
-            max_document_length = document_lengths.max()
-            median_document_length = torch.median(document_lengths)
+            maybe_document_lengths = tokenized_documents.get("sentence_lengths")
+            attention_mask = tokenized_documents["attention_mask"]
             pad_ratio = 1 - (1.0 * attention_mask).mean()
-            self.log(f"{name}_loss", loss, batch_size=1)
             self.log(f"{name}_pad_ratio", pad_ratio, batch_size=1)
-            self.log(
-                f"{name}_batch_max_document_length", max_document_length, batch_size=1
-            )
-            self.log(
-                f"{name}_batch_median_document_length",
-                median_document_length,
-                batch_size=1,
-            )
-        else:
             self.log(f"{name}_loss", loss, batch_size=1)
+            if maybe_document_lengths is not None:
+                self.log_document_lengths(maybe_document_lengths)
+        self.log(f"{name}_loss", loss, batch_size=1)
+
+    def log_document_lengths(self, document_lengths):
+        max_document_length = document_lengths.max()
+        median_document_length = torch.median(document_lengths)
+        self.log(f"{name}_batch_max_document_length", max_document_length, batch_size=1)
+        self.log(
+            f"{name}_batch_median_document_length",
+            median_document_length,
+            batch_size=1,
+        )
 
     @classmethod
     def truncate_by_length(cls, nums, lengths, truncation_mode, max_length):

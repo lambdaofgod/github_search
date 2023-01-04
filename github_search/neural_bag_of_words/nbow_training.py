@@ -132,18 +132,22 @@ def get_fasttext_encoding_fn(fasttext_path):
 
 fasttext_encoding_fn = get_fasttext_encoding_fn(fasttext_model_path)
 
-if train_val_config.query_embedder is None:
+if train_val_config.query_embedder == "nbow":
     query_config = EmbedderDataConfig(
         encoding_fn=fasttext_encoding_fn, max_length=100, tokenizer=query_tokenizer
     )
 else:
     query_config = train_val_config.query_embedder
 
-document_config = EmbedderDataConfig(
-    encoding_fn=fasttext_encoding_fn,
-    max_length=max_seq_length,
-    tokenizer=document_tokenizer,
-)
+
+if train_val_config.document_embedder == "nbow":
+    document_config = EmbedderDataConfig(
+        encoding_fn=fasttext_encoding_fn,
+        max_length=max_seq_length,
+        tokenizer=document_tokenizer,
+    )
+else:
+    document_config = train_val_config.document_embedder
 
 
 query_document_data_config = QueryDocumentDataConfig(
