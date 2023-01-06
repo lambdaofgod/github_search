@@ -178,7 +178,8 @@ nbow_model = PairwiseEmbedderModule(
     loss_function_name=train_val_config.loss_function_name,
     max_len=max_seq_length,
     max_query_len=100,
-    train_query_embedder="mnrl" in train_val_config.loss_function_name,
+    train_query_embedder=train_val_config.train_query_embedder,
+    shuffle_documents=train_val_config.shuffle_documents
 ).to("cuda")
 
 # %%

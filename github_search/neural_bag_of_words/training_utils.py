@@ -33,6 +33,8 @@ class TrainValConfig:
     max_seq_length: int
     query_cols: List[str]
     val_query_col: str
+    shuffle_documents: bool = field(default=True)
+    train_query_embedder: bool = field(default=True)
 
     @classmethod
     def load(cls, name, conf_path="conf"):

@@ -45,6 +45,7 @@ class PairwiseEmbedderModule(pl.LightningModule):
         max_grad_norm: float = 1.0,
         device="cuda",
         max_eval_len=2000,
+        shuffle_documents=True
     ):
         """
         lightning module for training neural bag of words model
@@ -66,7 +67,7 @@ class PairwiseEmbedderModule(pl.LightningModule):
         self.checkpointer = checkpointer
         self.max_eval_len = max_eval_len
         self.train_query_embedder = train_query_embedder
-        self.shuffle_documents = True
+        self.shuffle_documents = shuffle_documents
 
     def get_params(self):
         query_params = list(self.embedder_pair.query_embedder.parameters())
@@ -158,14 +159,14 @@ class PairwiseEmbedderModule(pl.LightningModule):
         if name == "validation":
             maybe_document_lengths = tokenized_documents.get("sentence_lengths")
             attention_mask = tokenized_documents["attention_mask"]
-            pad_ratio = 1 - (1.0 * attention_mask).mean()
+            pad_ratio = (1.0 * attention_mask).mean()
             self.log(f"{name}_pad_ratio", pad_ratio, batch_size=1)
             self.log(f"{name}_loss", loss, batch_size=1)
             if maybe_document_lengths is not None:
-                self.log_document_lengths(maybe_document_lengths)
+                self.log_document_lengths(name, maybe_document_lengths)
         self.log(f"{name}_loss", loss, batch_size=1)
 
-    def log_document_lengths(self, document_lengths):
+    def log_document_lengths(self, name, document_lengths):
         max_document_length = document_lengths.max()
         median_document_length = torch.median(document_lengths)
         self.log(f"{name}_batch_max_document_length", max_document_length, batch_size=1)

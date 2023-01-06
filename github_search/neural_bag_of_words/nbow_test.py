@@ -42,12 +42,15 @@ product = "../../output/best_nbow/"
 
 
 # %%
+def get_document_cols(model_path):
+    return tuple(model_path.name.replace("nbow_", "").split("-")[0].split("#"))
 
 
 def prepare_display_df(metrics_df):
     """
     sort values by our most important metric
     """
+    metrics_df["document_cols"] = pd.Series(metrics_df.index).apply(get_document_cols).values
     return metrics_df.sort_values("accuracy@10", ascending=False)
 
 
@@ -55,7 +58,7 @@ def get_eval_df(upstream_paths):
     """
     get evaluation result yaml files
     """
-    return evaluation.get_metrics_df_from_dicts(
+    metrics_df = evaluation.get_metrics_df_from_dicts(
         dict(
             evaluation.get_metrics_dict_with_name(
                 p / "metrics_final.yaml", get_name=lambda arg: p
@@ -63,7 +66,7 @@ def get_eval_df(upstream_paths):
             for p in upstream_paths
         )
     )
-
+    return metrics_df
 
 def get_best_model_config(best_model_directory):
     return EmbedderPairConfig(
@@ -87,6 +90,26 @@ def setup_ir_evaluator_from_config(
     ir_evaluator.setup(searched_dep_texts, "tasks", embedded_col, name_col="repo")
     return ir_evaluator
 
+def get_grouped_model_results(eval_df):
+    grouped_best_model_names = eval_df.groupby("document_cols").apply(lambda df: df.reset_index().sort_values("accuracy@10").iloc[-1])["name"]
+    d = {}
+    for (document_cols, best_model_directory) in zip(grouped_best_model_names.index, grouped_best_model_names.values):
+        best_model_config = get_best_model_config(best_model_directory)
+        ir_config = evaluator.InformationRetrievalEvaluatorConfig(
+            search_data_path,
+            best_model_config,
+            InformationRetrievalColumnConfig(
+                document_cols=list(get_document_cols(best_model_directory)), query_col="tasks", list_cols=["titles"]
+            ),
+        )
+        ir_evaluator = evaluator.InformationRetrievalEvaluator.setup_from_config(ir_config)
+        ir_metrics = ir_evaluator.evaluate()
+        ir_metrics_yaml = yaml.dump(ir_metrics["cos_sim"])
+        print(document_cols)
+        print(best_model_directory.name)
+        print(ir_metrics_yaml)
+        d[(document_cols, best_model_directory)] = ir_metrics
+    return d
 
 # %% tags=["parameters"]
 
@@ -111,18 +134,7 @@ eval_df.style.highlight_max()
 
 # %%
 
-best_model_directory = eval_df.index[0]
-best_model_config = get_best_model_config(best_model_directory)
-ir_config = evaluator.InformationRetrievalEvaluatorConfig(
-    search_data_path,
-    best_model_config,
-    InformationRetrievalColumnConfig(
-        document_cols=document_cols, query_col="tasks", list_cols=["titles"]
-    ),
-)
-ir_evaluator = evaluator.InformationRetrievalEvaluator.setup_from_config(ir_config)
-ir_metrics = ir_evaluator.evaluate()
-ir_metrics_yaml = yaml.dump(ir_metrics["cos_sim"])
+grouped_model_results = get_grouped_model_results(eval_df)
 
 # %% [markdown]
 # ## Results
