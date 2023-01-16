@@ -57,8 +57,9 @@ class EmbedderFactory:
                 document_data, self.data_config.document_config, target_dim
             )
         else:
-            assert self.data_config.document_config == self.data_config.query_config
-            document_embedder = query_embedder
+            document_embedder = sentence_transformers.SentenceTransformer(
+                self.data_config.query_config
+            )
         return models.EmbedderPair(
             query_embedder=query_embedder, document_embedder=document_embedder
         )
