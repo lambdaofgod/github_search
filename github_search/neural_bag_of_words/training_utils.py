@@ -22,7 +22,7 @@ from github_search.neural_bag_of_words.data import (
 )
 from mlutil.text import code_tokenization
 from nltk import tokenize
-
+from mlutil_rust import code_tokenization
 
 @dataclass
 class TrainValConfig:

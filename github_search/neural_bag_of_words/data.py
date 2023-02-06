@@ -11,8 +11,7 @@ import torch
 import torch.utils
 import torchtext
 from github_search import python_tokens
-from mlutil.text import code_tokenization
-from nltk import tokenize
+
 
 Tokenizer = Callable[[List[str]], List[List[str]]]
 

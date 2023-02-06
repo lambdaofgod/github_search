@@ -48,6 +48,9 @@ from quaterion.loss import MultipleNegativesRankingLoss
 from sklearn import feature_extraction, model_selection
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+import logging
+
+logging.basicConfig(level="INFO")
 
 # %%
 # probably for deletion
@@ -60,7 +63,7 @@ hypoth_upstream = {
 }
 # %% tags=["parameters"]
 product = None
-upstream = []
+upstream = {}
 params = None
 epochs = None
 batch_size = None
@@ -112,13 +115,30 @@ train_val_data = NBOWTrainValData.build(
 # ## Setup
 # Tokenizers
 # %%
-document_tokenizer = embedders.TokenizerWithWeights.load(
-    str(upstream["nbow.prepare_tokenizers"]["document_tokenizer"])
-)
-query_tokenizer = embedders.TokenizerWithWeights.load(
-    str(upstream["nbow.prepare_tokenizers"]["query_tokenizer"])
-)
+def get_tokenizers(upstream, train_val_config):
+    if "function_signature" in train_val_config.document_cols:
+        tokenizer_text_col = "function_signature"
+    else:
+        tokenizer_text_col = "dependencies"
 
+    document_tokenizer = embedders.TokenizerWithWeights.load(
+        str(
+            upstream["nbow.prepare_tokenizers_*"][
+                f"nbow.prepare_tokenizers_{tokenizer_text_col}"
+            ]["document_tokenizer"]
+        )
+    )
+    query_tokenizer = embedders.TokenizerWithWeights.load(
+        str(
+            upstream["nbow.prepare_tokenizers_*"][
+                f"nbow.prepare_tokenizers_{tokenizer_text_col}"
+            ]["query_tokenizer"]
+        )
+    )
+    return document_tokenizer, query_tokenizer
+
+
+document_tokenizer, query_tokenizer = get_tokenizers(upstream, train_val_config)
 
 # %% [markdown]
 # Embedders
@@ -132,31 +152,16 @@ def get_fasttext_encoding_fn(fasttext_path):
 
 fasttext_encoding_fn = get_fasttext_encoding_fn(fasttext_model_path)
 
-if train_val_config.query_embedder == "nbow":
-    query_config = EmbedderDataConfig(
-        encoding_fn=fasttext_encoding_fn, max_length=100, tokenizer=query_tokenizer
-    )
-else:
-    query_config = train_val_config.query_embedder
 
-
-if train_val_config.document_embedder == "nbow":
-    document_config = EmbedderDataConfig(
-        encoding_fn=fasttext_encoding_fn,
-        max_length=max_seq_length,
-        tokenizer=document_tokenizer,
-    )
-else:
-    document_config = train_val_config.document_embedder
-
-
-query_document_data_config = QueryDocumentDataConfig(
-    query_config=query_config, document_config=document_config
+query_document_data_config = QueryDocumentDataConfig.make_from_train_val_config(
+    train_val_config,
+    fasttext_encoding_fn,
+    max_seq_length,
+    query_tokenizer,
+    document_tokenizer
 )
 
-embedder_pair = EmbedderFactory(query_document_data_config).get_embedder_pair(
-    train_val_data.train_dset.queries, train_val_data.train_dset.documents
-)
+embedder_pair = EmbedderFactory(query_document_data_config).get_embedder_pair()
 
 collator = QueryDocumentCollator.from_embedder_pair(embedder_pair)
 
@@ -179,7 +184,7 @@ nbow_model = PairwiseEmbedderModule(
     max_len=max_seq_length,
     max_query_len=100,
     train_query_embedder=train_val_config.train_query_embedder,
-    shuffle_documents=train_val_config.shuffle_documents
+    shuffle_documents=train_val_config.shuffle_documents,
 ).to("cuda")
 
 # %%
@@ -216,6 +221,7 @@ trainer = pl.Trainer(
 # ## Training
 # %%
 
+logging.info("starting training...")
 
 trainer.fit(
     nbow_model,

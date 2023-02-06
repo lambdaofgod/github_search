@@ -7,6 +7,11 @@ import pickle
 from mlutil import sentence_transformers_utils
 import tqdm
 from collections import Counter
+from nltk import tokenize
+from mlutil_rust import code_tokenization
+
+
+MAX_DOC_CHAR_LENGTH = 10 ** 5
 
 
 @dataclass
@@ -17,13 +22,21 @@ class TokenizerWithWeights:
     max_seq_length: int
 
     @classmethod
+    def get_tokenize_fn(cls, text_type):
+        if text_type == "code":
+            return tokenize.wordpunct_tokenize
+        else:
+            return code_tokenization.tokenize_python_code
+
+    @classmethod
     def make_from_data(
         cls,
-        tokenize_fn: Callable[[str], List[str]],
+        text_type: str,
         min_freq: int,
         data: List[str],
         max_seq_length: int,
     ):
+        tokenize_fn = cls.get_tokenize_fn(text_type)
         token_counter = cls.get_token_counter(data, tokenize_fn, max_seq_length)
         vocab = cls.get_vocab_from_counter(token_counter, min_freq)
         tokenizer = cls.get_tokenizer(vocab, tokenize_fn)
@@ -39,7 +52,7 @@ class TokenizerWithWeights:
         all_tokens = (
             tok.lower()
             for doc in tqdm.auto.tqdm(data)
-            for tok in tokenize_fn(doc)[:max_seq_length]
+            for tok in tokenize_fn(doc[-MAX_DOC_CHAR_LENGTH:])[:max_seq_length]
         )
         return Counter(all_tokens)
 

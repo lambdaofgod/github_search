@@ -130,6 +130,15 @@ tasks:
       binary: "output/abstract_readme_w2v{{word2vec.dimension}}.bin"
       txt: "output/abstract_readme_w2v{{word2vec.dimension}}.txt"
 
+  # run word2vec on code 
+  - source: github_search.word2vec.train_python_code_w2v
+    params:
+      python_file_path: "{{python_files_path}}"
+      embedding_dim: "{{word2vec.dimension}}"
+    product:
+      binary: "output/python_code_w2v{{word2vec.dimension}}.bin"
+      txt: "output/python_code_w2v{{word2vec.dimension}}.txt"
+
   #
   # imports
   #
@@ -235,8 +244,17 @@ tasks:
     params:
       python_file_path: "{{python_files_path}}"
       max_depth: 10
+      n_cores: 4
     product:
       "output/python_functions.feather"
+
+  - source: github_search.data_engineering.prepare_function_signatures_df
+    params:
+      python_file_path: "{{python_files_path}}"
+      n_cores: 4
+    product:
+      "output/python_signatures.parquet"
+
 
   # train FastText model on Python files
   - source: github_search.data_engineering.train_python_token_fasttext
@@ -406,7 +424,7 @@ tasks:
       model_path: "output/models/graphsage/{{gnn.unsupervised_params.model_name}}_model_{{gnn.unsupervised_params.epochs}}_dim{{gnn.unsupervised_params.hidden_channels}}_layers{{gnn.unsupervised_params.layers}}.pth"
 
   # neural bag of words
-  - source: github_search.neural_bag_of_words.prepare_data.prepare_raw_dependency_data_corpus
+  - source: github_search.neural_bag_of_words.ploomber_steps.prepare_raw_dependency_data_corpus
     name: nbow.prepare_raw_dependency_data_corpus
     upstream:
       - dependency_graph.prepare_records
@@ -414,7 +432,7 @@ tasks:
       raw_text: "output/raw_dependency_records_corpus_raw.csv"
       text: "output/raw_dependency_records_corpus.parquet"
 
-  - source: github_search.neural_bag_of_words.prepare_data.prepare_readmes
+  - source: github_search.neural_bag_of_words.ploomber_steps.prepare_readmes
     name: nbow.prepare_readmes
     params:
         max_workers: 16 
@@ -422,7 +440,7 @@ tasks:
       - nbow.prepare_raw_dependency_data_corpus
     product: "output/dependency_corpus_readmes.csv"
 
-  - source: github_search.neural_bag_of_words.prepare_data.prepare_dependency_data_corpus
+  - source: github_search.neural_bag_of_words.ploomber_steps.prepare_dependency_data_corpus
     name: nbow.prepare_dependency_data_corpus
     upstream:
       - nbow.prepare_raw_dependency_data_corpus
@@ -431,10 +449,21 @@ tasks:
       raw_text: "output/dependency_records_corpus_raw.csv"
       text: "output/dependency_records_corpus.parquet"
 
-  - source: github_search.neural_bag_of_words.prepare_data.prepare_nbow_dataset
+  - source: github_search.neural_bag_of_words.ploomber_steps.prepare_rarest_signatures_corpus
+    name: nbow.prepare_signature_corpus
+    params:
+      n_rarest: 50 
+    upstream:
+      - prepare_function_signatures_df
+    product:
+      raw_text: "output/signatures_corpus_raw.csv"
+      texts: "output/signatures_corpus.parquet"
+
+  - source: github_search.neural_bag_of_words.ploomber_steps.prepare_nbow_dataset
     name: nbow.prepare_dataset
     upstream:
       - nbow.prepare_dependency_data_corpus
+      - nbow.prepare_signature_corpus
       - prepare_repo_train_test_split
     params:
       # columns that will be used in addition to 
@@ -444,21 +473,24 @@ tasks:
       train: "output/nbow_data_train.parquet"
       test: "output/nbow_data_test.parquet"
 
-  - source: github_search.neural_bag_of_words.prepare_data.prepare_tokenizers
-    name: nbow.prepare_tokenizers
+  - source: github_search.neural_bag_of_words.ploomber_steps.prepare_tokenizers
+    name: nbow.prepare_tokenizers_[[document_col]]
     upstream:
       - nbow.prepare_dataset
+    grid:
+      document_col: ["dependencies", "function_signature"]
     params:
       min_freq: 5
       max_seq_length: 1000
     product:
-      query_tokenizer: "output/query_tokenizer.pkl"
-      document_tokenizer: "output/document_tokenizer.pkl"
+      query_tokenizer: "output/[[document_col]]_query_tokenizer.pkl"
+      document_tokenizer: "output/[[document_col]]_document_tokenizer.pkl"
+
 
   - source: github_search/neural_bag_of_words/nbow_training.py
     name: nbow.train-[[config_name]]
     upstream:
-      - nbow.prepare_tokenizers
+      - nbow.prepare_tokenizers_*
       - nbow.prepare_dataset
       - prepare_repo_train_test_split
       - train_python_token_fasttext
@@ -477,7 +509,7 @@ tasks:
     name: nbow.test
     params:
       validation_metric_name: "{{metrics.information_retrieval_metric}}"
-      document_cols: ["dependencies"]
+      document_cols: ["dependencies", "function_signatures"]
     upstream:
       - nbow.prepare_dataset
       - nbow.train-*-*-*
