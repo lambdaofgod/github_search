@@ -2,6 +2,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from typing import Iterable
+import pathlib
 
 import huggingface_hub
 import pandas as pd
@@ -64,3 +65,9 @@ def prepare_the_stack_files(paperswithcode_path, delete_temporary_files, product
     repos = set(paperswithcode_df["repo"])
     downloader = TheStackPapersWithcodeDownloader(repos, save_dir=str(product))
     downloader.prepare_dfs()
+
+
+def prepare_the_stack_df(upstream, product):
+    dfs_path = str(upstream["prepare_the_stack_files"])
+    dfs = [pd.read_parquet(df_path) for df_path in pathlib.Path(dfs_path).glob("*parquet")]
+    pd.concat(dfs).to_parquet(str(product))

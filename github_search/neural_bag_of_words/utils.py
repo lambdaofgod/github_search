@@ -1,6 +1,7 @@
 import torch
 import tqdm
 import numpy as np
+from github_search.neural_bag_of_words import tokenization
 
 
 EPS = 1e-8
@@ -26,3 +27,23 @@ def fasttext_encoding_fn(fasttext_model, verbose=True, to_tensor=True):
             return embeddings_matrix
 
     return encoding_fn
+
+
+def get_tokenizers(document_tokenizer_path, query_tokenizer_path):
+
+    return tokenization.TokenizerWithWeights.load(
+        document_tokenizer_path
+    ), tokenization.TokenizerWithWeights.load(query_tokenizer_path)
+
+
+def get_ploomber_tokenizers(upstream, train_val_config):
+    if "function_signature" in train_val_config.document_cols:
+        tokenizer_text_col = "function_signature"
+    else:
+        tokenizer_text_col = "dependencies"
+    tokenizer_paths = upstream["nbow.prepare_tokenizers_*"][
+        f"nbow.prepare_tokenizers_{tokenizer_text_col}"
+    ]
+    return get_tokenizers(
+        tokenizer_paths["document_tokenizer"], tokenizer_paths["query_tokenizer"]
+    )

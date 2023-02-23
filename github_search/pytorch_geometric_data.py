@@ -30,9 +30,9 @@ class PygGraphWrapper:
 
         self.vertex_mapping = pd.Series(data=vertices.index, index=vertices.values)
         self.inverse_vertex_mapping = vertices
-        edge_index_source = self.vertex_mapping.loc[records_df[source_col]].values
+        edge_index_source = self.vertex_mapping.loc[records_df[destination_col]].values
         edge_index_destination = self.vertex_mapping.loc[
-            records_df[destination_col]
+            records_df[source_col]
         ].values
         edge_index = torch.tensor(
             np.row_stack([edge_index_source, edge_index_destination])

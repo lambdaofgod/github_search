@@ -100,7 +100,8 @@ def get_grouped_model_results(eval_df):
     grouped_best_model_names = eval_df.groupby("document_cols").apply(
         lambda df: df.reset_index().sort_values("accuracy@10").iloc[-1]
     )["name"]
-    d = {}
+    grouped_results_dict = {}
+    results_lists_dict = {}
     for (document_cols, best_model_directory) in zip(
         grouped_best_model_names.index, grouped_best_model_names.values
     ):
@@ -117,13 +118,15 @@ def get_grouped_model_results(eval_df):
         ir_evaluator = evaluator.InformationRetrievalEvaluator.setup_from_config(
             ir_config
         )
+        ir_results_list = ir_evaluator.get_results_list()
         ir_metrics = ir_evaluator.evaluate()
         ir_metrics_yaml = yaml.dump(ir_metrics["cos_sim"])
         print(document_cols)
         print(best_model_directory.name)
         print(ir_metrics_yaml)
-        d[(document_cols, best_model_directory)] = ir_metrics
-    return d
+        grouped_results_dict[(document_cols, best_model_directory)] = ir_metrics
+        results_lists_dict[(document_cols, best_model_directory)] = ir_results_list
+    return grouped_results_dict, results_lists_dict
 
 
 # %% tags=["parameters"]
@@ -149,7 +152,7 @@ eval_df.style.highlight_max()
 
 # %%
 
-grouped_model_results = get_grouped_model_results(eval_df)
+grouped_model_results, results_lists_dict = get_grouped_model_results(eval_df)
 
 # %% [markdown]
 # ## Results
@@ -159,6 +162,10 @@ grouped_model_results = get_grouped_model_results(eval_df)
 # %%
 with open(out_dir / "nbow_results.yaml", "w") as f:
     f.write(yaml.dump(grouped_model_results))
+
+for k, val in results_lists_dict.items():
+    with open(pathlib.Path("/tmp") / "_".join(k) + ".pkl", "wb") as f:
+        pickle.dump(val, f)
 
 # %% [markdown]
 

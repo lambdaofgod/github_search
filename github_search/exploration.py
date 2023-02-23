@@ -1,8 +1,7 @@
-from operator import itemgetter
 from collections import Counter
+from operator import itemgetter
 
-
-excluded_langs = ['JavaScript', 'HTML', 'CSS']
+excluded_langs = ["JavaScript", "HTML", "CSS"]
 
 
 def get_languages_counter(languages):
@@ -12,7 +11,9 @@ def get_languages_counter(languages):
 
 def get_top_langs(langs, n_top_langs, excluded_langs=excluded_langs):
     languages_counter = get_languages_counter(langs)
-    top_langs = list(map(itemgetter(0), languages_counter[:n_top_langs + len(excluded_langs)]))
+    top_langs = list(
+        map(itemgetter(0), languages_counter[: n_top_langs + len(excluded_langs)])
+    )
     return [lang for lang in top_langs if not lang in excluded_langs]
 
 

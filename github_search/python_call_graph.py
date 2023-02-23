@@ -47,7 +47,7 @@ import logging
 def get_calls_from_expr_or_assign(expr):
     try:
         if type(expr) is ast.Name:
-            return [expr.id]
+            return []
         if type(expr) is ast.Call:
             # function call
             if type(expr.func) is ast.Name:

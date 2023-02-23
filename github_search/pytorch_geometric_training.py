@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import livelossplot
 import matplotlib.pyplot as plt
@@ -12,7 +12,7 @@ from sklearn import metrics
 from torch import optim
 from torch_geometric import transforms
 from torch_geometric.loader import LinkNeighborLoader, NeighborSampler
-from torch_geometric.nn import DeepGraphInfomax, GraphSAGE
+from torch_geometric.nn import DeepGraphInfomax, GraphSAGE, norm
 
 from github_search import neptune_util
 from github_search.pytorch_geometric_data import PygGraphWrapper
@@ -35,13 +35,20 @@ class GNNTrainingArgs:
     weight_decay: float
 
 
+@dataclass
+class CheckpointingArgs:
+    model_path: Optional[str]
+    n_save_steps: Optional[int]
+
+
 def get_model(model_name, num_node_features, hidden_channels, layers):
     if model_name.startswith("graphsage"):
         model = GraphSAGE(
             num_node_features,
             hidden_channels=hidden_channels,
             num_layers=layers,
-            dropout=0.5,
+            dropout=0.2,
+            norm=norm.GraphSizeNorm(),
         )
     elif model_name == "graph_infomax":
         model = DeepGraphInfomax(
@@ -59,7 +66,7 @@ def get_loader(model_name, data, num_neighbors, batch_size, shuffle=True):
             data,
             num_neighbors=num_neighbors,
             batch_size=batch_size,
-            neg_sampling_ratio=10.0,
+            neg_sampling_ratio=25.0,
             shuffle=shuffle,
             num_workers=0,
             transform=transforms.NormalizeFeatures(),
@@ -93,7 +100,7 @@ def get_dataset_wrapper(csv_paths, embedder, test_run, description_mode):
 def get_gnn_features(model_name, model, data):
     if model_name.startswith("graphsage"):
         gnn_features = (
-            model.full_forward(data.x, data.edge_index).cpu().detach().numpy()
+            model(data.x, data.edge_index).cpu().detach().numpy()
         )
     else:
         zs = []
@@ -106,19 +113,44 @@ def get_gnn_features(model_name, model, data):
     return gnn_features
 
 
+def get_gnn_kv(model_name, vertex_names, model, data):
+    gnn_features = get_gnn_features(model_name, model, data)
+    gnn_kv = KeyedVectors(gnn_features.shape[1])
+    gnn_kv.add(
+        vertex_names,
+        gnn_features,
+    )
+    return gnn_kv
+
+
+def trivial_callback(model, step):
+    return None
+
+
+def get_model_callback(model_path: str, n_save_steps: int):
+    def save_model_checkpoint(model, step):
+        if step % n_save_steps == 0:
+            ith_model_path = model_path.replace(".pth", f"_step{step}.pth")
+            torch.save(model, ith_model_path)
+
+    if model_path is None or n_save_steps is None:
+        return trivial_callback
+    else:
+        return save_model_checkpoint
+
+
 def train_unsupervised_gnn_model(
     model,
     data,
     train_loader,
     training_args: GNNTrainingArgs,
+    checkpointing_args: CheckpointingArgs,
     plot_file,
     in_jupyter=False,
 ):
     model = model.to(device)
-    optimizer = optim.SGD(
+    optimizer = optim.Adam(
         model.parameters(),
-        momentum=0.9,
-        nesterov=True,
         lr=training_args.lr,
         weight_decay=training_args.weight_decay,
     )
@@ -130,13 +162,32 @@ def train_unsupervised_gnn_model(
         optimizer, T_max=math.ceil(len(data.x) / training_args.batch_size)
     )
 
+    grad_param_names = [
+        "convs.0.lin_l.weight",
+        "convs.0.lin_r.weight",
+        "convs.1.lin_l.bias",
+        "convs.1.lin_l.weight",
+        "convs.0.lin_l.bias",
+        "convs.1.lin_r.weight",
+    ]
+
     callback = neptune_util.get_neptune_callback(
-        tags=["unsupervised_graphsage"], param_names=["loss", "size", "lr"]
+        tags=["unsupervised_graphsage"],
+        param_names=["loss", "size", "lr"] + grad_param_names,
     )
-    model_callback = lambda model: torch.save(model, )
+    model_callback = get_model_callback(
+        checkpointing_args.model_path, checkpointing_args.n_save_steps
+    )
     for epoch in rnge:
         loss = train_epoch(
-            model, data, train_loader, optimizer, scheduler, device, callback
+            model,
+            data,
+            train_loader,
+            optimizer,
+            scheduler,
+            device,
+            callback,
+            model_callback,
         )
         plotlosses.update(
             {"loss": loss, "lr": optimizer.state_dict()["param_groups"][0]["lr"]}
@@ -158,13 +209,16 @@ def train_unsupervised_gnn_model(
 def run_gnn_experiment(
     product,
     upstream,
-    data_path,
     params,
+    n_save_steps,
     lr=0.001,
     test_run=False,
     description_mode=False,
 ):
     training_args = GNNTrainingArgs(**params)
+    checkpointing_args = CheckpointingArgs(
+        n_save_steps=n_save_steps, model_path=str(product["model_path"])
+    )
     try:
         torch.multiprocessing.set_start_method("spawn")
     except:
@@ -175,7 +229,7 @@ def run_gnn_experiment(
     print("hidden channels:", training_args.hidden_channels)
     print("loading data")
 
-    data = torch.load(data_path)
+    data = torch.load(str(upstream["gnn.make_graphsage_data"]))
     print("loaded:", data.num_nodes, "nodes")
     print("dataset:", data)
 
@@ -197,6 +251,7 @@ def run_gnn_experiment(
         data,
         train_loader,
         training_args,
+        checkpointing_args,
         plot_file,
     )
     torch.save(model, str(product["model_path"]))
@@ -213,14 +268,13 @@ def run_gnn_experiment(
     else:
         raw_data = data
 
-    gnn_features = get_gnn_features(training_args.model_name, model, raw_data)
-    gnn_kv = KeyedVectors(gnn_features.shape[1])
-    gnn_kv.add(
+    vertex_names = (
         dependency_graph_wrapper.inverse_vertex_mapping.str.split(":")
         .apply(lambda s: s[-1])
-        .values,
-        gnn_features,
+        .values
     )
+
+    gnn_kv = get_gnn_kv(training_args.model_name, vertex_names, model, raw_data)
     gnn_kv.save(str(product["gnn_token_embeddings"]))
 
     example_repo = "huggingface/transformers"

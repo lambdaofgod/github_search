@@ -11,15 +11,6 @@ from mlutil.feature_extraction import embeddings
 
 from github_search import paperswithcode_tasks
 
-logging.basicConfig(level="INFO")
-area_grouped_tasks = pd.read_csv("data/paperswithcode_tasks.csv").dropna()
-
-
-area_grouped_tasks["task"] = area_grouped_tasks["task"].apply(
-    paperswithcode_tasks.clean_task_name
-)
-
-
 rnn_model_path = "output/sbert/rnn2x256_epoch325/"
 codebert_model_path = "output/sbert/codebert15/"
 
@@ -30,6 +21,12 @@ def prepare_reduced_embeddings(
     rnn_model_path="output/sbert/rnn2x256_epoch325/",
     codebert_model_path="output/sbert/codebert15/",
 ):
+    area_grouped_tasks = pd.read_csv("data/paperswithcode_tasks.csv").dropna()
+
+    area_grouped_tasks["task"] = area_grouped_tasks["task"].apply(
+        paperswithcode_tasks.clean_task_name
+    )
+
     w2v_model_path = str(upstream["train_abstract_readme_w2v"])
     fasttext_model_path = str(upstream["train_python_token_fasttext"])
     logging.info("preparing ")

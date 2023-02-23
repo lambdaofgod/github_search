@@ -47,10 +47,9 @@ def prepare_readmes(raw_dep_texts_df, max_workers):
 
 
 def prepare_dependency_data_corpus(raw_dep_texts_df):
-    dep_texts = raw_dep_texts_df#["dependencies"]
+    dep_texts = raw_dep_texts_df  # ["dependencies"]
     print("prepared dep texts")
     return dep_texts
-
 
 
 def prepare_rarest_signatures_corpus(signatures_path, n_rarest):
@@ -64,7 +63,6 @@ def prepare_rarest_signatures_corpus(signatures_path, n_rarest):
     signatures_corpus = rarest_signatures_corpus_pldf.to_pandas()
     print("prepared signatures")
     return signatures_corpus
-
 
 
 def prepare_nbow_dataset(
@@ -125,30 +123,35 @@ def setup_nbow_pipeline(
     n_readme_lines=10,
 ):
     pipe = PipelineController(
-        name="Pipeline demo", project="examples", version="0.0.1", add_pipeline_tags=False
+        name="Pipeline demo",
+        project="examples",
+        version="0.0.1",
+        add_pipeline_tags=False,
     )
     pipe.add_function_step(
         "prepare_raw_dependency_data_corpus",
         function=prepare_raw_dependency_data_corpus,
         function_kwargs=dict(dependency_records_path=dependency_records_path),
-        function_return=["raw_dep_texts_df"]
+        function_return=["raw_dep_texts_df"],
+        cache_executed_step=True,
     )
     raw_dep_texts_df = prepare_raw_dependency_data_corpus(dependency_records_path)
     pipe.add_function_step(
         name="prepare_dependency_data_corpus",
         function=prepare_dependency_data_corpus,
-        function_kwargs=dict(raw_dep_texts_df="${prepare_raw_dependency_data_corpus.raw_dep_texts_df}"),
+        function_kwargs=dict(
+            raw_dep_texts_df="${prepare_raw_dependency_data_corpus.raw_dep_texts_df}"
+        ),
         function_return=["dependency_data_corpus"],
-        cache_executed_step=True
+        cache_executed_step=True,
     )
     pipe.add_function_step(
         name="prepare_rarest_signature_corpus",
         function=prepare_rarest_signatures_corpus,
         function_kwargs=dict(signatures_path=signatures_path, n_rarest=n_rarest),
         function_return=["signatures_corpus"],
-        cache_executed_step=True
+        cache_executed_step=True,
     )
-
     pipe.add_function_step(
         "prepare_nbow_dataset",
         function=prepare_nbow_dataset,
@@ -157,10 +160,10 @@ def setup_nbow_pipeline(
             df_signatures_corpus="${prepare_rarest_signature_corpus.signatures_corpus}",
             train_test_split_paths=train_test_split_paths,
             additional_columns=additional_columns,
-            n_readme_lines=n_readme_lines
+            n_readme_lines=n_readme_lines,
         ),
         function_return=["nbow_dataset"],
-        cache_executed_step=True
+        cache_executed_step=True,
     )
     return pipe
 

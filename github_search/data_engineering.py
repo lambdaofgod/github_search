@@ -30,6 +30,7 @@ from github_search import (
     utils,
 )
 from github_search.papers_with_code import paperswithcode_tasks
+from github_search.python_code import signatures
 
 csv.field_size_limit(1000000)
 
@@ -51,6 +52,7 @@ def get_task_counts(paperswithcode_path, product):
         .rename({"index": "task"}, axis=1)
         .to_csv(str(product), index=False)
     )
+
 
 def get_modules_string(modules):
     public_modules = [mod for mod in modules if not mod[0] == "_"]
@@ -123,7 +125,7 @@ def prepare_dependency_records(
     """
     prepare python dependency graph records (function calls, files in repo) csv
     """
-    python_files_df = pd.read_feather(python_file_path).dropna(
+    python_files_df = pd.read_parquet(python_file_path).dropna(
         subset=["repo_name", "content"]
     )
     contains_excluded_prefix = python_files_df["path"].str.startswith(excluded_prefix)
@@ -186,27 +188,49 @@ def postprocess_dependency_records(
     )
 
 
+import polars as pl
+import os
+## TODO: WYTRENUJ WORD2VECA Z PYTHON CODE TOKENIZEREMM
+
+
 def train_python_token_fasttext(python_file_path, epoch, dim, n_cores, product):
-    python_files_df = pd.read_feather(python_file_path)
-    fasttext_corpus_path = "/tmp/python_files.csv"
-    python_files_df["content"].dropna().to_csv(
-        fasttext_corpus_path,
-        index=False,
-        header=False,
+    python_files_df = (
+        pl.scan_parquet(python_file_path)
+        .select([pl.col("content")])
+        .collect()
+        .to_pandas()
     )
+    fasttext_corpus_path = "/tmp/python_files.csv"
+    if not os.path.exists(fasttext_corpus_path):
+        python_files_df["content"].dropna().to_csv(
+            fasttext_corpus_path,
+            index=False,
+            header=False,
+        )
     model = fasttext.train_unsupervised(
         fasttext_corpus_path, dim=int(dim), epoch=epoch, thread=n_cores
     )
     model.save_model(str(product))
 
 
-def prepare_function_code_df(product, max_depth, python_file_path):
-    python_files_df = pd.read_feather(python_file_path).dropna()
+def prepare_function_code_df(product, max_depth, n_cores, python_file_path):
+    python_files_df = pd.read_parquet(python_file_path).dropna()
     print("#" * 50)
     print("PYTHON FILES")
     print(python_files_df.shape)
     functions_df = python_function_code.get_function_data_df(python_files_df, max_depth)
-    functions_df.to_feather(product)
+    functions_df.to_parquet(product)
+
+
+def prepare_function_signatures_df(product, n_cores, python_file_path):
+    python_files_df = pd.read_parquet(python_file_path).dropna()
+    print("#" * 50)
+    print("PYTHON FILES")
+    print(python_files_df.shape)
+    functions_df = python_function_code.get_function_signatures_df(
+        python_files_df, n_cores=n_cores
+    )
+    functions_df.to_parquet(product)
 
 
 def _word_vectors_to_word2vec_format_generator(vocabulary, word_vectors):

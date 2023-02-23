@@ -172,12 +172,40 @@ def graph_infomax_summary(z, *args, **kwargs):
     return torch.sigmoid(z.mean(dim=0))
 
 
-def get_loss(batch, h_src, h_dst):
+def get_src_dst_embeddings(model, batch):
+    h = model(batch.x, batch.edge_index)
+    h_src = h[batch.edge_label_index[0]]
+    h_dst = h[batch.edge_label_index[1]]
+    return h_src, h_dst, h_src.size(0)
+
+
+def get_neg_pos_loss(batch, h_src, h_dst):
     pred = (h_src * h_dst).sum(dim=-1)
     return F.binary_cross_entropy_with_logits(pred, batch.edge_label)
 
 
-def train_epoch(model, data, train_loader, optimizer, scheduler, device, callback):
+def get_loss(model, batch):
+    h_src, h_dst, n_src = get_src_dst_embeddings(model, batch)
+    return get_neg_pos_loss(batch, h_src, h_dst), n_src
+
+
+def get_model_grads_dict(model):
+    return {
+        name: torch.norm(p.grad.detach()).item()
+        for (name, p) in model.named_parameters()
+    }
+
+
+def train_epoch(
+    model,
+    data,
+    train_loader,
+    optimizer,
+    scheduler,
+    device,
+    logging_callback,
+    model_callback,
+):
     model.train()
 
     with torch.cuda.amp.autocast():
@@ -185,22 +213,21 @@ def train_epoch(model, data, train_loader, optimizer, scheduler, device, callbac
         for i, batch in enumerate(tqdm.tqdm(train_loader)):
             batch = batch.to(device)
             optimizer.zero_grad()
-            h = model(batch.x, batch.edge_index)
-            h_src = h[batch.edge_label_index[0]]
-            h_dst = h[batch.edge_label_index[1]]
-            loss = get_loss(batch, h_src, h_dst)
+            loss, n_src = get_loss(model, batch)
             loss.backward()
             optimizer.step()
             scheduler.step(i)
-            total_loss += float(loss) * h_dst.size(0)
+            total_loss += float(loss) * n_src
             lr = optimizer.state_dict()["param_groups"][0]["lr"]
-            callback(
+            logging_callback(
                 {
                     "loss": loss,
-                    "size": h_dst.size(0),
+                    "size": n_src,
                     "lr": lr,
+                    **get_model_grads_dict(model)
                 }
             )
+            model_callback(model, i)
 
     loss = total_loss / data.num_nodes
     return loss

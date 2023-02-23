@@ -68,8 +68,10 @@ def get_nbow_dataset(
         .merge(df_dependency_corpus, on="repo")
         .merge(df_signatures_corpus, on="repo")
     )
+    dep_texts_with_tasks_df = df_nbow_data
     if "readme" in additional_columns:
         dep_texts_with_tasks_df = add_imputed_readmes(df_nbow_data, n_readme_lines)
     if "dependencies" in additional_columns:
         add_repo_name_to_dependencies(df_nbow_data)
+        dep_texts_with_tasks_df = df_nbow_data
     return dep_texts_with_tasks_df

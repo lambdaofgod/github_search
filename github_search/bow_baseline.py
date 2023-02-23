@@ -1,31 +1,25 @@
 import io
-import tokenize
-
-import nltk
-
 import json
+import logging
 import re
 import string
 import tokenize
 from operator import itemgetter
-from github_search import ir_utils
 
 import dask
 import dask.dataframe as ddf
+import nltk
 import numpy as np
 import pandas as pd
 import rank_bm25
 import stop_words
 import tqdm
-from dask.diagnostics import ProgressBar as DaskProgressBar
-from haystack import retriever as haystack_retriever, document_stores
-from github_search import paperswithcode_tasks
-from github_search.python_call_graph import try_run
-import logging
+from haystack import document_stores
+from haystack.nodes import retriever as haystack_retriever
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+from github_search import paperswithcode_tasks
+from github_search.ir import ir_utils
+from github_search.python_call_graph import try_run
 
 
 def get_comment_contents(file_contents):
@@ -120,7 +114,7 @@ def make_query_results_list(searcher, queries, queries_ids, topn=10):
 
 
 def prepare_bow_retrieval_evaluation_results(upstream, index, product):
-    logging.basicConfig(level=logging.ERROR)
+    logging.getLogger().setLevel(logging.ERROR)
     document_store = document_stores.ElasticsearchDocumentStore(index=index)
     retriever = haystack_retriever.sparse.ElasticsearchRetriever(document_store)
     test_tasks = pd.read_csv(

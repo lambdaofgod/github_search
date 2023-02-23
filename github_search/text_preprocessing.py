@@ -7,14 +7,17 @@ from markdown import markdown
 
 class Rules:
 
-    url_replacement = (r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', 'xxurl ')
-    code_replacement_basic = (r'<pre>(.*?)</pre>', ' ')
-    code_replacement = (r'<code>(.*?)</code >', ' ')
-    code_block_replacement = (r'```(.*?)```', ' ')
-    hashtag_replacement = (r'#+', 'xxhashtag ')
-    star_replacement = (r'\*+', 'xxstar')
-    equality_replacement = (r'=+', 'xxequals')
-    number_replacement = (r'[0-9]+', 'xxnumber')
+    url_replacement = (
+        r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+",
+        "xxurl ",
+    )
+    code_replacement_basic = (r"<pre>(.*?)</pre>", " ")
+    code_replacement = (r"<code>(.*?)</code >", " ")
+    code_block_replacement = (r"```(.*?)```", " ")
+    hashtag_replacement = (r"#+", "xxhashtag ")
+    star_replacement = (r"\*+", "xxstar")
+    equality_replacement = (r"=+", "xxequals")
+    number_replacement = (r"[0-9]+", "xxnumber")
 
     all_rules = [
         url_replacement,
@@ -24,7 +27,7 @@ class Rules:
         hashtag_replacement,
         star_replacement,
         equality_replacement,
-        number_replacement
+        number_replacement,
     ]
 
 
@@ -37,7 +40,7 @@ def replace_with_rules(s, rules):
 
 
 def markdown_to_text(markdown_string):
-    """ Converts a markdown string to plaintext """
+    """Converts a markdown string to plaintext"""
 
     # md -> html -> text since BeautifulSoup can extract text cleanly
     html = markdown(markdown_string)

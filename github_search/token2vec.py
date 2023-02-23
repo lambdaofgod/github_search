@@ -1,16 +1,15 @@
-import pandas as pd
+import gensim
+import matplotlib.pyplot as plt
+import neptune
 import numpy as np
-import tqdm
-
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import tqdm
 from sklearn import feature_extraction
-import matplotlib.pyplot as plt
-import gensim
 
-import neptune
 from github_search import neptune_util
 
 torch.manual_seed(1)

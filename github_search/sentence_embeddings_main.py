@@ -10,8 +10,6 @@ from torch.utils.data import DataLoader
 from github_search import paperswithcode_tasks, sentence_embeddings
 from github_search.sentence_embeddings import RNN_MODEL_TYPES
 
-logging.basicConfig(level="INFO")
-
 # %%
 np.random.seed(1)
 
@@ -19,31 +17,26 @@ np.random.seed(1)
 upstream = None
 product = None
 w2v_file = "output/abstract_readme_w2v200.txt"
-model_type = (
-    "ir_model/checkpoint-300"
-    # "stmnk/codet5-small-code-summarization-python"
-    # "Salesforce/codet5-small-code-summarization-python"
-    # "SEBIS/code_trans_t5_small_source_code_summarization_python_multitask_finetune"
-)
+model_type = "flax-sentence-embeddings/st-codesearch-distilroberta-base"
 num_layers = 2
 n_hidden = 192
 dropout = 0.25
-batch_size = 128 
+batch_size = 64
 use_amp = "lstm" not in model_type
-n_epochs = 50
-show_results_n_epochs = 5
+n_epochs = 5
+show_results_n_epochs = 1
 train_target_col = "tasks"
-training_run_label = "imports+comments"
+training_run_label = "content"
 train_source_cols = ["repo"]  # "title", "abstract", "readme"]
-df_path = "output/selected_python_files_comments_imports.csv"
+df_path = "output/selected_python_files.feather"
 paperswithcode_filepath = "output/papers_with_readmes.csv"
-max_seq_length = 64
+max_seq_length = 128
 pooling_kwargs = dict(
     pooling_mode_mean_tokens=False,
     pooling_mode_cls_token=False,
     pooling_mode_max_tokens=True,
 )
-train_feature_col = "repo"
+train_feature_col = "content"
 use_imports_as_doc = train_feature_col == "imports"
 # %% [markdown]
 # ## Setting up variables
@@ -122,20 +115,22 @@ if __name__ == "__main__":
         n_hidden=n_hidden,
         dropout=dropout,
         max_seq_length=max_seq_length,
+        is_model_sentence_transformer=True,
         **pooling_kwargs
     )
 
-    repo_imports_df = get_merged_import_df(paperswithcode_df, pd.read_csv(df_path))
+    # repo_imports_df = get_merged_import_df(paperswithcode_df, pd.read_feather(df_path))
     logging.info("loading readme-imports examples")
     # imports_train_input_examples = get_sbert_inputs(
-    #    repo_imports_df, train_target_col, train_source_cols, model
+    #    , train_target_col, train_source_cols, model
     # )
     logging.info("loading task-readme examples")
+    df = pd.read_feather(df_path)
+    input_df = df.merge(paperswithcode_df, on="repo")[
+        ["tasks", train_feature_col]
+    ].explode("tasks")
     tasks_train_input_examples = get_sbert_inputs(
-        paperswithcode_df[["tasks", train_feature_col]].explode("tasks"),
-        "tasks",
-        [train_feature_col],
-        model,
+        paperswithcode_df.explode("tasks"), "tasks", ["readme"], model
     )
     train_input_examples = tasks_train_input_examples
     print([i.texts for i in train_input_examples[:5]])
@@ -146,7 +141,7 @@ if __name__ == "__main__":
         ir_evaluator = sentence_embeddings.get_ir_evaluator(test_df, "tasks", "imports")
     else:
         ir_evaluator = sentence_embeddings.get_ir_evaluator(
-            paperswithcode_df, doc_col=train_feature_col
+            input_df, doc_col=train_feature_col
         )
 
     logging.info("loaded %s train samples", int(len(train_input_examples)))
@@ -168,7 +163,7 @@ if __name__ == "__main__":
             epochs=show_results_n_epochs,
             show_progress_bar=True,
             evaluator=ir_evaluator,
-            evaluation_steps=1000,
+            evaluation_steps=6000,
             use_amp=use_amp,
             callback=lambda score, epoch, steps: print(
                 "epoch {}, step {}, map@10: {}".format(epoch, steps, round(score, 3))
@@ -183,6 +178,6 @@ if __name__ == "__main__":
         model_path = "output/sbert/{}_{}".format(model_dir_suffix, training_run_label)
         pathlib.Path(model_path).mkdir(parents=True)
         model.save(model_path)
-
-        ir_evaluator(model, output_path="output/sbert/" + model_dir_suffix)
+        ir_evaluator(model, output_path=model_path)
+        # "output/sbert/" + model_dir_suffix)
         # print(get_ir_metrics("output/sbert/" + model_dir_suffix))

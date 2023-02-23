@@ -1,36 +1,20 @@
 # %%
 import os
-import ast
-import itertools
 import json
-import pathlib
-import pickle
-from dataclasses import dataclass
-from functools import partial
-from typing import Callable, List
 
-import dill as pickle
 import fasttext
-import livelossplot
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import torch.utils
-import torchtext
 import tqdm
-import yaml
-from findkit import feature_extractor, index
-from github_search import python_tokens, utils
-from github_search.ir import evaluator
+import pytorch_lightning as pl
+from github_search import utils
 from github_search.neural_bag_of_words import *
 from github_search.neural_bag_of_words import checkpointers, embedders, training_utils
 from github_search.neural_bag_of_words import utils as nbow_utils
 from github_search.neural_bag_of_words.checkpointers import EncoderCheckpointer
 from github_search.neural_bag_of_words.data import *
-from github_search.neural_bag_of_words.models import *
-from github_search.neural_bag_of_words.models import PairwiseEmbedderModule
-from github_search.neural_bag_of_words.tokenization import TokenizerWithWeights
+from github_search.neural_bag_of_words.pairwise_models import PairwiseEmbedderModule
 from github_search.neural_bag_of_words.training_utils import (
     TrainValConfig,
     NBOWTrainValData,
@@ -38,20 +22,15 @@ from github_search.neural_bag_of_words.training_utils import (
 )
 from github_search.neural_bag_of_words.embedders import (
     EmbedderFactory,
-    QueryDocumentDataConfig,
-    EmbedderDataConfig,
+    ModelPairConfig,
 )
-from github_search.papers_with_code import paperswithcode_tasks
 from pytorch_lightning import loggers
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from quaterion.loss import MultipleNegativesRankingLoss
 from sklearn import feature_extraction, model_selection
-from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
 import logging
+import clearml
 
 logging.basicConfig(level="INFO")
-
 # %%
 # probably for deletion
 hypoth_product = {
@@ -115,30 +94,10 @@ train_val_data = NBOWTrainValData.build(
 # ## Setup
 # Tokenizers
 # %%
-def get_tokenizers(upstream, train_val_config):
-    if "function_signature" in train_val_config.document_cols:
-        tokenizer_text_col = "function_signature"
-    else:
-        tokenizer_text_col = "dependencies"
 
-    document_tokenizer = embedders.TokenizerWithWeights.load(
-        str(
-            upstream["nbow.prepare_tokenizers_*"][
-                f"nbow.prepare_tokenizers_{tokenizer_text_col}"
-            ]["document_tokenizer"]
-        )
-    )
-    query_tokenizer = embedders.TokenizerWithWeights.load(
-        str(
-            upstream["nbow.prepare_tokenizers_*"][
-                f"nbow.prepare_tokenizers_{tokenizer_text_col}"
-            ]["query_tokenizer"]
-        )
-    )
-    return document_tokenizer, query_tokenizer
-
-
-document_tokenizer, query_tokenizer = get_tokenizers(upstream, train_val_config)
+document_tokenizer, query_tokenizer = nbow_utils.get_tokenizers(
+    upstream, train_val_config
+)
 
 # %% [markdown]
 # Embedders
@@ -153,15 +112,13 @@ def get_fasttext_encoding_fn(fasttext_path):
 fasttext_encoding_fn = get_fasttext_encoding_fn(fasttext_model_path)
 
 
-query_document_data_config = QueryDocumentDataConfig.make_from_train_val_config(
+embedder_pair = EmbedderFactory.make_from_train_val_config(
     train_val_config,
     fasttext_encoding_fn,
     max_seq_length,
     query_tokenizer,
-    document_tokenizer
-)
-
-embedder_pair = EmbedderFactory(query_document_data_config).get_embedder_pair()
+    document_tokenizer,
+).get_embedder_pair()
 
 collator = QueryDocumentCollator.from_embedder_pair(embedder_pair)
 
