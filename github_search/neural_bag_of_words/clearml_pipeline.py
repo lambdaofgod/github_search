@@ -10,7 +10,7 @@ from mlutil.text import code_tokenization
 from nltk import tokenize
 from mlutil_rust import code_tokenization
 from clearml.automation import PipelineController
-
+from dataclasses import dataclass
 
 NATURAL_LANGUAGE_COLS = ["titles", "readme"]
 
@@ -114,9 +114,13 @@ def prepare_tokenizers(upstream, product, document_col, min_freq, max_seq_length
     document_tokenizer.save(str(product["document_tokenizer"]))
 
 
+@dataclass
+class NBOWPreprocessingConfig:
+
 def setup_nbow_pipeline(
     dependency_records_path,
     signatures_path,
+    train,
     n_rarest,
     train_test_split_paths,
     additional_columns=["titles"],
@@ -167,6 +171,11 @@ def setup_nbow_pipeline(
     )
     return pipe
 
+
+@hydra.main(config_name="nbow_pipeline", config_path="conf", version_base="1.2")
+def main(cfg: DictConfig):
+    data_config = cfg.data_config
+    training_config = cfg.trainn
 
 if __name__ == "__main__":
     pipe = setup_nbow_pipeline(
