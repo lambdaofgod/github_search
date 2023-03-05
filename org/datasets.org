@@ -1,0 +1,455 @@
+#+title: Datasets
+
+
+* Dataset size in lines of code
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+import polars as pl
+
+files_lazy_pldf = pl.scan_parquet("data/all_crawled_python_files.parquet")
+
+# lines of code
+file_loc_expr = pl.col("content").str.split("\n").arr.lengths()
+file_loc_expr
+#+END_SRC
+
+#+RESULTS:
+:results:
+col("content").str.split().arr.len()
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+head_pldf = files_lazy_pldf.head(1000).collect()
+head_pldf.select(pl.col("content").str.split("\n")).apply(len).max()
+#+END_SRC
+
+#+RESULTS:
+:results:
+shape: (1, 1)
+┌───────┐
+│ apply │
+│ ---   │
+│ i64   │
+╞═══════╡
+│ 1     │
+└───────┘
+:end:
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+files_lazy_pldf.select(file_loc_expr.mean()).collect()
+#+END_SRC
+
+#+RESULTS:
+:results:
+shape: (1, 1)
+┌────────────┐
+│ content    │
+│ ---        │
+│ f64        │
+╞════════════╡
+│ 235.733701 │
+└────────────┘
+:end:
+
+
+* NBOW corpus
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+import pandas as pd
+
+train_nbow_df = pd.read_parquet("output/nbow_data_train.parquet")
+train_nbow_df.head()
+#+END_SRC
+
+#+RESULTS:
+:results:
+                       repo  ...                                              count
+0  000Justin000/torchdiffeq  ...  [5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, ...
+1     008karan/SincNet_demo  ...  [6, 11, 15, 15, 17, 19, 21, 22, 23, 25, 29, 30...
+2  00marco/pydnet-duplicate  ...  [1, 1, 4, 4, 5, 5, 5, 5, 10, 14, 23, 23, 29, 3...
+3            011235813/SEPT  ...  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+4             011235813/cm3  ...  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+
+[5 rows x 11 columns]
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+train_nbow_df["function_signature"].iloc[0]
+#+END_SRC
+
+#+RESULTS:
+:results:
+    def test_adams_adjoint_against_dopri5(self):
+pass
+        class Odefunc(torch.nn.Module):
+pass
+class SineODE(torch.nn.Module):
+pass
+def generate_spiral2d(nspiral=1000,
+                      ntotal=500,
+                      nsample=100,
+                      start=0.,
+                      stop=1,  # approximately equal to 6pi
+                      noise_std=.1,
+                      a=0.,
+                      b=1.,
+                      savefig=True):
+pass
+class LatentODEfunc(nn.Module):
+pass
+class RecognitionRNN(nn.Module):
+pass
+    def test_dopri5_gradient(self):
+pass
+    def test_adams(self):
+pass
+    def test_adams_gradient(self):
+pass
+class TestCollectionState(unittest.TestCase):
+pass
+    def test_dopri5_adjoint_against_dopri5(self):
+pass
+class TestCompareAdjointGradient(unittest.TestCase):
+pass
+    def test_explicit_adams(self):
+pass
+class TestSolverError(unittest.TestCase):
+pass
+class TestSolverBackwardsInTimeError(unittest.TestCase):
+pass
+class TestNoIntegration(unittest.TestCase):
+pass
+class ConstantODE(torch.nn.Module):
+pass
+class LinearODE(torch.nn.Module):
+pass
+    def y_exact(self, t):
+pass
+def construct_problem(device, npts=10, ode='constant', reverse=False):
+pass
+class ConcatConv2d(nn.Module):
+pass
+    def test_rk4(self):
+pass
+def max_abs(tensor):
+pass
+def g_and_explicit_phi(prev_t, next_t, implicit_phi, k):
+pass
+def compute_implicit_phi(explicit_phi, f_n, k):
+pass
+class _VCABMState(collections.namedtuple('_VCABMState', 'y_n, prev_f, prev_t, next_t, phi, order')):
+pass
+class VariableCoefficientAdamsBashforth(AdaptiveStepsizeODESolver):
+pass
+class Dopri5Solver(AdaptiveStepsizeODESolver):
+pass
+class AdamsBashforth(AdamsBashforthMoulton):
+pass
+class _RungeKuttaState(collections.namedtuple('_RungeKuttaState', 'y1, f1, t0, t1, dt, interp_coeff')):
+pass
+def _interp_coeff_tsit5(t0, dt, eval_t):
+pass
+def _interp_eval_tsit5(t0, t1, k, eval_t):
+pass
+    def _adaptive_tsit5_step(self, rk_state):
+pass
+class Tsit5Solver(AdaptiveStepsizeODESolver):
+pass
+    def _adaptive_adams_step(self, vcabm_state, final_t):
+pass
+def _interp_fit_dopri5(y0, y1, k, dt, tableau=_DORMAND_PRINCE_SHAMPINE_TABLEAU):
+pass
+    def _adaptive_dopri5_step(self, rk_state):
+pass
+class ODEFunc(nn.Module):
+pass
+class TestGradient(unittest.TestCase):
+pass
+class AdamsBashforthMoulton(FixedGridODESolver):
+pass
+def _compute_error_ratio(error_estimate, error_tol=None, rtol=None, atol=None, y0=None, y1=None):
+pass
+    def _grid_constructor_from_step_size(self, step_size):
+pass
+    def before_integrate(self, t):
+pass
+def odeint_adjoint(func, y0, t, rtol=1e-6, atol=1e-12, method=None, options=None):
+pass
+class OdeintAdjointMethod(torch.autograd.Function):
+pass
+        class TupleFunc(nn.Module):
+pass
+class Euler(FixedGridODESolver):
+pass
+class Midpoint(FixedGridODESolver):
+pass
+def _handle_unused_kwargs(solver, unused_kwargs):
+pass
+def rk4_step_func(func, t, dt, y, k1=None):
+:end:
+
+* Dataset size - number of tokens
+
+* Dataset size - number of functions
+
+** Signatures
+
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+signatures_corpus_df = pl.scan_parquet("output/signatures_corpus.parquet").collect().to_pandas()
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+** Dependencies
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+import polars as pl
+dep_records_lazy_pldf = pl.scan_parquet("output/dependency_records.parquet")
+
+#file_records = dep_records_lazy_pldf.filter(pl.col("edge_type") == "repo-file").collect()
+file_function_records = dep_records_lazy_pldf.filter(pl.col("edge_type") == "file-function").collect().to_pandas()
+
+len(file_function_records)
+#+END_SRC
+
+#+RESULTS:
+:results:
+6046994
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+len(file_function_records["destination"].unique()) / len(file_function_records["source"].unique())
+#+END_SRC
+
+#+RESULTS:
+:results:
+1.7337993871245823
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+file_function_records.groupby("source").agg("count")
+#+END_SRC
+
+#+RESULTS:
+:results:
+                                                    index  destination  edge_type  repo
+source
+ ampgo --username andrea.gavana@gmail.com/go_am...      4            4          4     4
+%lstm.py                                                5            5          5     5
+(s)P-WL/test_weisfeiler_lehman.py                       2            2          2     2
+(s)gcn/main.py                                          4            4          4     4
+(s)gcn/util.py                                          3            3          3     3
+...                                                   ...          ...        ...   ...
+百度无人驾驶比赛模型/icnet/icnet1.py                             19           19         19    19
+百度无人驾驶比赛模型/icnet/train_icnet.py                         4            4          4     4
+百度无人驾驶比赛模型/icnet/utils.py                               4            4          4     4
+百度无人驾驶比赛模型/scnn/scnn.py                                14           14         14    14
+百度无人驾驶比赛模型/scnn/scnn_eval.py                           17           17         17    17
+
+[794615 rows x 4 columns]
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+file_function_records["source"]
+#+END_SRC
+
+#+RESULTS:
+:results:
+0          examples/latent_ode.py
+1          examples/latent_ode.py
+2          examples/latent_ode.py
+3          examples/latent_ode.py
+4          examples/latent_ode.py
+                    ...
+6046989     utils/quant_dorefa.py
+6046990     utils/quant_dorefa.py
+6046991     utils/quant_dorefa.py
+6046992     utils/quant_dorefa.py
+6046993     utils/quant_dorefa.py
+Name: source, Length: 6046994, dtype: object
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+from transformers import AutoTokenizer, AutoModelForTokenClassification
+from transformers import pipeline
+import numpy as np
+
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+tokenizer
+#+END_SRC
+
+#+RESULTS:
+:results:
+PreTrainedTokenizerFast(name_or_path='gpt2', vocab_size=50257, model_max_len=1024, is_fast=True, padding_side='right', truncation_side='right', special_tokens={'bos_token': '<|endoftext|>', 'eos_token': '<|endoftext|>', 'unk_token': '<|endoftext|>'})
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+file_token_lengths = [len(tokens) for tokens in tokenizer(file_function_records["source"].sample(50000).to_list())["input_ids"]]
+mean_file_length = np.mean(file_token_lengths)
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+function_token_lengths = [len(tokens) for tokens in tokenizer(file_function_records["destination"].sample(50000).to_list())["input_ids"]]
+mean_function_length = np.mean(function_token_lengths)
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+
+** Koszt ChatGPT
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+total_tokens = (mean_file_length + mean_function_length) * len(file_function_records)
+total_tokens * 2e-6
+#+END_SRC
+
+#+RESULTS:
+:results:
+241.13646349752
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+import openai
+api_key = open('/home/kuba/.keys/openai_key.txt').read().strip()
+openai.api_key = api_key
+
+
+def get_chatgpt_response(text):
+
+    completion = openai.ChatCompletion.create(
+    model='gpt-3.5-turbo',
+    messages=[{'role': 'user', 'content': text}]
+    )
+    return completion['choices'][0]['message']['content']
+
+"loaded api key"
+#+END_SRC
+
+#+RESULTS:
+:results:
+loaded api key
+:end:
+
+** Asking ChatGPT to summarize files
+
+#+BEGIN_SRC python :session datasets.org :results both drawer :exports both
+example_file_function_records = file_function_records.iloc[::6000]
+files_with_functions = list(example_file_function_records.groupby("source").apply(lambda df: " ".join(df["destination"])).to_dict().items())
+files_with_functions[:5]
+#+END_SRC
+
+#+RESULTS:
+:results:
+[('.eggs/numpy-1.19.2-py3.7-linux-x86_64.egg/numpy/lib/histograms.py', 'histogram_bin_edges'), ('02 Deep Learning/RetinaNet_with_Angle/tests/utils/test_transform.py', 'test_random_flip'), ('1_joint_alignment/SE/venv/lib/python3.6/site-packages/pip-9.0.1-py3.6.egg/pip/__init__.py', 'FrozenRequirement'), ('3-WeaklySupervisedLearning/nnUNet/nnunet/training/network_training/nnUNet_variants/loss_function/nnUNetTrainerV2_Loss_DiceTopK10.py', 'nnUNetTrainerV2_Loss_DiceTopK10'), ('3rdparty/googletest/googlemock/scripts/upload.py', 'ClientLoginError')]
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+len(example_file_function_records)
+#+END_SRC
+
+#+RESULTS:
+:results:
+1210
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+import datetime
+t1 = datetime.datetime.now()
+t2 = datetime.datetime.now()
+(t2 - t1).total_seconds()
+#+END_SRC
+
+#+RESULTS:
+:results:
+5e-06
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+
+
+prompt = "Python file {} contains functions called {}. What does this file implement? Answer in 2 sentences"
+
+file_name, functions = files_with_functions[0]
+responses = []
+t1 = datetime.datetime.now()
+for (file_name, functions) in files_with_functions[:500]:
+    responses.append(get_chatgpt_response(prompt.format(file_name, functions)))
+
+(datetime.datetime.now() - t1).total_seconds()
+#+END_SRC
+
+#+RESULTS:
+:results:
+582.806176
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+responses_length = [len(tokens) for tokens in tokenizer(responses)["input_ids"]]
+np.mean(responses_length)
+#+END_SRC
+
+#+RESULTS:
+:results:
+58.458
+:end:
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+[len(functions.split()) for (__, functions) in files_with_functions]
+#+END_SRC
+
+#+RESULTS:
+:results:
+[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+:end:
+
+
+#+BEGIN_SRC python :session datasets.org  :results both
+
+records_with_responses = [(record[0], record[1], response) for (record, response) in zip(files_with_functions[:100], responses)]
+records_with_responses[1]
+#+END_SRC
+
+#+RESULTS:
+| 02 Deep Learning/RetinaNet_with_Angle/tests/utils/test_transform.py | test_random_flip | \n\nThe file implements unit tests for the random_flip() function in the transform module. This function is responsible for randomly flipping images horizontally and vertically for data augmentation purposes in object detection tasks. |
+
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+list(zip(files_with_functions[:100], responses))[0]
+#+END_SRC
+
+#+RESULTS:
+:results:
+(('.eggs/numpy-1.19.2-py3.7-linux-x86_64.egg/numpy/lib/histograms.py', 'histogram_bin_edges'), '\n\nThe file implements functions that help to calculate the edges of bins used for histogram computation. This is useful in scientific and data analysis applications where it is necessary to display the distribution of data.')
+:end:
+
+** Estimating whole cost
+
+#+BEGIN_SRC python :session datasets.org  :results both :exports both
+def get_n_tokens(files_with_functions, responses):
+    whole_priced_texts = [" ".join([file_name, functions, response]) for (file_name, functions), response in zip(files_with_functions, responses)]
+    text_tokens = tokenizer(whole_priced_texts)["input_ids"]
+    return np.mean([len(tokens) for tokens in text_tokens])
+
+n_tokens_per_call = get_n_tokens(files_with_functions, responses)
+n_tokens_per_call
+#+END_SRC
+
+#+RESULTS:
+: 79.032
+
+#+BEGIN_SRC python :session datasets.org  :results both drawer :exports both
+n_tokens_per_call * len(file_function_records) * 2e-6
+#+END_SRC
+
+#+RESULTS:
+:results:
+955.8120596159999
+:end:

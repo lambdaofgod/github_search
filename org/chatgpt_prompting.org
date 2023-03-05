@@ -1,0 +1,557 @@
+#+title: Chatgpt_prompting
+
+* Training data generation
+
+
+* Initialize OpenAI API
+
+#+BEGIN_SRC python :session chatgpt_prompting.org :results both drawer :exports both
+from dataclasses import dataclass, asdict
+from mlutil import chatgpt_api
+import numpy as np
+import pandas as pd
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+api_key_path = '~/Projects/org/openai_key.txt' # specify file path if OPENAI_API_KEY is not in env
+chatgpt_client = chatgpt_api.ChatGPTClient(api_key_path)
+"initialized api"
+#+END_SRC
+
+#+RESULTS:
+:results:
+initialized api
+:end:
+
+
+* Prepare GPT-2 tokenizer
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+from transformers import AutoTokenizer, AutoModelForTokenClassification
+from transformers import pipeline
+
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+tokenizer
+
+def get_n_tokens(text):
+    ids = tokenizer(text)["input_ids"]
+    return len(ids)
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+* Load data
+
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+import pandas as pd
+
+train_nbow_df = pd.read_parquet("../output/nbow_data_train.parquet").drop(["count"], axis=1)
+train_nbow_df.head()
+#+END_SRC
+
+#+RESULTS:
+:results:
+                       repo  ...                                 function_signature
+0  000Justin000/torchdiffeq  ...      def test_adams_adjoint_against_dopri5(self...
+1     008karan/SincNet_demo  ...  def read_conf_inp(cfg_file):\npass\nclass sinc...
+2  00marco/pydnet-duplicate  ...  def mapFunction(value, min_orig, max_orig, min...
+3            011235813/SEPT  ...  class DDQN(object):\npass\n    def run_actor_p...
+4             011235813/cm3  ...      def create_local_critic_train_op(self):\np...
+
+[5 rows x 10 columns]
+:end:
+
+
+
+train_nbow_df["dependencies"]
+#+END_SRC
+
+#+RESULTS:
+:results:
+0        torchdiffeq/_impl/misc.py torchdiffeq/_impl/rk...
+1        speaker_id.py dnn_models.py TIMIT_preparation....
+2        training_code/layers.py training_code/monodept...
+3        alg/__init__.py hip-mdp-public/HiPMDP.py hip-m...
+4        alg/alg_credit.py env/multiagent-particle-envs...
+                               ...
+33316    main.py core/model.py core/wing.py core/finetu...
+33317    arch/Inpainting/GAN_Inpainting.py exp/mnist-co...
+33318    simulated_database/evaluate_policy_dummy_seque...
+33319    scripts/mingjie_create_in_hospital_mortality.p...
+33320    nets/cifar_resnet.py utils/preprocessing.py ne...
+Name: dependencies, Length: 33321, dtype: object
+:end:
+
+* Prompting
+
+** Preparing records - using first n dependencies basically means using file names
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+
+def get_repo_records_by_index(data_df, indices, fields=["repo", "dependencies", "tasks"], n_deps=10):
+    records_df = data_df.iloc[indices].copy()
+    records_df["dependencies"] = records_df["dependencies"].str.split().apply(lambda a: a[:n_deps])
+    records_df["tasks"] = records_df["tasks"]
+    return records_df[fields].to_dict(orient="records")
+
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+get_repo_records_by_index(train_nbow_df, [0,1])[0].keys()
+#+END_SRC
+
+#+RESULTS:
+:results:
+dict_keys(['repo', 'dependencies', 'tasks'])
+:end:
+
+** Vanilla prompting
+
+** Vanilla prompt preparation
+
+#+BEGIN_SRC python :session chatgpt_prompting.org
+from typing import List
+
+base_prompt = """
+repository: {}
+files: {}
+tags: {}
+"""
+
+@dataclass
+class PromptInfo:
+    """
+    information about sample repositories passed to prompt
+    """
+    repo_records: List[dict]
+    predicted_repo_record: dict
+
+    def get_prompt(self):
+        prefix_prompt = " ".join(
+            base_prompt.format(*tuple(record.values()))
+            for record in self.repo_records
+        )
+        other_repo_name, other_repo_filenames, other_repo_tasks = self.predicted_repo_record.values()
+        return (prefix_prompt +
+            f"repository: {other_repo_name}\n" +
+            f"files: {other_repo_filenames}\n" +
+            "tags: "
+        )
+
+    @classmethod
+    def from_df(cls, data_df, pos_indices, pred_index, n_deps=10):
+        return PromptInfo(
+            get_repo_records_by_index(data_df, pos_indices, n_deps=n_deps),
+            get_repo_records_by_index(data_df, [pred_index], n_deps=n_deps)[0],
+        )
+
+repo_records = get_repo_records_by_index(train_nbow_df, [100,101])
+other_repo_record = get_repo_records_by_index(train_nbow_df, [20])[0]
+
+prompt_info = PromptInfo(repo_records, other_repo_record)
+prompt = prompt_info.get_prompt()
+prompt
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+
+repository: 3DVisionISR/3DRegNet
+files: ['data/readMat.py', 'main.py', 'test.py', 'data/data.py', 'registration/global_registration.py', 'registration/setupPly.py', 'registration/registration.py', 'config.py', 'ops.py', 'archs/arch.py']
+tags: ['frame']
+
+repository: 3P2S/arcface
+files: ['train.py', 'modules/layers.py', 'utils.py', 'modules/dataset.py', 'modules/utils.py', 'evaluate.py', 'data/convert_train_binary_tfrecord.py', 'modules/evaluations.py', 'modules/losses.py', 'infer_t265.py']
+tags: ['pedestrian attribute recognition', 'retinal oct disease classification', 'image classification', 'person re identification', 'pedestrian trajectory prediction', 'face identification', 'face recognition', 'face verification', 'object detection', 'image to image translation', 'semantic segmentation']
+repository: 0three/Speech-Denoise-With-Feature-Loss
+files: ['helper.py', 'senet_train.py', 'lossnet_train.py', 'model.py', 'data_import.py', 'data/extract.py', 'data/noise.py', 'dataset/seg.py', 'senet_infer.py', 'data/sox.py']
+tags:
+#+end_example
+
+
+#+BEGIN_SRC python :session chatgpt_prompting.org
+chatgpt_client.get_chatgpt_response_from_text(prompt)
+#+END_SRC
+
+#+RESULTS:
+| speech denoising | audio signal processing |
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+prompt_info.predicted_repo_record["tasks"]
+#+END_SRC
+
+#+RESULTS:
+:results:
+['speech denoising', 'denoising', 'speech enhancement', 'audio tagging']
+:end:
+
+*** Running experiment
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+
+def get_sample_prompt_info(data_df, n_labeled):
+    sample_labeled_indices = np.random.randint(2)
+    repo_records = get_repo_records_by_index(train_nbow_df, [100,101])
+    other_repo_record = get_repo_records_by_index(train_nbow_df, [20])[0]
+
+    prompt_info = promptinfo(repo_records, other_repo_record)
+    return prompt_info
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+*** Get some repo pairs
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+
+pos_idxs = list(zip(range(0, 250, 10), range(250, 500, 10)))
+pred_idxs = list(range(500, 750, 10))
+
+
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+PromptInfo.from_df(train_nbow_df, list(pos_idxs[0]), pred_idxs[0]).get_prompt()
+#+END_SRC
+
+#+RESULTS:
+:results:
+
+repository: 000Justin000/torchdiffeq
+files: ['torchdiffeq/_impl/misc.py', 'torchdiffeq/_impl/rk_common.py', 'torchdiffeq/_impl/fixed_adams.py', 'tests/api_tests.py', 'tests/gradient_tests.py', 'torchdiffeq/_impl/fixed_grid.py', 'torchdiffeq/_impl/interp.py', 'torchdiffeq/_impl/solvers.py', 'torchdiffeq/__init__.py', 'torchdiffeq/_impl/dopri5.py']
+tags: ['multivariate time series forecasting', 'multivariate time series imputation', 'point processes', 'time series']
+
+repository: AMLab-Amsterdam/FNP
+files: ['models.py', 'utils.py', 'ClassificationFNP', 'RegressionFNP', 'LogitRelaxedBernoulli', 'one_hot', 'Flatten', 'sample_bipartite', 'sample_DAG', 'logitexp']
+tags: ['image classification']
+repository: AlexOlsen/DeepWeeds
+files: ['deepweeds.py', 'inference', 'parse_args', 'get_confirm_token', 'cross_validate', 'save_response_content', 'download_models', 'download_google_drive_file', 'crop', 'crop_generator']
+tags:
+:end:
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+
+#PromptInfo.from_df(train_nbow_df, pos_idxs[0], pred_idxs[0])
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+
+prompt_infos = [
+    PromptInfo.from_df(train_nbow_df, list(pos), i)
+    for (pos, i) in zip(pos_idxs, pred_idxs)
+]
+
+true_tasks = [pinfo.predicted_repo_record["tasks"] for pinfo in prompt_infos]
+true_tasks
+#+END_SRC
+
+#+RESULTS:
+:results:
+["['classification', 'robust classification', 'general classification']", "['time series few shot learning with heterogeneous channels', 'super resolution']", "['face generation', 'face swapping']", "['domain adaptation']", "['representation learning']", "['multi label classification', 'image classification', 'classification', 'object detection', 'general classification']", "['feature engineering']", "['object detection', 'instance segmentation', 'semantic segmentation']", "['medical image segmentation', 'thermal image segmentation', 'video polyp segmentation', 'semantic segmentation']", "['face recognition', 'general classification']", "['continual learning', 'meta learning', 'visual tracking', 'online learning', 'few shot learning', 'one shot learning']", "['depth estimation', 'monocular depth estimation', 'action classification', 'transfer learning']", "['image manipulation', 'image generation', 'image super resolution', 'super resolution']", "['image classification']", "['video segmentation', 'self driving cars', 'video semantic segmentation', 'frame', 'semantic segmentation']", "['unsupervised image segmentation', 'semantic segmentation']", "['machine translation', 'text summarization', 'abstractive text summarization', 'translation', 'constituency parsing', 'multimodal machine translation']", "['multi task learning', 'emotion classification']", "['sarcasm detection']", "['sketch based image retrieval', 'feature selection', 'image retrieval']", "['image classification', 'neural architecture search']", "['variational inference', 'reinforcement learning', 'image classification', 'bayesian inference', 'image super resolution', 'general classification', 'super resolution']", "['variational inference']", "['language modelling', 'metric learning', 'few shot image classification', 'few shot learning', 'one shot learning']", "['transfer learning', 'semantic textual similarity', 'semantic similarity', 'linear probe classification', 'sentence embeddings']"]
+:end:
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+prompt_infos[2].repo_records
+#+END_SRC
+
+#+RESULTS:
+:results:
+[{'repo': '0three/Speech-Denoise-With-Feature-Loss', 'dependencies': ['helper.py', 'senet_train.py', 'lossnet_train.py', 'model.py', 'data_import.py', 'data/extract.py', 'data/noise.py', 'dataset/seg.py', 'senet_infer.py', 'data/sox.py'], 'tasks': "['speech denoising', 'denoising', 'speech enhancement', 'audio tagging']"}, {'repo': 'ART-Group-it/KERMIT', 'dependencies': ['kerMIT/kerMIT/dtk2_deprecated.py', 'kerMIT/kerMIT/conv_test/convolution_test.py', 'kerMIT/kerMIT/samples/models.py', 'kerMIT/kerMIT/dataset_reader.py', 'kerMIT/kerMIT/samples/tree_encode.py', 'kerMIT/kerMIT/conv_test/permutation_test.py', 'kerMIT/kerMIT/conv_test/fourier_test.py', 'kerMIT/kerMIT/samples/utils.py', 'kerMIT/kerMIT/legacyCode/prove.py', 'kerMIT/kerMIT/dataset_creator.py'], 'tasks': "['text classification', 'representation learning']"}]
+:end:
+
+*** Run experiment
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+import tqdm
+
+predicted_tasks = [
+    chatgpt_client.get_chatgpt_response_from_text(pinfo.get_prompt())
+    for pinfo in tqdm.tqdm(prompt_infos)
+]
+#+END_SRC
+
+#+RESULTS:
+:results:
+:end:
+
+
+*** Vanilla experiment results
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results output :exports both
+for pinfo, t, p_t in zip(prompt_infos, true_tasks, predicted_tasks):
+    # print("#" * 100)
+    # print(pinfo.predicted_repo_record["repo"])
+    # print("#" * 100)
+    # print(pinfo.predicted_repo_record["dependencies"])
+    print("#" * 50)
+    print("TASKS")
+    print("#" * 50)
+    print("true")
+    print(t)
+    print("predicted")
+    print(p_t)
+    print()
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+##################################################
+TASKS
+##################################################
+true
+['classification', 'robust classification', 'general classification']
+predicted
+['weed detection', 'agriculture', 'deep learning']
+
+##################################################
+TASKS
+##################################################
+true
+['time series few shot learning with heterogeneous channels', 'super resolution']
+predicted
+['generative adversarial networks', 'image synthesis']
+
+##################################################
+TASKS
+##################################################
+true
+['face generation', 'face swapping']
+predicted
+['face swapping', 'face recognition', 'face detection', 'image synthesis']
+
+##################################################
+TASKS
+##################################################
+true
+['domain adaptation']
+predicted
+['computer vision', 'deep learning', 'hand pose estimation']
+
+##################################################
+TASKS
+##################################################
+true
+['representation learning']
+predicted
+['variational autoencoder', 'information maximization', 'unsupervised learning', 'image classification', 'active learning']
+
+##################################################
+TASKS
+##################################################
+true
+['multi label classification', 'image classification', 'classification', 'object detection', 'general classification']
+predicted
+'image recognition', 'classification', 'data augmentation', 'fine-tuning'
+
+##################################################
+TASKS
+##################################################
+true
+['feature engineering']
+predicted
+['reinforcement learning', 'cost-guided reinforcement learning', 'value gradient policy', 'cartpole']
+
+##################################################
+TASKS
+##################################################
+true
+['object detection', 'instance segmentation', 'semantic segmentation']
+predicted
+['object detection', 'computer vision']
+
+##################################################
+TASKS
+##################################################
+true
+['medical image segmentation', 'thermal image segmentation', 'video polyp segmentation', 'semantic segmentation']
+predicted
+'image segmentation', 'deep learning', 'computer vision'
+
+##################################################
+TASKS
+##################################################
+true
+['face recognition', 'general classification']
+predicted
+['ambient intelligence', 'machine learning', 'activity recognition']
+
+##################################################
+TASKS
+##################################################
+true
+['continual learning', 'meta learning', 'visual tracking', 'online learning', 'few shot learning', 'one shot learning']
+predicted
+['tracking', 'reinforcement learning']
+
+##################################################
+TASKS
+##################################################
+true
+['depth estimation', 'monocular depth estimation', 'action classification', 'transfer learning']
+predicted
+'computer vision', 'depth estimation', 'AI in healthcare'
+
+##################################################
+TASKS
+##################################################
+true
+['image manipulation', 'image generation', 'image super resolution', 'super resolution']
+predicted
+
+
+['image synthesis', 'machine learning', 'computer vision', 'deep learning', 'image processing']
+
+##################################################
+TASKS
+##################################################
+true
+['image classification']
+predicted
+['adversarial attacks', 'convolutional neural networks', 'model training', 'evaluation']
+
+##################################################
+TASKS
+##################################################
+true
+['video segmentation', 'self driving cars', 'video semantic segmentation', 'frame', 'semantic segmentation']
+predicted
+['LSTM', 'ICNet', 'image segmentation', 'video processing']
+
+##################################################
+TASKS
+##################################################
+true
+['unsupervised image segmentation', 'semantic segmentation']
+predicted
+['image segmentation', 'semantic segmentation']
+
+##################################################
+TASKS
+##################################################
+true
+['machine translation', 'text summarization', 'abstractive text summarization', 'translation', 'constituency parsing', 'multimodal machine translation']
+predicted
+['machine translation', 'deep learning', 'PyTorch', 'neural networks']
+
+##################################################
+TASKS
+##################################################
+true
+['multi task learning', 'emotion classification']
+predicted
+['multi-task learning', 'neural networks']
+
+##################################################
+TASKS
+##################################################
+true
+['sarcasm detection']
+predicted
+['sarcasm detection', 'NLP', 'text classification']
+
+##################################################
+TASKS
+##################################################
+true
+['sketch based image retrieval', 'feature selection', 'image retrieval']
+predicted
+['semantic parsing', 'cyclic generation', 'image generation']
+
+##################################################
+TASKS
+##################################################
+true
+['image classification', 'neural architecture search']
+predicted
+['neural architecture search', 'supernet', 'model compression']
+
+##################################################
+TASKS
+##################################################
+true
+['variational inference', 'reinforcement learning', 'image classification', 'bayesian inference', 'image super resolution', 'general classification', 'super resolution']
+predicted
+['Bayesian CNN', 'machine learning', 'neural networks']
+
+##################################################
+TASKS
+##################################################
+true
+['variational inference']
+predicted
+['gradient estimation', 'spectral stein gradient estimator', 'entropy gradient estimator']
+
+##################################################
+TASKS
+##################################################
+true
+['language modelling', 'metric learning', 'few shot image classification', 'few shot learning', 'one shot learning']
+predicted
+['one shot learning', 'matching networks']
+
+##################################################
+TASKS
+##################################################
+true
+['transfer learning', 'semantic textual similarity', 'semantic similarity', 'linear probe classification', 'sentence embeddings']
+predicted
+['sentence embeddings', 'natural language processing', 'serving', 'REST API']
+#+end_example
+
+*** Vanilla cost
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+prompts_with_responses = [pinfo.get_prompt() + response for (pinfo, response) in zip(prompt_infos, predicted_tasks)]
+
+billed_token_lengths = pd.Series([get_n_tokens(t) for t in prompts_with_responses])
+billed_token_lengths.describe()
+#+END_SRC
+
+#+RESULTS:
+:results:
+count     25.000000
+mean     419.560000
+std       81.305022
+min      299.000000
+25%      354.000000
+50%      413.000000
+75%      496.000000
+max      595.000000
+dtype: float64
+:end:
+
+
+**** Vanilla cost estimate
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results output :exports both
+billed_prompt_tokens = billed_token_lengths.mean()
+estimated_billed_tokens = billed_token_lengths.mean() * train_nbow_df.shape[0]
+token_cost = 2e-6
+
+print("estimaded billed tokens per prompt:", billed_prompt_tokens)
+print("train dataset prompts:", train_nbow_df.shape[0])
+print("estimated cost:", round(estimated_billed_tokens * token_cost, 2), "USD")
+#+END_SRC
+
+#+RESULTS:
+: estimaded billed tokens per prompt: 419.56
+: train dataset prompts: 33321
+: estimated cost: 27.96 USD
