@@ -7,6 +7,7 @@ from pathlib import Path
 import ast
 from typing import List
 from pathlib import Path as P
+from pydantic import BaseModel, Field
 
 
 def preprocess_dep(dep):
@@ -68,15 +69,14 @@ def get_prompt_template(repo_prompt, prefix="", n_repos=2):
     return "\n\n".join([prefix] + [repo_prompt.strip()] * (n_repos + 1)).strip()
 
 
-@dataclass
-class PromptInfo:
+class PromptInfo(BaseModel):
     """
     information about sample repositories passed to prompt
     """
 
     repo_records: List[dict]
     predicted_repo_record: dict
-    repo_text_field: str = field(default="dependencies")
+    repo_text_field: str = Field(default="dependencies")
 
     def format_prompt(self, prompt_template):
         n_placeholders = len(re.findall(r"\{\}", prompt_template))
@@ -89,8 +89,10 @@ class PromptInfo:
     @classmethod
     def from_df(cls, data_df, pos_indices, pred_index, n_deps=10):
         return PromptInfo(
-            get_repo_records_by_index(data_df, pos_indices, n_deps=n_deps),
-            get_repo_records_by_index(data_df, [pred_index], n_deps=n_deps)[0],
+            repo_records=get_repo_records_by_index(data_df, pos_indices, n_deps=n_deps),
+            predicted_repo_record=get_repo_records_by_index(
+                data_df, [pred_index], n_deps=n_deps
+            )[0],
         )
 
     def get_repo_args(self, record, use_tasks=True):
