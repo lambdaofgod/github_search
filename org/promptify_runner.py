@@ -14,13 +14,14 @@ from promptify_utils import PrompterWrapper
 np.random.seed(seed=0)
 
 
-def load_prompt_infos():
+def load_prompt_infos(data_path="../output/nbow_data_train.parquet"):
+
+    df = pd.read_parquet(data_path).drop(["count"], axis=1)
     pos_idxs = list(zip(range(0, 1000, 10), range(1000, 2000, 10)))
     pred_idxs = list(range(2000, 3000, 10))
 
     return [
-        PromptInfo.from_df(train_nbow_df, list(pos), i)
-        for (pos, i) in zip(pos_idxs, pred_idxs)
+        PromptInfo.from_df(df, list(pos), i) for (pos, i) in zip(pos_idxs, pred_idxs)
     ]
 
 

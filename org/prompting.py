@@ -8,6 +8,7 @@ import ast
 from typing import List
 from pathlib import Path as P
 from pydantic import BaseModel, Field
+import pandas as pd
 
 
 def preprocess_dep(dep):
@@ -25,23 +26,6 @@ def get_repo_records_by_index(
     raw_deps = records_df["dependencies"].str.split()
     records_df["dependencies"] = raw_deps.apply(lambda dep: select_deps(dep, n_deps))
     return records_df[fields].to_dict(orient="records")
-
-
-# sys.path.insert(0, str(Path("/home/kuba/Projects/forks/GPTQ-for-LLaMa")))
-# import llama
-
-
-def get_n_tokens(text):
-    ids = tokenizer(text)["input_ids"]
-    return len(ids)
-
-
-import pandas as pd
-
-train_nbow_df = pd.read_parquet("../output/nbow_data_train.parquet").drop(
-    ["count"], axis=1
-)
-train_nbow_df.head()
 
 
 def preprocess_dep(dep):
