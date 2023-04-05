@@ -1,0 +1,111 @@
+#+title: Prompting
+
+#+BEGIN_SRC python :session prompting.org  :exports both
+from prompt_info import PromptInfo
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session prompting.org  :exports both
+import pandas as pd
+
+train_nbow_df = pd.read_parquet("../output/nbow_data_train.parquet").drop(["count"], axis=1)
+train_nbow_df.head()
+
+
+#+END_SRC
+
+#+RESULTS:
+:                        repo  ...                                 function_signature
+: 0  000Justin000/torchdiffeq  ...      def test_adams_adjoint_against_dopri5(self...
+: 1     008karan/SincNet_demo  ...  def read_conf_inp(cfg_file):\npass\nclass sinc...
+: 2  00marco/pydnet-duplicate  ...  def mapFunction(value, min_orig, max_orig, min...
+: 3            011235813/SEPT  ...  class DDQN(object):\npass\n    def run_actor_p...
+: 4             011235813/cm3  ...      def create_local_critic_train_op(self):\np...
+:
+: [5 rows x 10 columns]
+
+#+BEGIN_SRC python :session prompting.org  :exports both
+pos_idxs = [[0,1],[1,2],[3,4]]
+pred_idxs = [2,100,200]
+pinfo = PromptInfo.from_df(train_nbow_df, list(pos_idxs[0]), pred_idxs[0])
+pinfo
+#+END_SRC
+
+#+RESULTS:
+: PromptInfo(repo_records=[{'repo': '000Justin000/torchdiffeq', 'dependencies': ['misc.py', 'rk_common.py', 'fixed_adams.py', 'api_tests.py', 'gradient_tests.py', 'fixed_grid.py', 'interp.py', 'solvers.py', 'dopri5.py', 'odenet_mnist.py'], 'tasks': "['multivariate time series forecasting', 'multivariate time series imputation', 'point processes', 'time series']"}, {'repo': '008karan/SincNet_demo', 'dependencies': ['speaker_id.py', 'dnn_models.py', 'TIMIT_preparation.py', 'similarity.py', 'inference.py', 'data_io.py', 'compute_d_vector.py', 'ReadList', 'str_to_bool', 'read_conf'], 'tasks': "['speaker verification', 'speaker recognition', 'speaker identification']"}], predicted_repo_record={'repo': '00marco/pydnet-duplicate', 'dependencies': ['layers.py', 'monodepth_model.py', 'generate_depth_map.py', 'experiments.py', 'pydnet.py', 'layers.py', 'webcam.py', 'pydnet.py', 'utils.py', 'eta_pydnet.py'], 'tasks': "['depth estimation', 'autonomous navigation', 'monocular depth estimation', 'image reconstruction']"}, repo_text_field='dependencies')
+
+#+BEGIN_SRC python :session prompting.org  :exports both
+base_repo_prompt = """
+repository {}
+contains files {}
+its tags are {}
+"""
+
+heading_repo_prompt = """
+## repository
+{}
+## files
+{}
+## tags
+{}
+"""
+
+def get_prompt_template(repo_prompt, prefix="", n_repos=2):
+    return "\n\n".join([prefix] + [repo_prompt.strip()] * (n_repos + 1)).strip()
+
+base_prompt = get_prompt_template(base_repo_prompt)
+heading_prompt = get_prompt_template(heading_repo_prompt)
+
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session prompting.org  :exports both :results output
+for i in [0,1,2]:
+    pinfo = PromptInfo.from_df(train_nbow_df, list(pos_idxs[i]), pred_idxs[i])
+    print("#### PROMPT")
+    print(pinfo.format_prompt(base_prompt))
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+#### PROMPT
+repository 000Justin000/torchdiffeq
+contains files misc.py, rk_common.py, fixed_adams.py, api_tests.py, gradient_tests.py, fixed_grid.py, interp.py, solvers.py, dopri5.py, odenet_mnist.py
+its tags are [multivariate time series forecasting, multivariate time series imputation, point processes, time series]
+
+repository 008karan/SincNet_demo
+contains files speaker_id.py, dnn_models.py, TIMIT_preparation.py, similarity.py, inference.py, data_io.py, compute_d_vector.py, ReadList, str_to_bool, read_conf
+its tags are [speaker verification, speaker recognition, speaker identification]
+
+repository 00marco/pydnet-duplicate
+contains files layers.py, monodepth_model.py, generate_depth_map.py, experiments.py, pydnet.py, layers.py, webcam.py, pydnet.py, utils.py, eta_pydnet.py
+its tags are
+#### PROMPT
+repository 008karan/SincNet_demo
+contains files speaker_id.py, dnn_models.py, TIMIT_preparation.py, similarity.py, inference.py, data_io.py, compute_d_vector.py, ReadList, str_to_bool, read_conf
+its tags are [speaker verification, speaker recognition, speaker identification]
+
+repository 00marco/pydnet-duplicate
+contains files layers.py, monodepth_model.py, generate_depth_map.py, experiments.py, pydnet.py, layers.py, webcam.py, pydnet.py, utils.py, eta_pydnet.py
+its tags are [depth estimation, autonomous navigation, monocular depth estimation, image reconstruction]
+
+repository 3DVisionISR/3DRegNet
+contains files readMat.py, main.py, test.py, data.py, global_registration.py, setupPly.py, registration.py, config.py, ops.py, arch.py
+its tags are
+#### PROMPT
+repository 011235813/SEPT
+contains files HiPMDP.py, hiv.py, ddqn_meta.py, train_test_meta.py, train_dynasept.py, vae.py, multiprocess.py, acrobot.py, train_multiprocess.py, test.py
+its tags are [variational inference, reinforcement learning]
+
+repository 011235813/cm3
+contains files alg_credit.py, simple_push.py, core.py, policy.py, alg_qmix.py, replay_buffer.py, car.py, simple_speaker_listener.py, sumo_simulator.py, simple_reference.py
+its tags are [multi agent reinforcement learning, autonomous vehicles, efficient exploration, reinforcement learning]
+
+repository AI-luyuan/aegcn
+contains files hgcn_gae.py, GTConv, f1_score, precision, true_negative, accuracy, recall, false_positive, false_negative, true_positive
+its tags are
+#+end_example
+pinfo = PromptInfo.from_df(train_nbow_df, list(pos_idxs[0]), pred_idxs[0])
+pinfo

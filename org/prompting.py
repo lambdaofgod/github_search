@@ -60,6 +60,7 @@ class PromptInfo(BaseModel):
 
     repo_records: List[dict]
     predicted_repo_record: dict
+    true_tasks: List[str] = Field(default_factory=list)
     repo_text_field: str = Field(default="dependencies")
 
     def format_prompt(self, prompt_template):

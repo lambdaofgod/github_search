@@ -2,11 +2,23 @@ from prompting import PromptInfo
 from promptify import Prompter
 from mlutil.text import rwkv_utils
 from pydantic import BaseModel, Field
+from transformers import BitsAndBytesConfig, AutoModelForCausalLM, AutoTokenizer, pipelines
+from pathlib import Path
 
 
 def load_model(model_path):
-    pipeline = rwkv_utils.RWKVPipelineWrapper.load(model_path=model_path)
-    return rwkv_utils.RWKVPromptifyModel(pipeline=pipeline)
+    if "llama" in model_path:
+        model_path = Path(model_path).expanduser()
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        bb_config = BitsAndBytesConfig(load_in_8bit=True)
+        llama_model = AutoModelForCausalLM.from_pretrained(
+            model_path, quantization_config=bb_config, device_map="auto"
+        )
+        return pipelines.Pipeline(model=llama_model, tokenizer=tokenizer)
+    else:
+        pipeline = rwkv_utils.RWKVPipelineWrapper.load(model_path=model_path)
+        return rwkv_utils.RWKVPromptifyModel(pipeline=pipeline)
+
 
 
 class FakeModel:
