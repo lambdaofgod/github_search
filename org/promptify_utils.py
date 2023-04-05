@@ -2,9 +2,29 @@ from prompting import PromptInfo
 from promptify import Prompter
 from mlutil.text import rwkv_utils
 from pydantic import BaseModel, Field
-from transformers import BitsAndBytesConfig, AutoModelForCausalLM, AutoTokenizer, pipelines
+from transformers import BitsAndBytesConfig, AutoModelForCausalLM, AutoTokenizer, pipeline as hf_pipeline
 from pathlib import Path
 
+from transformers import Text2TextGenerationPipeline
+from typing import Any
+
+
+# +
+class HFModelWrapper(BaseModel):
+    pipeline: Any
+    
+    def run(self, prompts, max_tokens):
+        return self.pipeline(text_inputs=prompts,  max_new_tokens=max_tokens)
+        
+    class Config:
+        arbitrary_types_allowed = True
+
+class FakeModel:
+    def run(self, *args, **kwargs):
+        return ["foo"]
+
+
+# -
 
 def load_model(model_path):
     if "llama" in model_path:
@@ -14,16 +34,10 @@ def load_model(model_path):
         llama_model = AutoModelForCausalLM.from_pretrained(
             model_path, quantization_config=bb_config, device_map="auto"
         )
-        return pipelines.Pipeline(model=llama_model, tokenizer=tokenizer)
+        return HFModelWrapper(pipeline=hf_pipeline(task="text-generation",model=llama_model, tokenizer=tokenizer))
     else:
         pipeline = rwkv_utils.RWKVPipelineWrapper.load(model_path=model_path)
         return rwkv_utils.RWKVPromptifyModel(pipeline=pipeline)
-
-
-
-class FakeModel:
-    def run(self, *args, **kwargs):
-        return ["foo"]
 
 
 class PrompterWrapper(BaseModel):

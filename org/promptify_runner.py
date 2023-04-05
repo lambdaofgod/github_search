@@ -104,7 +104,7 @@ class Main:
 
     def run_model(
         self,
-        model_path="/home/kuba/models/rwkv-4-raven-7b/RWKV-4-Raven-7B-v6-Eng-20230401-ctx4096.pth",
+        model_path="/home/kuba/Projects/forks/text-generation-webui/models/llama-13b-hf/",
         prompt_template_name="md_prompt.jinja",
         templates_path="prompt_templates",
         data_path="../output/prompt_infos.jsonl",
