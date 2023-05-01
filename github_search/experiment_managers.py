@@ -21,16 +21,18 @@ class ClearMLExperimentManager:
     def __enter__(self):
         import clearml
 
-        self.task = clearml.Task.create(
-            project_name=self.project_name,
-            task_name=self.task_name,
-            task_type=self.task_type,
-        )
+        self.task = clearml.Task.get_current_task()
+        # TODO: check how we can fetch the task if it does not exist
+        # self.task = clearml.Task.create(
+        #     project_name=self.project_name,
+        #     task_name=self.task_name,
+        #     task_type=self.task_type,
+        # )
         self.task.connect(self.config)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.task.close()
+        # self.task.close()
         self.task = None
         # Add optional error handling if needed
         if exc_type:
