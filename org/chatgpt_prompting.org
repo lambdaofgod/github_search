@@ -1,11 +1,12 @@
 #+title: Chatgpt_prompting
+#+PROPERTY: header-args
 
 * Training data generation
 
 
 * Initialize OpenAI API
 
-#+BEGIN_SRC python :session chatgpt_prompting.org :results both drawer :exports both
+#+BEGIN_SRC python :session chatgpt_prompting.org :results both drawer :exports both :tangle chatgpt_prompting.py
 from dataclasses import dataclass, asdict
 from mlutil import chatgpt_api
 import numpy as np
@@ -15,7 +16,7 @@ import pandas as pd
 #+RESULTS:
 :results:
 :end:
-#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both :tangle chatgpt_prompting.py
 api_key_path = '~/Projects/org/openai_key.txt' # specify file path if OPENAI_API_KEY is not in env
 chatgpt_client = chatgpt_api.ChatGPTClient(api_key_path)
 "initialized api"
@@ -29,7 +30,7 @@ initialized api
 
 * Prepare GPT-2 tokenizer
 
-#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both :tangle chatgpt_prompting.py
 from transformers import AutoTokenizer, AutoModelForTokenClassification
 from transformers import pipeline
 
@@ -48,7 +49,7 @@ def get_n_tokens(text):
 * Load data
 
 
-#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both :tangle chatgpt_prompting.py
 import pandas as pd
 
 train_nbow_df = pd.read_parquet("../output/nbow_data_train.parquet").drop(["count"], axis=1)
@@ -91,12 +92,18 @@ Name: dependencies, Length: 33321, dtype: object
 * Prompting
 
 ** Preparing records - using first n dependencies basically means using file names
-#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both :tangle chatgpt_prompting.py
+
+def preprocess_dep(dep):
+    return P(dep).name
+
+def select_deps(deps, n_deps):
+    return [preprocess_dep(dep) for dep in deps if not "__init__" in dep][:n_deps]
 
 def get_repo_records_by_index(data_df, indices, fields=["repo", "dependencies", "tasks"], n_deps=10):
     records_df = data_df.iloc[indices].copy()
-    records_df["dependencies"] = records_df["dependencies"].str.split().apply(lambda a: a[:n_deps])
-    records_df["tasks"] = records_df["tasks"]
+    raw_deps = records_df["dependencies"].str.split()
+    records_df["dependencies"] = raw_deps.apply(lambda dep:  select_deps(dep, n_deps))
     return records_df[fields].to_dict(orient="records")
 
 #+END_SRC
@@ -118,13 +125,14 @@ dict_keys(['repo', 'dependencies', 'tasks'])
 
 ** Vanilla prompt preparation
 
-#+BEGIN_SRC python :session chatgpt_prompting.org
+#+BEGIN_SRC python :session chatgpt_prompting.org :tangle chatgpt_prompting.py
 from typing import List
+from pathlib import Path as P
 
 base_prompt = """
-repository: {}
-files: {}
-tags: {}
+repository {}
+contains files {}
+its tags are {}
 """
 
 @dataclass
@@ -135,15 +143,23 @@ class PromptInfo:
     repo_records: List[dict]
     predicted_repo_record: dict
 
+
+    def get_single_prompt(self, record):
+        repo = record["repo"]
+        dependencies = ", ".join(record["dependencies"])
+        tasks  = record["tasks"]
+        return base_prompt.format(repo, dependencies, tasks)
+
     def get_prompt(self):
-        prefix_prompt = " ".join(
-            base_prompt.format(*tuple(record.values()))
+        prefix_prompt = "\n".join(
+            self.get_single_prompt(record)
             for record in self.repo_records
         )
         other_repo_name, other_repo_filenames, other_repo_tasks = self.predicted_repo_record.values()
+        other_repo_filenames = [P(fname).name for fname in other_repo_filenames]
         return (prefix_prompt +
-            f"repository: {other_repo_name}\n" +
-            f"files: {other_repo_filenames}\n" +
+            f"\nrepository {other_repo_name}\n" +
+            f"contains files: {', '.join(other_repo_filenames)}\n" +
             "tags: "
         )
 
@@ -154,8 +170,8 @@ class PromptInfo:
             get_repo_records_by_index(data_df, [pred_index], n_deps=n_deps)[0],
         )
 
-repo_records = get_repo_records_by_index(train_nbow_df, [100,101])
-other_repo_record = get_repo_records_by_index(train_nbow_df, [20])[0]
+repo_records = get_repo_records_by_index(train_nbow_df, [5,10])
+other_repo_record = get_repo_records_by_index(train_nbow_df, [1])[0]
 
 prompt_info = PromptInfo(repo_records, other_repo_record)
 prompt = prompt_info.get_prompt()
@@ -165,25 +181,20 @@ prompt
 #+RESULTS:
 #+begin_example
 
-repository: 3DVisionISR/3DRegNet
-files: ['data/readMat.py', 'main.py', 'test.py', 'data/data.py', 'registration/global_registration.py', 'registration/setupPly.py', 'registration/registration.py', 'config.py', 'ops.py', 'archs/arch.py']
-tags: ['frame']
+repository 011235813/hierarchical-marl
+contains files alg_iql.py, env_wrapper.py, train_hsd_scripted.py, alg_qmix.py, train_multiprocess.py, replay_buffer.py, test_env_wrapper.py, networks.py, evaluate.py, alg_hsd_scripted.py
+its tags are ['multi agent reinforcement learning', 'q learning', 'reinforcement learning']
 
-repository: 3P2S/arcface
-files: ['train.py', 'modules/layers.py', 'utils.py', 'modules/dataset.py', 'modules/utils.py', 'evaluate.py', 'data/convert_train_binary_tfrecord.py', 'modules/evaluations.py', 'modules/losses.py', 'infer_t265.py']
-tags: ['pedestrian attribute recognition', 'retinal oct disease classification', 'image classification', 'person re identification', 'pedestrian trajectory prediction', 'face identification', 'face recognition', 'face verification', 'object detection', 'image to image translation', 'semantic segmentation']
-repository: 0three/Speech-Denoise-With-Feature-Loss
-files: ['helper.py', 'senet_train.py', 'lossnet_train.py', 'model.py', 'data_import.py', 'data/extract.py', 'data/noise.py', 'dataset/seg.py', 'senet_infer.py', 'data/sox.py']
+
+repository 08173021/FCOS
+contains files inference.py, retinanet.py, imports.py, roi_mask_predictors.py, test_detectors.py, registry.py, inference.py, detectors.py, roi_pool.py, backbone.py
+its tags are ['object detection', 'pedestrian detection', 'semantic segmentation']
+
+repository 008karan/SincNet_demo
+contains files: speaker_id.py, dnn_models.py, TIMIT_preparation.py, similarity.py, inference.py, data_io.py, compute_d_vector.py, ReadList, str_to_bool, read_conf
 tags:
 #+end_example
 
-
-#+BEGIN_SRC python :session chatgpt_prompting.org
-chatgpt_client.get_chatgpt_response_from_text(prompt)
-#+END_SRC
-
-#+RESULTS:
-| speech denoising | audio signal processing |
 
 #+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
 prompt_info.predicted_repo_record["tasks"]
@@ -195,7 +206,7 @@ prompt_info.predicted_repo_record["tasks"]
 :end:
 
 *** Running experiment
-#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both :tangle chatgpt_prompting.py
 
 def get_sample_prompt_info(data_df, n_labeled):
     sample_labeled_indices = np.random.randint(2)
@@ -210,12 +221,41 @@ def get_sample_prompt_info(data_df, n_labeled):
 :results:
 :end:
 
+#+BEGIN_SRC python :session chatgpt_prompting.org  :exports both
+
+from pathlib import Path
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+# from GPTQ_loader import load_quantized
+
+text_webui_path = "/home/kuba/Projects/forks/text-generation-webui"
+
+model_name = "llama-13b-hf"
+model_path = Path(f"{text_webui_path}/models/{model_name}")
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+llama = AutoModelForCausalLM.from_pretrained(
+    model_path, device_map="auto", load_in_8bit=True
+)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session chatgpt_prompting.org  :exports both
+import sys
+
+sys.executable
+
+#+END_SRC
+
+#+RESULTS:
+: /home/kuba/miniconda3/envs/llama/bin/python
+
 *** Get some repo pairs
 
-#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both :tangle chatgpt_prompting.py
 
-pos_idxs = list(zip(range(0, 250, 10), range(250, 500, 10)))
-pred_idxs = list(range(500, 750, 10))
+pos_idxs = list(zip(range(0, 1000, 10), range(1000, 2000, 10)))
+pred_idxs = list(range(2000, 3000, 10))
 
 
 #+END_SRC
@@ -235,11 +275,11 @@ repository: 000Justin000/torchdiffeq
 files: ['torchdiffeq/_impl/misc.py', 'torchdiffeq/_impl/rk_common.py', 'torchdiffeq/_impl/fixed_adams.py', 'tests/api_tests.py', 'tests/gradient_tests.py', 'torchdiffeq/_impl/fixed_grid.py', 'torchdiffeq/_impl/interp.py', 'torchdiffeq/_impl/solvers.py', 'torchdiffeq/__init__.py', 'torchdiffeq/_impl/dopri5.py']
 tags: ['multivariate time series forecasting', 'multivariate time series imputation', 'point processes', 'time series']
 
-repository: AMLab-Amsterdam/FNP
-files: ['models.py', 'utils.py', 'ClassificationFNP', 'RegressionFNP', 'LogitRelaxedBernoulli', 'one_hot', 'Flatten', 'sample_bipartite', 'sample_DAG', 'logitexp']
-tags: ['image classification']
-repository: AlexOlsen/DeepWeeds
-files: ['deepweeds.py', 'inference', 'parse_args', 'get_confirm_token', 'cross_validate', 'save_response_content', 'download_models', 'download_google_drive_file', 'crop', 'crop_generator']
+repository: Baichenjia/DCGAN-eager
+files: ['create_gif.py', 'train.py', 'generator_loss', 'generate_and_save_images', 'discriminator_loss', 'train', 'Discriminator', 'Generator', 'train_step', 'sigmoid_cross_entropy_with_logits']
+tags: ['image clustering', 'representation learning', 'conditional image generation']
+repository: DeepMindv2/DeepDetection
+files: ['Visualization.py', 'Jupyter_Notebooks/discovery.py', 'Models/Pretrained.py', 'Keras_Tuner.py', 'DataAug.py', 'configs.py', 'DenseNet.py', 'ResNet.py', 'VGG.py', 'Utils.py']
 tags:
 :end:
 
@@ -252,7 +292,7 @@ tags:
 :results:
 :end:
 
-#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both :tangle chatgpt_prompting.py
 
 prompt_infos = [
     PromptInfo.from_df(train_nbow_df, list(pos), i)
@@ -260,32 +300,32 @@ prompt_infos = [
 ]
 
 true_tasks = [pinfo.predicted_repo_record["tasks"] for pinfo in prompt_infos]
-true_tasks
+true_tasks[0]
 #+END_SRC
 
 #+RESULTS:
 :results:
-["['classification', 'robust classification', 'general classification']", "['time series few shot learning with heterogeneous channels', 'super resolution']", "['face generation', 'face swapping']", "['domain adaptation']", "['representation learning']", "['multi label classification', 'image classification', 'classification', 'object detection', 'general classification']", "['feature engineering']", "['object detection', 'instance segmentation', 'semantic segmentation']", "['medical image segmentation', 'thermal image segmentation', 'video polyp segmentation', 'semantic segmentation']", "['face recognition', 'general classification']", "['continual learning', 'meta learning', 'visual tracking', 'online learning', 'few shot learning', 'one shot learning']", "['depth estimation', 'monocular depth estimation', 'action classification', 'transfer learning']", "['image manipulation', 'image generation', 'image super resolution', 'super resolution']", "['image classification']", "['video segmentation', 'self driving cars', 'video semantic segmentation', 'frame', 'semantic segmentation']", "['unsupervised image segmentation', 'semantic segmentation']", "['machine translation', 'text summarization', 'abstractive text summarization', 'translation', 'constituency parsing', 'multimodal machine translation']", "['multi task learning', 'emotion classification']", "['sarcasm detection']", "['sketch based image retrieval', 'feature selection', 'image retrieval']", "['image classification', 'neural architecture search']", "['variational inference', 'reinforcement learning', 'image classification', 'bayesian inference', 'image super resolution', 'general classification', 'super resolution']", "['variational inference']", "['language modelling', 'metric learning', 'few shot image classification', 'few shot learning', 'one shot learning']", "['transfer learning', 'semantic textual similarity', 'semantic similarity', 'linear probe classification', 'sentence embeddings']"]
+['object categorization', 'data augmentation']
 :end:
 
 #+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
-prompt_infos[2].repo_records
+prompt_infos[2]
 #+END_SRC
 
 #+RESULTS:
 :results:
-[{'repo': '0three/Speech-Denoise-With-Feature-Loss', 'dependencies': ['helper.py', 'senet_train.py', 'lossnet_train.py', 'model.py', 'data_import.py', 'data/extract.py', 'data/noise.py', 'dataset/seg.py', 'senet_infer.py', 'data/sox.py'], 'tasks': "['speech denoising', 'denoising', 'speech enhancement', 'audio tagging']"}, {'repo': 'ART-Group-it/KERMIT', 'dependencies': ['kerMIT/kerMIT/dtk2_deprecated.py', 'kerMIT/kerMIT/conv_test/convolution_test.py', 'kerMIT/kerMIT/samples/models.py', 'kerMIT/kerMIT/dataset_reader.py', 'kerMIT/kerMIT/samples/tree_encode.py', 'kerMIT/kerMIT/conv_test/permutation_test.py', 'kerMIT/kerMIT/conv_test/fourier_test.py', 'kerMIT/kerMIT/samples/utils.py', 'kerMIT/kerMIT/legacyCode/prove.py', 'kerMIT/kerMIT/dataset_creator.py'], 'tasks': "['text classification', 'representation learning']"}]
+PromptInfo(repo_records=[{'repo': '0three/Speech-Denoise-With-Feature-Loss', 'dependencies': ['helper.py', 'senet_train.py', 'lossnet_train.py', 'model.py', 'data_import.py', 'data/extract.py', 'data/noise.py', 'dataset/seg.py', 'senet_infer.py', 'data/sox.py'], 'tasks': "['speech denoising', 'denoising', 'speech enhancement', 'audio tagging']"}, {'repo': 'BangLiu/ArticlePairMatching', 'dependencies': ['src/models/CCIG/util/ml_utils.py', 'src/models/CCIG/util/str_utils.py', 'src/models/CCIG/main.py', 'src/models/CCIG/util/file_utils.py', 'src/models/CCIG/data/girvan_newman.py', 'src/models/CCIG/util/exp_utils.py', 'src/models/CCIG/models/layers.py', 'src/models/CCIG/data/sentence_score.py', 'src/models/CCIG/util/visualize.py', 'src/models/CCIG/data/ccig.py'], 'tasks': "['question answering', 'text matching']"}], predicted_repo_record={'repo': 'Deepest-Project/WorldModels-A3C', 'dependencies': ['hparams.py', 'test.py', 'train-a3c.py', 'train-vae.py', 'replay.py', 'train-rnn.py', 'rollout.py', 'models/vision.py', 'rollout-a3c.py', 'models/memory.py'], 'tasks': "['car racing', 'reinforcement learning']"})
 :end:
 
 *** Run experiment
 
 #+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
-import tqdm
+#impo rt tqdm
 
-predicted_tasks = [
-    chatgpt_client.get_chatgpt_response_from_text(pinfo.get_prompt())
-    for pinfo in tqdm.tqdm(prompt_infos)
-]
+# predicted_tasks = [
+#     chatgpt_client.get_chatgpt_response_from_text(pinfo.get_prompt())
+#     for pinfo in tqdm.tqdm(prompt_infos)
+# ]
 #+END_SRC
 
 #+RESULTS:
@@ -296,225 +336,114 @@ predicted_tasks = [
 *** Vanilla experiment results
 
 #+BEGIN_SRC python :session chatgpt_prompting.org  :results output :exports both
-for pinfo, t, p_t in zip(prompt_infos, true_tasks, predicted_tasks):
-    # print("#" * 100)
-    # print(pinfo.predicted_repo_record["repo"])
-    # print("#" * 100)
-    # print(pinfo.predicted_repo_record["dependencies"])
-    print("#" * 50)
-    print("TASKS")
-    print("#" * 50)
-    print("true")
-    print(t)
-    print("predicted")
-    print(p_t)
-    print()
+import ast
+
+def get_sanitized_tasks(task_list_str):
+    if type(task_list_str) is list:
+        return " ; ".join(task_list_str)
+    else:
+        return " ; ".join(task_list_str.replace("[", "").replace("]", "").split(", "))
+
+def get_pred_records(prompt_infos, true_tasks, predicted_tasks):
+    return [
+        {"repo": pinfo.predicted_repo_record["repo"], "true_tasks": get_sanitized_tasks(t), "predicted_tasks": get_sanitized_tasks(p_t)}
+        for (pinfo, t, p_t) in zip(prompt_infos, true_tasks, predicted_tasks)
+    ]
+
 #+END_SRC
 
 #+RESULTS:
-#+begin_example
-##################################################
-TASKS
-##################################################
-true
-['classification', 'robust classification', 'general classification']
-predicted
-['weed detection', 'agriculture', 'deep learning']
 
-##################################################
-TASKS
-##################################################
-true
-['time series few shot learning with heterogeneous channels', 'super resolution']
-predicted
-['generative adversarial networks', 'image synthesis']
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports botht
+get_sanitized_tasks(true_tasks[0])
+#+END_SRC
 
-##################################################
-TASKS
-##################################################
-true
-['face generation', 'face swapping']
-predicted
-['face swapping', 'face recognition', 'face detection', 'image synthesis']
-
-##################################################
-TASKS
-##################################################
-true
-['domain adaptation']
-predicted
-['computer vision', 'deep learning', 'hand pose estimation']
-
-##################################################
-TASKS
-##################################################
-true
-['representation learning']
-predicted
-['variational autoencoder', 'information maximization', 'unsupervised learning', 'image classification', 'active learning']
-
-##################################################
-TASKS
-##################################################
-true
-['multi label classification', 'image classification', 'classification', 'object detection', 'general classification']
-predicted
-'image recognition', 'classification', 'data augmentation', 'fine-tuning'
-
-##################################################
-TASKS
-##################################################
-true
-['feature engineering']
-predicted
-['reinforcement learning', 'cost-guided reinforcement learning', 'value gradient policy', 'cartpole']
-
-##################################################
-TASKS
-##################################################
-true
-['object detection', 'instance segmentation', 'semantic segmentation']
-predicted
-['object detection', 'computer vision']
-
-##################################################
-TASKS
-##################################################
-true
-['medical image segmentation', 'thermal image segmentation', 'video polyp segmentation', 'semantic segmentation']
-predicted
-'image segmentation', 'deep learning', 'computer vision'
-
-##################################################
-TASKS
-##################################################
-true
-['face recognition', 'general classification']
-predicted
-['ambient intelligence', 'machine learning', 'activity recognition']
-
-##################################################
-TASKS
-##################################################
-true
-['continual learning', 'meta learning', 'visual tracking', 'online learning', 'few shot learning', 'one shot learning']
-predicted
-['tracking', 'reinforcement learning']
-
-##################################################
-TASKS
-##################################################
-true
-['depth estimation', 'monocular depth estimation', 'action classification', 'transfer learning']
-predicted
-'computer vision', 'depth estimation', 'AI in healthcare'
-
-##################################################
-TASKS
-##################################################
-true
-['image manipulation', 'image generation', 'image super resolution', 'super resolution']
-predicted
+#+RESULTS:
+:results:
+'object categorization' | 'data augmentation'
+:end:
 
 
-['image synthesis', 'machine learning', 'computer vision', 'deep learning', 'image processing']
+#+BEGIN_SRC python :session chatgpt_prompting.org  :results both drawer :exports both
+pred_records = get_pred_records(prompt_infos, true_tasks, predicted_tasks)
+pd.DataFrame.from_records(pred_records).to_csv("chatgpt_file_tasks_results.csv", index=False)
+pred_records[4]
+#+END_SRC
 
-##################################################
-TASKS
-##################################################
-true
-['image classification']
-predicted
-['adversarial attacks', 'convolutional neural networks', 'model training', 'evaluation']
+#+RESULTS:
+:results:
+{'repo': 'DengPingFan/BBS-Net', 'true_tasks': "'object detection' ; 'rgb salient object detection' ; 'salient object detection' ; 'rgb d salient object detection'", 'predicted_tasks': "'image segmentation' ; 'boundary-based segmentation' ; 'deep learning' ; 'computer vision'"}
+:end:
 
-##################################################
-TASKS
-##################################################
-true
-['video segmentation', 'self driving cars', 'video semantic segmentation', 'frame', 'semantic segmentation']
-predicted
-['LSTM', 'ICNet', 'image segmentation', 'video processing']
+#+BEGIN_SRC latex
+\begin{tabular}{llll}
+\toprule
+{} &                                             repo &                                         true\_tasks &                                    predicted\_tasks \\
+\midrule
+0  &                              AlexOlsen/DeepWeeds &  ['classification', 'robust classification', 'g... &  ['weed detection', 'agriculture', 'deep learni... \\
+1  &            AlexanderBogatko/TensorFlow\_Keras\_GAN &  ['time series few shot learning with heterogen... &  ['generative adversarial networks', 'image syn... \\
+2  &                  AlexeiKaplenko/FaceShifter\_mine &               ['face generation', 'face swapping'] &  ['face swapping', 'face recognition', 'face de... \\
+3  &                        AlextheEngineer/Ego2Hands &                              ['domain adaptation'] &  ['computer vision', 'deep learning', 'hand pos... \\
+4  &                            AliLotfi92/InfoMaxVAE &                        ['representation learning'] &  ['variational autoencoder', 'information maxim... \\
+5  &                                 Alibaba-MIIL/ASL &  ['multi label classification', 'image classifi... &  'image recognition', 'classification', 'data a... \\
+6  &                   Alina-Samokhina/guided\_cost\_RL &                            ['feature engineering'] &  ['reinforcement learning', 'cost-guided reinfo... \\
+7  &                         AllenPeng0209/SaccadeNet &  ['object detection', 'instance segmentation', ... &            ['object detection', 'computer vision'] \\
+8  &                    AlphaJia/keras\_unet\_plus\_plus &  ['medical image segmentation', 'thermal image ... &  'image segmentation', 'deep learning', 'comput... \\
+9  &                                 AmIAttribute/AmI &     ['face recognition', 'general classification'] &  ['ambient intelligence', 'machine learning', '... \\
+10 &                                Amgao/RLS-RTMDNet &  ['continual learning', 'meta learning', 'visua... &             ['tracking', 'reinforcement learning'] \\
+11 &                            AmirsSaad/UWPhysDepth &  ['depth estimation', 'monocular depth estimati... &  'computer vision', 'depth estimation', 'AI in ... \\
+12 &                            Amrou7/Sin-GAN-master &  ['image manipulation', 'image generation', 'im... &  \textbackslash n\textbackslash n['image synthesis', 'machine learning', 'c... \\
+13 &                    Anaststam/Adversarial-Attacks &                           ['image classification'] &  ['adversarial attacks', 'convolutional neural ... \\
+14 &                      Andreas-Pfeuffer/LSTM-ICNet &  ['video segmentation', 'self driving cars', 'v... &  ['LSTM', 'ICNet', 'image segmentation', 'video... \\
+15 &                              Andrew-booler/W-Net &  ['unsupervised image segmentation', 'semantic ... &    ['image segmentation', 'semantic segmentation'] \\
+16 &            Andrey885/Machine\_translation\_PyTorch &  ['machine translation', 'text summarization', ... &  ['machine translation', 'deep learning', 'PyTo... \\
+17 &                                 Andyeyeye/MTANet &  ['multi task learning', 'emotion classification'] &         ['multi-task learning', 'neural networks'] \\
+18 &                    AniSkywalker/SarcasmDetection &                              ['sarcasm detection'] &  ['sarcasm detection', 'NLP', 'text classificat... \\
+19 &                              AnjanDutta/sem-pcyc &  ['sketch based image retrieval', 'feature sele... &  ['semantic parsing', 'cyclic generation', 'ima... \\
+20 &                             AnnaAraslanova/FBNet &  ['image classification', 'neural architecture ... &  ['neural architecture search', 'supernet', 'mo... \\
+21 &                            Anou9531/Bayesian-CNN &  ['variational inference', 'reinforcement learn... &  ['Bayesian CNN', 'machine learning', 'neural n... \\
+22 &                   AntixK/Spectral-Stein-Gradient &                          ['variational inference'] &  ['gradient estimation', 'spectral stein gradie... \\
+23 &                 AntreasAntoniou/MatchingNetworks &  ['language modelling', 'metric learning', 'few... &         ['one shot learning', 'matching networks'] \\
+24 &  AnzorGozalishvili/sentence\_transformers\_serving &  ['transfer learning', 'semantic textual simila... &  ['sentence embeddings', 'natural language proc... \\
+\bottomrule
+\end{tabular}
+#+END_SRC
 
-##################################################
-TASKS
-##################################################
-true
-['unsupervised image segmentation', 'semantic segmentation']
-predicted
-['image segmentation', 'semantic segmentation']
-
-##################################################
-TASKS
-##################################################
-true
-['machine translation', 'text summarization', 'abstractive text summarization', 'translation', 'constituency parsing', 'multimodal machine translation']
-predicted
-['machine translation', 'deep learning', 'PyTorch', 'neural networks']
-
-##################################################
-TASKS
-##################################################
-true
-['multi task learning', 'emotion classification']
-predicted
-['multi-task learning', 'neural networks']
-
-##################################################
-TASKS
-##################################################
-true
-['sarcasm detection']
-predicted
-['sarcasm detection', 'NLP', 'text classification']
-
-##################################################
-TASKS
-##################################################
-true
-['sketch based image retrieval', 'feature selection', 'image retrieval']
-predicted
-['semantic parsing', 'cyclic generation', 'image generation']
-
-##################################################
-TASKS
-##################################################
-true
-['image classification', 'neural architecture search']
-predicted
-['neural architecture search', 'supernet', 'model compression']
-
-##################################################
-TASKS
-##################################################
-true
-['variational inference', 'reinforcement learning', 'image classification', 'bayesian inference', 'image super resolution', 'general classification', 'super resolution']
-predicted
-['Bayesian CNN', 'machine learning', 'neural networks']
-
-##################################################
-TASKS
-##################################################
-true
-['variational inference']
-predicted
-['gradient estimation', 'spectral stein gradient estimator', 'entropy gradient estimator']
-
-##################################################
-TASKS
-##################################################
-true
-['language modelling', 'metric learning', 'few shot image classification', 'few shot learning', 'one shot learning']
-predicted
-['one shot learning', 'matching networks']
-
-##################################################
-TASKS
-##################################################
-true
-['transfer learning', 'semantic textual similarity', 'semantic similarity', 'linear probe classification', 'sentence embeddings']
-predicted
-['sentence embeddings', 'natural language processing', 'serving', 'REST API']
-#+end_example
+#+RESULTS:
+#+begin_export latex
+\begin{tabular}{llll}
+\toprule
+{} &                                             repo &                                         true\_tasks &                                    predicted\_tasks \\
+\midrule
+0  &                              AlexOlsen/DeepWeeds &  ['classification', 'robust classification', 'g... &  ['weed detection', 'agriculture', 'deep learni... \\
+1  &            AlexanderBogatko/TensorFlow\_Keras\_GAN &  ['time series few shot learning with heterogen... &  ['generative adversarial networks', 'image syn... \\
+2  &                  AlexeiKaplenko/FaceShifter\_mine &               ['face generation', 'face swapping'] &  ['face swapping', 'face recognition', 'face de... \\
+3  &                        AlextheEngineer/Ego2Hands &                              ['domain adaptation'] &  ['computer vision', 'deep learning', 'hand pos... \\
+4  &                            AliLotfi92/InfoMaxVAE &                        ['representation learning'] &  ['variational autoencoder', 'information maxim... \\
+5  &                                 Alibaba-MIIL/ASL &  ['multi label classification', 'image classifi... &  'image recognition', 'classification', 'data a... \\
+6  &                   Alina-Samokhina/guided\_cost\_RL &                            ['feature engineering'] &  ['reinforcement learning', 'cost-guided reinfo... \\
+7  &                         AllenPeng0209/SaccadeNet &  ['object detection', 'instance segmentation', ... &            ['object detection', 'computer vision'] \\
+8  &                    AlphaJia/keras\_unet\_plus\_plus &  ['medical image segmentation', 'thermal image ... &  'image segmentation', 'deep learning', 'comput... \\
+9  &                                 AmIAttribute/AmI &     ['face recognition', 'general classification'] &  ['ambient intelligence', 'machine learning', '... \\
+10 &                                Amgao/RLS-RTMDNet &  ['continual learning', 'meta learning', 'visua... &             ['tracking', 'reinforcement learning'] \\
+11 &                            AmirsSaad/UWPhysDepth &  ['depth estimation', 'monocular depth estimati... &  'computer vision', 'depth estimation', 'AI in ... \\
+12 &                            Amrou7/Sin-GAN-master &  ['image manipulation', 'image generation', 'im... &  \textbackslash n\textbackslash n['image synthesis', 'machine learning', 'c... \\
+13 &                    Anaststam/Adversarial-Attacks &                           ['image classification'] &  ['adversarial attacks', 'convolutional neural ... \\
+14 &                      Andreas-Pfeuffer/LSTM-ICNet &  ['video segmentation', 'self driving cars', 'v... &  ['LSTM', 'ICNet', 'image segmentation', 'video... \\
+15 &                              Andrew-booler/W-Net &  ['unsupervised image segmentation', 'semantic ... &    ['image segmentation', 'semantic segmentation'] \\
+16 &            Andrey885/Machine\_translation\_PyTorch &  ['machine translation', 'text summarization', ... &  ['machine translation', 'deep learning', 'PyTo... \\
+17 &                                 Andyeyeye/MTANet &  ['multi task learning', 'emotion classification'] &         ['multi-task learning', 'neural networks'] \\
+18 &                    AniSkywalker/SarcasmDetection &                              ['sarcasm detection'] &  ['sarcasm detection', 'NLP', 'text classificat... \\
+19 &                              AnjanDutta/sem-pcyc &  ['sketch based image retrieval', 'feature sele... &  ['semantic parsing', 'cyclic generation', 'ima... \\
+20 &                             AnnaAraslanova/FBNet &  ['image classification', 'neural architecture ... &  ['neural architecture search', 'supernet', 'mo... \\
+21 &                            Anou9531/Bayesian-CNN &  ['variational inference', 'reinforcement learn... &  ['Bayesian CNN', 'machine learning', 'neural n... \\
+22 &                   AntixK/Spectral-Stein-Gradient &                          ['variational inference'] &  ['gradient estimation', 'spectral stein gradie... \\
+23 &                 AntreasAntoniou/MatchingNetworks &  ['language modelling', 'metric learning', 'few... &         ['one shot learning', 'matching networks'] \\
+24 &  AnzorGozalishvili/sentence\_transformers\_serving &  ['transfer learning', 'semantic textual simila... &  ['sentence embeddings', 'natural language proc... \\
+\bottomrule
+\end{tabular}
+#+end_export
+***
 
 *** Vanilla cost
 
@@ -527,15 +456,6 @@ billed_token_lengths.describe()
 
 #+RESULTS:
 :results:
-count     25.000000
-mean     419.560000
-std       81.305022
-min      299.000000
-25%      354.000000
-50%      413.000000
-75%      496.000000
-max      595.000000
-dtype: float64
 :end:
 
 
@@ -552,6 +472,3 @@ print("estimated cost:", round(estimated_billed_tokens * token_cost, 2), "USD")
 #+END_SRC
 
 #+RESULTS:
-: estimaded billed tokens per prompt: 419.56
-: train dataset prompts: 33321
-: estimated cost: 27.96 USD

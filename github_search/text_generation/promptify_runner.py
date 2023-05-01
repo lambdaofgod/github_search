@@ -68,6 +68,7 @@ def sample_data(
     import pandas as pd
     from github_search.text_generation.context_loader import ContextLoader
     from github_search.text_generation.configs import SamplingConfig
+    import logging
 
     sampling_config = SamplingConfig(**sampling_config)
     prompt_infos = ContextLoader(
@@ -95,13 +96,17 @@ def expand_documents(
 ):
     import pandas as pd
     from github_search.text_generation.configs import TextGenerationConfig
-    from github_search.text_generation.prompting import PromptInfo, PrompterWrapper
+    from github_search.text_generation.prompting import PromptInfo
+    from github_search.text_generation.promptify_utils import PrompterWrapper
     from pathlib import Path as P
-    from record_writer import JsonWriterContextManager, RecordWriter
+    from github_search.text_generation.record_writer import (
+        JsonWriterContextManager,
+        RecordWriter,
+    )
 
     text_generation_config = TextGenerationConfig(**text_generation_config)
     print(f"loading data from {text_generation_config.data_path}...")
-    prompt_infos = [PromptInfo(**d) for d in prompt_infos_df.records()]
+    prompt_infos = [PromptInfo(**d) for d in prompt_infos_df.to_records()]
     model_nm = P(text_generation_config.model_name.replace("/", "-")).name.parent
     out_path = P(text_generation_config.out_dir) / (model_nm + ".jsonl")
     out_path.parent.mkdir(exist_ok=True, parents=True)
@@ -117,18 +122,21 @@ def expand_documents(
     )
 
     json_writer = RecordWriter(JsonWriterContextManager)
-    for rec in json_writer.map(
-        prompter_wrapper.get_dict_with_generated_text,
-        prompt_infos,
-        **writer_kwargs,
-    ):
-        pass
+    records = list(
+        json_writer.map(
+            prompter_wrapper.get_dict_with_generated_text,
+            prompt_infos,
+            **writer_kwargs,
+        )
+    )
     # with get_experiment_manager(
     #     project_name,
     #     task_name="document_expansion",
     #     config=dict(text_generation_config),
     # ) as mgr:
     #     mgr.add_artifact("generated_texts", out_path, metadata={"total": n_samples})
+    generated_texts_df = pd.DataFrame.from_records(records)
+    return generated_texts_df
 
 
 def make_pipeline(config: PipelineConfig):
@@ -145,6 +153,7 @@ def make_pipeline(config: PipelineConfig):
         function=sample_data,
         function_kwargs=dict(sampling_config=dict(sampling_config)),
         function_return=["sample_df"],
+        cache_executed_step=False,
     )
     pipe.add_function_step(
         name="expand_documents",
@@ -153,7 +162,7 @@ def make_pipeline(config: PipelineConfig):
             text_generation_config=dict(generation_config),
             prompt_infos_df="${sample_data.sample_df}",
         ),
-        function_return=["generated_texts"],
+        function_return=["generated_texts_df"],
     )
     return pipe
 

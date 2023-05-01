@@ -1,9 +1,17 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from mlutil import chatgpt_api
 import numpy as np
 import pandas as pd
 import sys
 from pathlib import Path
+
+from prompting import PromptInfo, Prompts
+import json
+import fire
+import logging
+
+logging.basicConfig(level="INFO")
+
 
 # sys.path.insert(0, str(Path("/home/kuba/Projects/forks/GPTQ-for-LLaMa")))
 # import llama
@@ -36,19 +44,6 @@ def preprocess_dep(dep):
     return P(dep).name
 
 
-def select_deps(deps, n_deps):
-    return [preprocess_dep(dep) for dep in deps if not "__init__" in dep][:n_deps]
-
-
-def get_repo_records_by_index(
-    data_df, indices, fields=["repo", "dependencies", "tasks"], n_deps=10
-):
-    records_df = data_df.iloc[indices].copy()
-    raw_deps = records_df["dependencies"].str.split()
-    records_df["dependencies"] = raw_deps.apply(lambda dep: select_deps(dep, n_deps))
-    return records_df[fields].to_dict(orient="records")
-
-
 from typing import List
 from pathlib import Path as P
 
@@ -59,52 +54,8 @@ its tags are {}
 """
 
 
-@dataclass
-class PromptInfo:
-    """
-    information about sample repositories passed to prompt
-    """
-
-    repo_records: List[dict]
-    predicted_repo_record: dict
-
-    def get_single_prompt(self, record):
-        repo = record["repo"]
-        dependencies = ", ".join(record["dependencies"])
-        tasks = record["tasks"]
-        return base_prompt.format(repo, dependencies, tasks)
-
-    def get_prompt(self):
-        prefix_prompt = "\n".join(
-            self.get_single_prompt(record) for record in self.repo_records
-        )
-        (
-            other_repo_name,
-            other_repo_filenames,
-            other_repo_tasks,
-        ) = self.predicted_repo_record.values()
-        other_repo_filenames = [P(fname).name for fname in other_repo_filenames]
-        return (
-            prefix_prompt
-            + f"\nrepository {other_repo_name}\n"
-            + f"contains files: {', '.join(other_repo_filenames)}\n"
-            + "tags: "
-        )
-
-    @classmethod
-    def from_df(cls, data_df, pos_indices, pred_index, n_deps=10):
-        return PromptInfo(
-            get_repo_records_by_index(data_df, pos_indices, n_deps=n_deps),
-            get_repo_records_by_index(data_df, [pred_index], n_deps=n_deps)[0],
-        )
-
-
 repo_records = get_repo_records_by_index(train_nbow_df, [5, 10])
 other_repo_record = get_repo_records_by_index(train_nbow_df, [1])[0]
-
-prompt_info = PromptInfo(repo_records, other_repo_record)
-prompt = prompt_info.get_prompt()
-prompt
 
 
 def get_sample_prompt_info(data_df, n_labeled):
@@ -133,17 +84,15 @@ from pathlib import Path
 # sys.path.insert(0, "modules")
 
 
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    AutoModelForSeq2SeqLM,
+)
 import torch
 
-text_generation_path = "/home/kuba/Projects/forks/text-generation-webui"
-model_name = "llama-13b-hf"
-model_path = Path(f"{text_generation_path}/models/{model_name}")
-tokenizer = AutoTokenizer.from_pretrained(model_path)
-
 from transformers import BitsAndBytesConfig
-
-bb_config = BitsAndBytesConfig(load_in_8bit=True)
 
 
 from typing import List, Callable
@@ -178,57 +127,95 @@ def get_max_prompt_length(n_tokens):
     return max_length
 
 
-def encode(prompts, max_length=None, add_special_tokens=True):
-    return tokenizer.encode(
-        prompts,
-        return_tensors="pt",
-        truncation=True,
-        max_length=1024,
-        add_special_tokens=True,
-    )
+@dataclass
+class TextGenerator:
+
+    tokenizer: AutoTokenizer
+    model: AutoModelForCausalLM
+    prompt_template: str = field(default=Prompts.heading_prompt)
+
+    def encode(self, prompts, max_length=None, add_special_tokens=True):
+        return self.tokenizer.encode(
+            prompts,
+            return_tensors="pt",
+            truncation=True,
+            max_length=1024,
+            add_special_tokens=True,
+        )
+
+    def generate(self, in_texts):
+        ids = self.encode(in_texts).to(device="cuda")
+        generated_ids = self.model.generate(
+            ids, **generation_args
+        )  # , **generation_args)
+        return self.tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+
+    def get_batches(self, lst: List, batch_size: int) -> List:
+        results = []
+        for i in tqdm.tqdm(range(0, len(lst), batch_size)):
+            batch = lst[i : i + batch_size]
+            results.append(batch)
+        return results
+
+    def process_batch(self, prompt_infos):
+        generated_texts = [
+            self.generate(p.format_prompt(self.prompt_template))
+            for p in prompt_infos[:1]
+        ]
+        return [
+            {
+                "prompt_repos": [rec["repo"] for rec in p.repo_records],
+                "repo": p.predicted_repo_record["repo"],
+                "generated_text": gen_text,
+            }
+            for (p, gen_text) in zip(prompt_infos, generated_texts)
+        ]
 
 
-def generate(in_texts):
-    ids = encode(in_texts).to(device="cuda")
-    generated_ids = llama_model.generate(ids, **generation_args)  # , **generation_args)
-    return tokenizer.decode(generated_ids[0], skip_special_tokens=True)
-
-
-llama_model = AutoModelForCausalLM.from_pretrained(
-    model_path, quantization_config=bb_config, device_map="auto"
+text_generation_path = "/home/kuba/Projects/forks/text-generation-webui"
+model_name = "llama-13b-hf"
+model_path = (
+    "google/flan-t5-large"  # Path(f"{text_generation_path}/models/{model_name}")
 )
 
 
-def get_batches(lst: List, batch_size: int) -> List:
-    results = []
-    for i in tqdm.tqdm(range(0, len(lst), batch_size)):
-        batch = lst[i : i + batch_size]
-        results.append(batch)
-    return results
+def main(model_name_or_path):
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    bb_config = BitsAndBytesConfig(load_in_8bit=True)
+
+    logging.info(f"using {model_name_or_path}")
+    if "llama" in P(model_name_or_path).name:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name_or_path, quantization_config=bb_config, device_map="auto"
+        )
+
+    else:
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            model_name_or_path, device_map="auto"
+        )
+
+    generator = TextGenerator(tokenizer, model)
+
+    with torch.no_grad():
+
+        file_prefix = P(model_name_or_path).name
+        with open(f"{file_prefix}_generated.jsonl", "w") as f:
+            for i, batch_prompt_infos in enumerate(
+                tqdm.tqdm(generator.get_batches(prompt_infos, 1))
+            ):
+
+                generated_record = generator.process_batch(batch_prompt_infos)
+                if i == 0:
+                    print("#" * 50)
+                    print("## GENERATED")
+                    print(generated_record[0]["generated_text"])
+                f.write(json.dumps(generated_record[0]))
+                f.write("\n")
 
 
-def process_batch(prompt_infos):
-    generated_texts = [generate(p.get_prompt()) for p in prompt_infos[:1]]
-    return [
-        {
-            "prompt_repos": [rec["repo"] for rec in p.repo_records],
-            "repo": p.predicted_repo_record["repo"],
-            "generated_text": gen_text,
-        }
-        for (p, gen_text) in zip(prompt_infos, generated_texts)
-    ]
-
-
-import json
-
-with torch.no_grad():
-    with open("llama_generated.txt", "w") as f:
-        for batch_prompt_infos in tqdm.tqdm(get_batches(prompt_infos, 1)):
-
-            generated_record = process_batch(batch_prompt_infos)
-            f.write(json.dumps(generated_record[0]))
-            f.write("\n")
-
+if __name__ == "__main__":
+    fire.Fire(main)
 # ids = tokenizer.batch_encode_plus(texts)
 # generated_ids = llama.generate(ids)
 # tokenizer.batch_decode(generated_ids)

@@ -1,4 +1,3 @@
-from prompting import PromptInfo
 from promptify import Prompter
 from mlutil.text import rwkv_utils
 from pydantic import BaseModel, Field
@@ -13,6 +12,9 @@ import torch
 
 from transformers import Text2TextGenerationPipeline
 from typing import Any
+
+
+from github_search.text_generation.prompting import PromptInfo
 
 
 class HFModelWrapper:

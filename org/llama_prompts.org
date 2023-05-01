@@ -8,10 +8,10 @@ from operator import itemgetter
 
 raw_df = pd.read_json("llama_generated.jsonl", lines=True)
 raw_df["predicted_tasks"] = raw_df["generated_text"].str.split("tags").apply(itemgetter(-1))
-raw_df["repo_with_tasks"] = raw_df["generated_text"].str.split("\n\n").apply(itemgetter(3))
+raw_df["repo_with_tasks"] = raw_df["generated_text"].str.split("\n\n").apply(itemgetter(2))
 raw_df["predicted_tasks"]
 
-df = df[["repo", "predicted_tasks", "repo_with_tasks", "generated_text"]]
+df = raw_df[["repo", "predicted_tasks", "repo_with_tasks", "generated_text"]]
 df.to_csv("llama_results.csv")
 #+END_SRC
 
@@ -25,22 +25,27 @@ df.head().iloc[2]
 #+RESULTS:
 : repo                                 Deepest-Project/WorldModels-A3C
 : predicted_tasks    :  [world models]\n\nrepository 0three/Sentenc...
-: repo_with_tasks     BangLiu/ArticlePairMatching\ncontains files m...
+: repo_with_tasks    repository Deepest-Project/WorldModels-A3C\nco...
 : generated_text     repository 0three/Speech-Denoise-With-Feature-...
 : Name: 2, dtype: object
 
 #+BEGIN_SRC python :session llama_prompts.org  :exports both
 
-df["repo_with_tasks"] = df["generated_text"].str.split("repository").apply(itemgetter(2))
+df["repo_with_tasks"] = df["generated_text"].str.split("repository").apply(itemgetter(3))
 df.columns
 #+END_SRC
 
 #+RESULTS:
-: Index(['repo', 'predicted_tasks', 'repo_with_tasks', 'generated_text'], dtype='object')
 
 #+BEGIN_SRC python :session llama_prompts.org  :exports both
 df.to_json("llma_results.json", orient="records")
 #+END_SRC
 
 #+RESULTS:
-: None
+
+
+#+BEGIN_SRC python :session llama_prompts.org  :exports both
+df["generated_text"].iloc[5]
+#+END_SRC
+
+#+RESULTS:
