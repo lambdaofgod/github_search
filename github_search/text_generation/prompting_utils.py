@@ -7,11 +7,15 @@ from transformers import (
     AutoTokenizer,
     pipeline as hf_pipeline,
 )
+from mlutil import minichain_utils
 from pathlib import Path
 import torch
 
+import minichain
+from minichain.backend import Backend
+
 from transformers import Text2TextGenerationPipeline
-from typing import Any
+from typing import Any, Union
 
 
 from github_search.text_generation.prompting import PromptInfo
@@ -64,7 +68,84 @@ def load_model(model_path):
         return HFModelWrapper.load_from_path(model_path)
 
 
-class PrompterWrapper(BaseModel):
+import abc
+
+
+class PrompterWrapper(abc.ABC):
+    prompter: Prompter
+    template_name: str
+    max_tokens: int = Field(default=20)
+
+    @abc.abstractmethod
+    def generate_text_from_promptinfo(self, pinfo: PromptInfo):
+        pass
+
+    def get_dict_with_generated_text(self, pinfo: PromptInfo):
+        out_record = dict(pinfo)
+        generated_text = self.generate_text_from_promptinfo(pinfo)
+        out_record["generated_text"] = generated_text
+        return out_record
+
+
+class MinichainModelConfig(abc.ABC):
+    pass
+
+
+class MinichainHFConfig(MinichainModelConfig):
+    model_name_or_path: str
+    device: int = Field(default=dict(device=0))
+
+
+class MinichainRWKVConfig(MinichainModelConfig):
+    model_name_or_path: str
+
+
+class MinichainPrompterWrapper(PrompterWrapper, BaseModel):
+    prompt_fn: Callable[[PromptInfo], str]
+
+    def generate_text_from_promptinfo(self, pinfo: PromptInfo):
+        promptify_args = pinfo.get_promptify_input_dict()
+        return self.prompter.fit(
+            template_name=self.template_name,
+            max_tokens=self.max_tokens,
+            **promptify_args
+        )
+
+    @classmethod
+    def create(
+        cls,
+        model: Backend,
+        prompt_template: Optional[str],
+        prompt_template_path: Optional[str],
+    ):
+        @prompt(
+            model,
+            **cls.make_minichain_template_kwargs(prompt_template, prompt_template_path)
+        )
+        def prompt_fn(model, prompt_info: PromptInfo):
+            return model(dict(prompt_info))
+
+        return MinichainPrompterWrapper(prompt_fn=prompt_fn)
+
+    @classmethod
+    def make_minichain_prompt_kwargs(
+        cls, prompt_template: Optional[str], prompt_template_path: Optional[str]
+    ):
+        if prompt_template_path is not None:
+            return dict(prompt_template_path=prompt_template_path)
+        else:
+            assert prompt_template is None
+            return dict(prompt_template=prompt_template)
+
+    @classmethod
+    def load_model(cls, config: MinichainModelConfig):
+        if config.is_rwkv:
+            return minichain_utils.RWKVModel.load(config.model_name_or_path)
+        else:
+            return minichain_utils.HuggingFaceLocalModel.load(config.model_name_or_path)
+
+
+class PromptifyPrompterWrapper(PrompterWrapper):
     prompter: Prompter
     template_name: str
     max_tokens: int = Field(default=20)
@@ -76,12 +157,6 @@ class PrompterWrapper(BaseModel):
             max_tokens=self.max_tokens,
             **promptify_args
         )
-
-    def get_dict_with_generated_text(self, pinfo: PromptInfo):
-        out_record = dict(pinfo)
-        generated_text = self.generate_text_from_promptinfo(pinfo)
-        out_record["generated_text"] = generated_text
-        return out_record
 
     class Config:
         arbitrary_types_allowed = True
