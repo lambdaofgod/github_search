@@ -1,0 +1,13 @@
+{% for repo_record in repo_records %}
+## repository
+{{repo_record["repo"]}}
+## files
+{{repo_record["dependencies"]}}
+## tags
+{{repo_record["tasks"]}}
+{% endfor %}
+## repository
+{{predicted_repo_record["repo"]}}
+## files
+{{predicted_repo_record["dependencies"]}}
+## tags

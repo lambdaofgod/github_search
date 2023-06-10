@@ -1,0 +1,6 @@
+n_samples: 100
+pq_data_path: "../../output/nbow_data_test.parquet"
+out_data_path: "data/prompt_infos.jsonl"
+dset_kwargs:
+  dataset_project: "tgutil_llms"
+  dataset_name: "prompt_info_sample"

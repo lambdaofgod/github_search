@@ -1,0 +1,5 @@
+model_name: "sgugger/rwkv-7b-pile"
+prompt_template_name: "md_prompt.jinja"
+templates_path: "prompt_templates"
+data_path: "data/prompt_infos.jsonl"
+out_dir: "output"

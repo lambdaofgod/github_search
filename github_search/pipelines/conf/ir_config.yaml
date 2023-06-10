@@ -1,0 +1,11 @@
+column_config:
+  document_cols:
+  - dependencies
+  list_cols: []
+  query_col: tasks
+embedder_config:
+  doc_max_length: null
+  document_embedder_path: sentence-transformers/all-mpnet-base-v2
+  query_embedder_path: sentence-transformers/all-mpnet-base-v2
+  query_max_length: null
+search_df_path: ../output/nbow_data_test.parquet
