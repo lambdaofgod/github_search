@@ -7,6 +7,7 @@ from github_search.ir.evaluator import (
     InformationRetrievalEvaluator,
 )
 import logging
+from clearml import Task, Logger
 
 logging.basicConfig(level=logging.INFO)
 
@@ -60,29 +61,64 @@ def evaluate_information_retrieval(
     ir_evaluator = InformationRetrievalEvaluator.setup_from_df(ir_df, ir_config)
     logging.info("Loaded evaluator, evaluating...")
     ir_results = ir_evaluator.evaluate()
-    return pd.DataFrame(ir_results["cos_sim"])
+    return ir_results["cos_sim"]
 
 
-def make_information_retrieval_evaluation_task():
-    ir_config = InformationRetrievalEvaluatorConfig(**yaml.safe_load(f))
-    pipe.add_function_step(
-        name="evaluate_information_retrieval",
-        function=evaluate_information_retrieval_step,
-        function_kwargs=dict(
-            searched_df="${expand_documents.generated_texts_df}", ir_config=ir_config
-        ),
-        function_return=["ir_results"],
-        cache_executed_step=True,
+def report_ir_metrics(logger, ir_results):
+    logger.report_table(
+        title="ir_metrics",
+        series="ir_metrics",
+        matrix=pd.DataFrame(ir_results),
+        iteration=0,
     )
-    return pipe
+    for metric_name, k_by_metric in ir_results.items():
+        for k, v in k_by_metric.items():
+            title = f"{metric_name}@{k}"
+            logger.report_scalar(title=title, series=title, value=v, iteration=0)
+
+
+def report_generation_metrics(logger, evaluated_df):
+    metrics = evaluated_df.mean().to_dict()
+    for metric_name, value in metrics.items():
+        logger.report_scalar(
+            title=metric_name, series=metric_name, value=value, iteration=0
+        )
+
+    logger.report_table(
+        title="generation_metrics",
+        series="generation_metrics",
+        matrix=evaluated_df.describe(),
+        iteration=0,
+    )
+
+
+def run_information_retrieval_evaluation_task(
+    search_df_path, evaluated_df_path, column_config_type, embedder_config_type
+):
+    task = Task.create(
+        project_name="github_search", task_name="information_retrieval_evaluation"
+    )
+    params = dict(
+        search_df_path=search_df_path,
+        evaluated_df_path=evaluated_df_path,
+        column_config_type=column_config_type,
+        embedder_config_type=embedder_config_type,
+    )
+    task.connect(params)
+    evaluated_df = pd.read_json(evaluated_df_path, orient="records", lines=True)
+    ir_result = evaluate_information_retrieval(
+        search_df_path, evaluated_df_path, column_config_type, embedder_config_type
+    )
+    logger = task.get_logger()
+    report_ir_metrics(logger, ir_result)
+    report_generation_metrics(logger, evaluated_df)
+    logger.flush()
 
 
 if __name__ == "__main__":
-    results_df = evaluate_information_retrieval(
+    __ = run_information_retrieval_evaluation_task(
         search_df_path="../../output/nbow_data_test.parquet",
         evaluated_df_path="../../output/pipelines/rwkv-4-raven-7b_evaluated_records.json",
         column_config_type="dependencies_with_generated_tasks",
         embedder_config_type="mpnet",
     )
-
-    print(results_df)
