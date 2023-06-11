@@ -1,0 +1,76 @@
+#+title: Clearml_results
+
+
+
+
+#+BEGIN_SRC python :session clearml_results.org  :exports both :async
+from clearml import Task
+task_list = Task.get_tasks(project_name="github_search", task_name="information_retrieval_evaluation_.*")
+len(task_list)
+#+END_SRC
+
+#+RESULTS:
+: 1
+
+
+#+BEGIN_SRC python :session clearml_results.org  :exports both :async
+set(task.name for task in task_list)
+#+END_SRC
+
+#+RESULTS:
+| information_retrieval_evaluation_mpnet_dependencies_with_generated_tasks |
+
+
+#+BEGIN_SRC python :session clearml_results.org  :exports both :async
+import pandas as pd
+task = task_list[-1]
+
+def get_clearml_scalars_df(task):
+    raw_df = pd.DataFrame.from_records([
+        list(d.values())[0]
+        for d in task.get_all_reported_scalars().values()
+    ])
+    return raw_df.assign(value=raw_df["y"].apply(lambda x: x[0])).drop(columns=["x", "y"]).set_index("name")
+
+metrics_df = pd.concat([get_clearml_scalars_df(task).rename(columns={"value": task.name}) for task in task_list], axis=1).T
+import numpy as np
+tasks_to_delete = [task for (task, rec) in zip(task_list, metrics_df.to_dict(orient="rows")) if np.isnan(rec["accuracy@1"])]
+import tqdm
+for task in tqdm.tqdm(tasks_to_delete):
+    task.delete()
+#+END_SRC
+
+#+RESULTS:
+: /tmp/babel-PoFTyD/python-DeT5MG
+
+#+BEGIN_SRC python :session clearml_results.org  :exports both :async
+import tqdm
+for task in tqdm.tqdm(tasks_to_delete):
+    task.delete()
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session clearml_results.org  :exports both :async
+
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session clearml_results.org  :exports both
+metrics_df.sort_values("accuracy@k@10", ascending=False).to_csv("ir_metrics_results.csv")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session clearml_results.org  :exports both
+metrics_df["accuracy@10"]
+#+END_SRC
+
+#+RESULTS:
+: information_retrieval_evaluation_mpnet_dependencies_with_generated_tasks                             0.4379
+: information_retrieval_evaluation_codesearch_distilroberta_dependencies_with_generated_tasks          0.3431
+: information_retrieval_evaluation_dependencies_best_model_dependencies_with_generated_tasks           0.2908
+: information_retrieval_evaluation_minilm_nbow_dependencies_with_generated_tasks                       0.0196
+: information_retrieval_evaluation_titles_dependencies_best_model_dependencies_with_generated_tasks    0.2908
+: Name: accuracy@10, dtype: float64

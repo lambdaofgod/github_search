@@ -1,0 +1,30 @@
+mpnet:
+  doc_max_length: null
+  document_embedder_path: sentence-transformers/all-mpnet-base-v2
+  query_embedder_path: sentence-transformers/all-mpnet-base-v2
+  query_max_length: null
+  search_df_path: ../../output/nbow_data_test.parquet
+codesearch_distilroberta:
+  doc_max_length: null
+  document_embedder_path: flax-sentence-embeddings/st-codesearch-distilroberta-base
+  query_embedder_path: flax-sentence-embeddings/st-codesearch-distilroberta-base
+  query_max_length: null
+  search_df_path: ../../output/nbow_data_test.parquet
+dependencies_best_model:
+  doc_max_length: null
+  document_embedder_path: ../../output/models/best_model/dependencies/nbow_document_1
+  query_embedder_path: ../../output/models/best_model/dependencies/nbow_query_1
+  query_max_length: null
+  search_df_path: ../../output/nbow_data_test.parquet
+minilm_nbow:
+  doc_max_length: null
+  document_embedder_path: ../../output/models/nbow_titles#dependencies-MiniLM-nbow-mse-10/nbow_document_1
+  query_embedder_path: ../../output/models/nbow_titles#dependencies-MiniLM-nbow-mse-10/nbow_query_1
+  query_max_length: null
+  search_df_path: ../../output/nbow_data_test.parquet
+titles_dependencies_best_model:
+  doc_max_length: null
+  document_embedder_path: ../../output/models/best_model/titles-dependencies/nbow_document_1
+  query_embedder_path: ../../output/models/best_model/titles-dependencies/nbow_query_1
+  query_max_length: null
+  search_df_path: ../../output/nbow_data_test.parquet

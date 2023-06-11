@@ -387,6 +387,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         ):
             for (k, value) in metric_values_dict.items():
                 metric_dict[f"{metric_name}@{k}"] = value
+        metric_dict["query"] = self.queries[self.queries_ids.index(query_id)]
         return metric_dict
 
     def compute_metrics(
@@ -403,7 +404,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
             )
             metric_dicts.append(metric_dict)
 
-        metric_df = pd.DataFrame.from_records(metric_dicts)
+        metric_df = pd.DataFrame.from_records(metric_dicts).set_index("query")
         return InformationRetrievalMetricsResult(
             per_query_metrics=metric_df, aggregate_metrics=metric_df.describe()
         )

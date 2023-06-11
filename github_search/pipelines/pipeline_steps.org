@@ -1,114 +1,121 @@
 #+title: Pipeline_steps
-#+PROPERTY: header-args :tangle generate_texts.py
+#+PROPERTY: header-args :tangle pipeline_steps.py
 
 Conda env github_search
 
 * Running pipeline step by step
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
 import pandas as pd
 from github_search.pipelines.steps import sample_data_step, expand_documents_step, evaluate_generated_texts_step, evaluate_generated_texts
-from tgutil.configs import PipelineConfig, ConfigPaths, APIConfig
+from tgutil.configs import PipelineConfig, ConfigPaths, APIConfig, TextGenerationConfig, SamplingConfig, PromptConfig
 from tgutil.prompting_runner import sample_data, expand_documents
 import logging
+import yaml
+from pathlib import Path
+from github_search.utils import load_config_yaml_key
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both
+
+output_path = Path("../../output")
+pipeline_output_path = output_path / "pipelines"
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
+
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
 logging.basicConfig(level="INFO")
+
+sampling = "micro"
+generation_method = "api_rwkv"
+
 cfg_path = "conf/text_generation/config.yaml"
-path_cfg = ConfigPaths.load(cfg_path)
-cfg = PipelineConfig.load(cfg_path)
+generation_config = load_config_yaml_key(APIConfig, "conf/generation.yaml", generation_method)
+sampling_config = load_config_yaml_key(SamplingConfig, "conf/sampling.yaml", sampling)
+prompt_config = load_config_yaml_key(PromptConfig, "conf/prompts.yaml", "few_shot_markdown")
+#cfg = PipelineConfig.load(cfg_path)
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
-model_type = path_cfg.generation
-model_type = "rwkv-4-raven-7b"
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
+model_type = generation_config.model_name
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 cfg
 #+END_SRC
 
 #+RESULTS:
-: sampling_config=SamplingConfig(pq_data_path='../../output/nbow_data_test.parquet', out_data_path='data/prompt_infos.jsonl', n_samples=100, dset_kwargs={'dataset_project': 'tgutil_llms', 'dataset_name': 'prompt_info_sample'}) prompt_config=PromptConfig(prompt_template_name='md_prompt.jinja', templates_path='prompt_templates', data_path='data/prompt_infos.jsonl') generation_config=TextGenerationConfig(out_dir='output') name='sampled document expansion pipeline' project='github_search/document_expansion'
-
-#+BEGIN_SRC python :session generate_texts.org  :exports both
-url = "http://localhost:8765/generate"
-
-sampling_config = cfg.sampling_config
-generation_config = APIConfig(endpoint_url=url, out_dir=cfg.generation_config.out_dir, model_name="rwvk-4-raven-7b")
-prompt_config = cfg.prompt_config
-#+END_SRC
-
-#+RESULTS:
-
-
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
-cfg
-#+END_SRC
-
-#+RESULTS:
-: sampling_config=SamplingConfig(pq_data_path='../../output/nbow_data_test.parquet', out_data_path='data/prompt_infos.jsonl', n_samples=100, dset_kwargs={'dataset_project': 'tgutil_llms', 'dataset_name': 'prompt_info_sample'}) prompt_config=PromptConfig(prompt_template_name='md_prompt.jinja', templates_path='prompt_templates', data_path='data/prompt_infos.jsonl') generation_config=TextGenerationConfig(out_dir='output') name='sampled document expansion pipeline' project='github_search/document_expansion'
+: /tmp/babel-PoFTyD/python-PkQCEr
 
 ** Sample
-#+BEGIN_SRC python :session generate_texts.org  :exports both
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
 prompt_infos = sample_data(sampling_config)
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
 prompt_infos[:1]
 #+END_SRC
 
 #+RESULTS:
-| PromptInfo | (repo_records= ((dependencies : comic_layout/tests.py frontend/apps.py keyframes/admin.py settings/urls.py keyframes/keyframes.py get_yt_comix_media_urls.py style_transfer/apps.py settings/wsgi.py popularity/models.py comic_layout/comic_layout.py tasks : ['style transfer'] repo : maciej3031/comixify) (dependencies : contagiograms/consts.py setup.py contagiograms/contagiograms.py contagiograms/__init__.py contagiograms/cli.py contagiograms/utils.py valid_windowsize parse_args valid_date SortedMenu tasks : ['time series'] repo : compstorylab/contagiograms)) predicted_repo_record= (dependencies : table/__init__.py main.py table/IO.py join_dicts TableDataset __setstate__ __getstate__ merge_vocabs OrderedIterator read_anno_json tasks : ['semantic parsing'] repo : inyukwo1/Coarse2fine_boilerplate) true_tasks= (semantic parsing) repo_text_field= dependencies) |
 
 ** Expand documents (generate texts)
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 generated_records = expand_documents(generation_config, prompt_config, prompt_infos)
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 generated_records
 #+END_SRC
 
 #+RESULTS:
 #+begin_example
-                                         repo_records  ...                                     generated_text
-0   [{'dependencies': 'validation_mimic3_dec.py mi...  ...  \n['generative adversarial']\n\n## repository\...
-1   [{'dependencies': 'pytorch_pretrained_bert/tok...  ...  \n['relation detection']\n\n## repository\nAff...
-2   [{'dependencies': 'tests/test_benchmark.py tes...  ...  \nconcept learning visualisation natural langu...
-3   [{'dependencies': 'datasets_handler/cifar10_in...  ...  \n['C++ simulation']\n\n## repository\nmattis/...
-4   [{'dependencies': 'func/sampling/vsum.py func/...  ...  \n['future prediction', 'grounding based' 'vis...
-..                                                ...  ...                                                ...
-95  [{'dependencies': 'dmn_pytorch/models/dpn/adap...  ...  \n['object detection', 'cnn', 'deep learning',...
-96  [{'dependencies': 'src/pycls/core/benchmark.py...  ...  \ntext-to-speech (MT),\n## files\nhcls/train.p...
-97  [{'dependencies': 'annotation_site/serve.py co...  ...  \n['nms', 'corner detection', 'corner detectio...
-98  [{'dependencies': 'workflow/BayesOpt_SOAP.py w...  ...  \n['cnn_checkpoint','loss']\n\n## repository\n...
-99  [{'dependencies': 'Task02_Heart/train.py Task0...  ...  \n['deform_conv', 'joint_transforms', 'transfo...
+                                           repo_records  ...                                     generated_text
+0     [{'dependencies': 'table/__init__.py main.py t...  ...  \nunlabeled\n\n## repository\npytext-nlp/spynn...
+1     [{'dependencies': 'coling-lgbm.py coling-oof.p...  ...  \n[Neural style transfer]\n\n## repository\nse...
+2     [{'dependencies': 'scripts/download_model_bina...  ...  \n['processing', 'wino', 'numpy']\n\n## reposi...
+3     [{'dependencies': 'DCUNet/source_separator.py ...  ...  \n['scene reconstruction']\n\n## repository\ns...
+4     [{'dependencies': 'generate.py tool/tag_pos.py...  ...  \n['graph comparison','graph comparison with n...
+...                                                 ...  ...                                                ...
+4296  [{'dependencies': 'dan-mtcnn.py S3FD/layers/bb...  ...  \nsynthetic data\n## repositories\nsceneflow/G...
+4297  [{'dependencies': 'ml-agents/mlagents/trainers...  ...  \nGan, Generative Adversarial Networks, Real L...
+4298  [{'dependencies': 'utils/evaluator.py utils/vg...  ...  \n['predictive', 'optimization', 'neural','mod...
+4299  [{'dependencies': 'models/models.py cifar10_Wi...  ...  \ndata-process\n\n## repository\ndd_2020-04A-S...
+4300  [{'dependencies': 'utils/layers/reversible/mas...  ...  \n['feature ranking']\n\n## repository\nfshp97...
 
-[100 rows x 6 columns]
+[4301 rows x 6 columns]
 #+end_example
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
-generated_records.to_json(f"output/{model_type}_generated_records.json", orient="records", lines=True)
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
+generated_records.to_json(pipeline_output_path / f"{model_type}_generated_records_{sampling}.json", orient="records", lines=True)
 #+END_SRC
+
+#+RESULTS:
+: None
 
 ** Evaluate text generation
 #+RESULTS:
 : None
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
-generated_records = pd.read_json(f"output/{model_type}_generated_records.json", orient="records", lines=True)
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
+generated_records = pd.read_json(pipeline_output_path / f"{generation_method}_generated_records_{sampling}.json", orient="records", lines=True)
 #+END_SRC
 
 #+RESULTS:
@@ -116,7 +123,7 @@ generated_records = pd.read_json(f"output/{model_type}_generated_records.json", 
 #+RESULTS:
 : <class 'numpy.recarray'>
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 generated_records["repo"] = generated_records["predicted_repo_record"].apply(lambda rec: rec["repo"])
 generated_records["tasks"] = generated_records["true_tasks"]
 generated_records.columns
@@ -127,37 +134,175 @@ generated_records.columns
 :        'repo_text_field', 'input_text', 'generated_text', 'repo', 'tasks'],
 :       dtype='object')
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 evaluated_df = evaluate_generated_texts(generated_records[["repo", "generated_text", "tasks"]], "../../data/paperswithcode_with_tasks.csv")
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
-evaluated_df.to_json(f"output/{model_type}_evaluated_records.json", orient="records", lines=True)
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
+evaluated_df.to_json(pipeline_output_path / f"{model_type}_evaluated_records_{sampling}.json", orient="records", lines=True)
 #+END_SRC
 
 #+RESULTS:
 : None
 
 *** Results
-#+BEGIN_SRC python :session generate_texts.org  :exports both :async
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 evaluated_df.describe()
 #+END_SRC
 
 #+RESULTS:
 #+begin_example
-        edit_word  jaccard_lst  HuggingfaceMetricName.bleurt  ...   rougeLsum         wmd  sentence_transformer_similarity
-count  100.000000   100.000000                    100.000000  ...  100.000000  100.000000                       100.000000
-mean     0.984133     0.009345                     -1.532699  ...    0.031916    0.251381                         0.199314
-std      0.052829     0.069030                      0.242009  ...    0.071915    0.060800                         0.112203
-min      0.666667     0.000000                     -2.070768  ...    0.000000    0.117869                        -0.000019
-25%      1.000000     0.000000                     -1.678775  ...    0.000000    0.213104                         0.123313
-50%      1.000000     0.000000                     -1.514000  ...    0.000000    0.247335                         0.180249
-75%      1.000000     0.000000                     -1.371900  ...    0.000000    0.286132                         0.265422
-max      1.000000     0.666667                     -0.910514  ...    0.400000    0.490718                         0.541195
+         edit_word  jaccard_lst  HuggingfaceMetricName.bleurt  ...    rougeLsum          wmd  sentence_transformer_similarity
+count  4301.000000  4301.000000                   4301.000000  ...  4301.000000  4301.000000                      4301.000000
+mean      0.985997     0.003842                     -1.543091  ...     0.031344          inf                         0.192528
+std       0.037237     0.031705                      0.264509  ...     0.062048          NaN                         0.109580
+min       0.666667     0.000000                     -2.439580  ...     0.000000     0.084501                        -0.085858
+25%       1.000000     0.000000                     -1.713316  ...     0.000000     0.213470                         0.114593
+50%       1.000000     0.000000                     -1.570065  ...     0.000000     0.251122                         0.181850
+75%       1.000000     0.000000                     -1.409589  ...     0.000000     0.289307                         0.256394
+max       1.000000     0.500000                      0.004603  ...     0.454545          inf                         0.684704
 
 [8 rows x 9 columns]
 #+end_example
 
 ** Evaluate information retrieval
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
+evaluated_df = pd.read_json(pipeline_output_path / f"{model_type}_evaluated_records.json", orient="records", lines=True)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
+evaluated_df["reference_text"]
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+0            depth estimation, monocular depth estimation
+1                      few shot learning, active learning
+2       sentiment analysis, aspect based sentiment ana...
+3       medical image segmentation, edge detection, se...
+4                               visual question answering
+                              ...
+4296                        semantic parsing, time series
+4297                                   mri reconstruction
+4298                                 scene text detection
+4299    optical character recognition, scene text reco...
+4300                                          time series
+Name: reference_text, Length: 4301, dtype: object
+#+end_example
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
+def replace_list_chars(text):
+    return text.replace("[", "").replace("]", "").replace(",", "").replace("'", "")
+
+def process_generated_text(text):
+    return replace_list_chars(text.strip().split("\n")[0])
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
+from information_retrieval_pipeline import make_ir_df
+
+max_len = 100
+ir_df = make_ir_df(pd.read_parquet(output_path / "nbow_data_test.parquet"), evaluated_df)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
+processed_text = ir_df["generated_text"].apply(process_generated_text).iloc[0]
+processed_text
+#+END_SRC
+
+#+RESULTS:
+: unlabeled
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
+from github_search.ir.evaluator import InformationRetrievalEvaluatorConfig, EmbedderPairConfig, InformationRetrievalColumnConfig
+from github_search.ir import evaluator, models
+import yaml
+
+
+with open("conf/ir_config_nbow.yaml") as f:
+    ir_config = InformationRetrievalEvaluatorConfig(**yaml.safe_load(f))
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
+ir_evaluator = evaluator.InformationRetrievalEvaluator.setup_from_df(ir_df, ir_config)
+ir_results = ir_evaluator.evaluate()
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :results output :async
+import pprint
+
+pprint.pprint(ir_results)
+#+END_SRC
+
+#+RESULTS:
+: 715f6c81a07124a7394dac75b51c3f9d
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :results output
+import pprint
+
+pprint.pprint(ir_results)
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+{'cos_sim': {'accuracy@k': {1: 0.1078, 3: 0.2124, 5: 0.2516, 10: 0.2876},
+             'map@k': {50: 0.04},
+             'mrr@k': {10: 0.1691},
+             'ndcg@k': {10: 0.0902},
+             'precision@k': {1: 0.1078, 3: 0.1046, 5: 0.0908, 10: 0.0722},
+             'recall@k': {1: 0.0107, 3: 0.0211, 5: 0.0277, 10: 0.0395}},
+ 'dot_score': {'accuracy@k': {1: 0.0425, 3: 0.0686, 5: 0.0882, 10: 0.1569},
+               'map@k': {50: 0.0147},
+               'mrr@k': {10: 0.0665},
+               'ndcg@k': {10: 0.0361},
+               'precision@k': {1: 0.0425, 3: 0.0338, 5: 0.0307, 10: 0.0324},
+               'recall@k': {1: 0.0027, 3: 0.0052, 5: 0.007, 10: 0.0152}}}
+#+end_example
+
+
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :results output
+import pprint
+
+pprint.pprint(ir_results)
+#+END_SRC
+
+#+RESULTS:
+
+** Comparing IR to text generation metrics
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
+(ir_df["generated_text"] + ir_df["dependencies"]).iloc[0]
+#+END_SRC
+
+#+RESULTS:
+:
+: ['network anomaly detection', 'data anomaly detection', 'network anomaly detection', 'data anomaly detection', 'unix time series data processing', 'deep learning', 'data analytics']
+:
+: ## repository
+: AndreaBorghesi/deepdetect_anomalies.py util.py correlation_autoencoder semi_supervised_ae_based main retrieve_data create_df millis_unix_time is_node_idle count_idle_periods plot_errors_DL check_df load_data is_in_timeseries find_idle_periods evaluate_predictions drop_stuff unix_time_millis add_freq_govs_to_plot plot_errors_DL_fixIdle plot_error_distribution_singleNode get_labels preprocess compute_error_threshold find_gaps_timeseries error_distribution_2_class_varyThreshold preprocess_noScaling split_dataset pairwise prepare_dataframe encode_category compile fit len replace error_distribution_2_class_varyThreshold Input split_dataset Model values plot_errors_DL evaluate_predictions shape predict find_gaps_timeseries correlation_autoencoder columns retrieve_data create_df print DataFrame transpose prepare_dataframe int semi_supervised_ae_based check_df isfile fillna dropna encode_category fit_transform encode_category MinMaxScaler get_dummies concat Decimal len keys mean nanmean range append asarray sqrt list r2_score shape abs AutoDateLocator Rectangle append add_patch range len AutoDateFormatter figure list add_freq_govs_to_plot plot_errors_DL_fixIdle set_major_locator title plot set_major_formatter axvline add_subplot show keys print date2num tee next pairwise total_seconds pairwise append iterrows is_node_idle append float print append is_node_idle iterrows add_patch date2num Rectangle format print load_data sorted keys print items list update OrderedDict timedelta len add_freq_govs_to_plot plot xticks show add_subplot keys append figure list yticks title range isfile drop_stuff preprocess_noScaling apply columns nunique find_idle_periods preprocess count_idle_periods index len concatenate set append list range len range xlabel append asarray range ravel abs len figure list percentile precision_recall_fscore_support ylabel format legend plot show axvline keys print shape len keys range append asarray list shape abs percentile len legend xticks show keys xlabel ylabel range append figure list hist yticks shape abs
+
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both
+pd.DataFrame(ir_results["cos_sim"])
+#+END_SRC
+
+#+RESULTS:
+:     accuracy@k  precision@k  recall@k  ndcg@k   mrr@k  map@k
+: 1       0.1078       0.1078    0.0107     NaN     NaN    NaN
+: 3       0.2124       0.1046    0.0211     NaN     NaN    NaN
+: 5       0.2516       0.0908    0.0277     NaN     NaN    NaN
+: 10      0.2876       0.0722    0.0395  0.0902  0.1691    NaN
+: 50         NaN          NaN       NaN     NaN     NaN   0.04

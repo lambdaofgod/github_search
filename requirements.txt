@@ -13,6 +13,6 @@ altair
 stop-words
 docstring-parser
 rank-bm25
-torch
-pytorch-ignite
 recordlinkage
+paperswithcode-client
+pyarrow
