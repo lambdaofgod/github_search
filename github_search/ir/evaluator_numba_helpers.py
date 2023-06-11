@@ -29,3 +29,11 @@ def compute_fast_mrr(top_hit_corpus_ids, query_relevant_docs):
             mrrs[rank] = 1.0 / (rank + 1)
             break
     return mrrs
+
+
+@numba.jit(nopython=True)
+def compute_fast_dcg_at_k(relevances, k):
+    dcg = 0
+    for i in range(min(len(relevances), k)):
+        dcg += relevances[i] / np.log2(i + 2)  # +2 as we start our idx at 0
+    return dcg

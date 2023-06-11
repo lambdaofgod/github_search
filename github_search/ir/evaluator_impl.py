@@ -2,6 +2,8 @@ import logging
 import os
 from typing import Callable, Dict, List, Optional, Protocol, Set
 
+import pandas as pd
+import tqdm
 import numpy as np
 import sentence_transformers
 import torch
@@ -10,6 +12,7 @@ from sentence_transformers.evaluation import SentenceEvaluator
 from sentence_transformers.util import cos_sim, dot_score
 from torch import Tensor
 from tqdm import trange
+from github_search.ir.models import InformationRetrievalMetricsResult
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,7 @@ class Encoder(Protocol):
         show_progress_bar: bool = False,
         batch_size: int = 32,
         convert_to_tensor: bool = True,
-        **kwargs
+        **kwargs,
     ) -> torch.Tensor:
         """encode raw data"""
 
@@ -49,7 +52,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         precision_recall_at_k: List[int] = [1, 3, 5, 10],
         map_at_k: List[int] = [100],
         show_progress_bar: bool = False,
-        batch_size: int = 32,
+        batch_size: int = 128,
         name: str = "",
         write_csv: bool = True,
         score_functions: List[Callable[[Tensor, Tensor], Tensor]] = {
@@ -115,7 +118,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         epoch: int = -1,
         steps: int = -1,
         *args,
-        **kwargs
+        **kwargs,
     ) -> float:
         if epoch != -1:
             out_txt = (
@@ -264,19 +267,24 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         queries_result_list = self.get_queries_result_lists(
             encoder, corpus_encoder, corpus_embeddings
         )
+        return self.get_metrics_from_result_lists(queries_result_list)
+
+    def get_metrics_from_result_lists(
+        self, queries_result_list, score_fn="cos_sim", rounding=3
+    ):
         logger.info("Queries: {}".format(len(self.queries)))
         logger.info("Corpus: {}\n".format(len(self.corpus)))
 
         # Compute scores
         scores = {
-            name: self.compute_metrics(queries_result_list[name])
+            name: self.compute_metrics(queries_result_list[name]).round(rounding)
             for name in self.score_functions
         }
 
         # Output
         for name in self.score_function_names:
             logger.info("Score-Function: {}".format(name))
-            self.output_scores(scores[name])
+            self.output_scores(scores[name].aggregate_metrics.loc["mean"].to_dict())
 
         return scores
 
@@ -288,140 +296,120 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
                     return 1
         return 0
 
-    def compute_metrics(self, queries_result_list: List[object]):
+    @classmethod
+    def compute_ndcgs(cls, k_val, top_hits, query_relevant_docs):
+        predicted_relevance = np.array(
+            [
+                1 if top_hit["corpus_id"] in query_relevant_docs else 0
+                for top_hit in top_hits[0:k_val]
+            ]
+        )
+        true_relevances = np.ones((len(query_relevant_docs),))
+
+        ndcg_value = compute_fast_dcg_at_k(
+            predicted_relevance, k_val
+        ) / compute_fast_dcg_at_k(true_relevances, k_val)
+        return ndcg_value
+
+    @classmethod
+    def compute_avg_precision(cls, k_val, top_hits, query_relevant_docs):
+        num_correct = 0
+        sum_precisions = 0
+
+        for rank, hit in enumerate(top_hits[0:k_val]):
+            if hit["corpus_id"] in query_relevant_docs:
+                num_correct += 1
+                sum_precisions += num_correct / (rank + 1)
+
+        avg_precision = sum_precisions / min(k_val, len(query_relevant_docs))
+        return avg_precision
+
+    def compute_per_query_metrics(self, query_id, result_list, query_relevant_docs):
         # Init score computation values
-        num_hits_at_k = {k: 0 for k in self.accuracy_at_k}
+        hit_at_k = {k: 0 for k in self.accuracy_at_k}
         precisions_at_k = {k: [] for k in self.precision_recall_at_k}
         recall_at_k = {k: [] for k in self.precision_recall_at_k}
         MRR = {k: 0 for k in self.mrr_at_k}
         ndcg = {k: [] for k in self.ndcg_at_k}
         AveP_at_k = {k: [] for k in self.map_at_k}
-
-        # Compute scores on results
-        for query_itr in range(len(queries_result_list)):
-            query_id = self.queries_ids[query_itr]
-
-            # Sort scores
-            top_hits = sorted(
-                queries_result_list[query_itr], key=lambda x: x["score"], reverse=True
+        # Sort scores
+        top_hits = sorted(result_list, key=lambda x: x["score"], reverse=True)
+        # Accuracy@k - We count the result correct, if at least one relevant doc is accross the top-k documents
+        np_relevant_docs = np.array(list(query_relevant_docs))
+        for k_val in self.accuracy_at_k:
+            retrieved_corpus_ids = np.array(
+                [hit["corpus_id"] for hit in top_hits[0:k_val]]
             )
+            # for hit in top_hits[0:k_val]:
+            #    if hit["corpus_id"] in query_relevant_docs:
+            #        hit_at_k[k_val] += 1
+            #        break
+            hit_at_k[k_val] = 1 * (
+                fast_count(retrieved_corpus_ids, np_relevant_docs) > 0
+            )
+
+            # Precision and Recall@k
+            num_correct = fast_count(retrieved_corpus_ids, np_relevant_docs)
+
+            precisions_at_k[k_val] = num_correct / k_val
+            recall_at_k[k_val] = num_correct / len(query_relevant_docs)
+
+        # MRR@k
+        for k_val in self.mrr_at_k:
+            retrieved_corpus_ids = np.array(
+                [hit["corpus_id"] for hit in top_hits[0:k_val]]
+            )
+            mrr = compute_fast_mrr(retrieved_corpus_ids, np_relevant_docs).sum()
+            MRR[k_val] = mrr
+
+        # NDCG@k
+
+        for k_val in self.ndcg_at_k:
+            ndcg[k_val] = self.compute_ndcgs(k_val, top_hits, query_relevant_docs)
+
+        # MAP@k
+        for k_val in self.map_at_k:
+            AveP_at_k[k_val] = self.compute_avg_precision(
+                k_val, top_hits, query_relevant_docs
+            )
+
+        metric_dict = {}
+        for (metric_name, metric_values_dict) in zip(
+            [
+                "hit",
+                "precisions",
+                "recall",
+                "MRR",
+                "ndcg",
+                "AveP",
+            ],
+            (hit_at_k, precisions_at_k, recall_at_k, MRR, ndcg, AveP_at_k),
+        ):
+            for (k, value) in metric_values_dict.items():
+                metric_dict[f"{metric_name}@{k}"] = value
+        return metric_dict
+
+    def compute_metrics(
+        self, queries_result_list: List[object]
+    ) -> InformationRetrievalMetricsResult:
+        # Compute scores on results
+        n_queries = len(queries_result_list)
+        metric_dicts = []
+        for query_itr in tqdm.tqdm(range(n_queries)):
+            query_id = self.queries_ids[query_itr]
             query_relevant_docs = self.relevant_docs[query_id]
+            metric_dict = self.compute_per_query_metrics(
+                query_id, queries_result_list[query_itr], query_relevant_docs
+            )
+            metric_dicts.append(metric_dict)
 
-            # Accuracy@k - We count the result correct, if at least one relevant doc is accross the top-k documents
-            np_relevant_docs = np.array(list(query_relevant_docs))
-            for k_val in self.accuracy_at_k:
-                retrieved_corpus_ids = np.array(
-                    [hit["corpus_id"] for hit in top_hits[0:k_val]]
-                )
-                # for hit in top_hits[0:k_val]:
-                #    if hit["corpus_id"] in query_relevant_docs:
-                #        num_hits_at_k[k_val] += 1
-                #        break
-                num_hits_at_k[k_val] += (
-                    fast_count(retrieved_corpus_ids, np_relevant_docs) > 0
-                )
-
-                # Precision and Recall@k
-                num_correct = fast_count(retrieved_corpus_ids, np_relevant_docs)
-
-                precisions_at_k[k_val].append(num_correct / k_val)
-                recall_at_k[k_val].append(num_correct / len(query_relevant_docs))
-
-            # MRR@k
-            for k_val in self.mrr_at_k:
-                retrieved_corpus_ids = np.array(
-                    [hit["corpus_id"] for hit in top_hits[0:k_val]]
-                )
-                mrr = compute_fast_mrr(retrieved_corpus_ids, np_relevant_docs).sum()
-                MRR[k_val] += mrr
-
-            # NDCG@k
-            def compute_ndcgs(k_val):
-                predicted_relevance = [
-                    1 if top_hit["corpus_id"] in query_relevant_docs else 0
-                    for top_hit in top_hits[0:k_val]
-                ]
-                true_relevances = [1] * len(query_relevant_docs)
-
-                ndcg_value = self.compute_dcg_at_k(
-                    predicted_relevance, k_val
-                ) / self.compute_dcg_at_k(true_relevances, k_val)
-                return ndcg_value
-
-            for k_val in self.ndcg_at_k:
-                ndcg[k_val].append(compute_ndcgs(k_val))
-
-            def compute_avg_precision(k_val):
-                num_correct = 0
-                sum_precisions = 0
-
-                for rank, hit in enumerate(top_hits[0:k_val]):
-                    if hit["corpus_id"] in query_relevant_docs:
-                        num_correct += 1
-                        sum_precisions += num_correct / (rank + 1)
-
-                avg_precision = sum_precisions / min(k_val, len(query_relevant_docs))
-                return avg_precision
-
-            # MAP@k
-            for k_val in self.map_at_k:
-                AveP_at_k[k_val].append(compute_avg_precision(k_val))
-
-        # Compute averages
-        for k in num_hits_at_k:
-            num_hits_at_k[k] /= len(self.queries)
-
-        for k in precisions_at_k:
-            precisions_at_k[k] = np.mean(precisions_at_k[k])
-
-        for k in recall_at_k:
-            recall_at_k[k] = np.mean(recall_at_k[k])
-
-        for k in ndcg:
-            ndcg[k] = np.mean(ndcg[k])
-
-        for k in MRR:
-            MRR[k] /= len(self.queries)
-
-        for k in AveP_at_k:
-            AveP_at_k[k] = np.mean(AveP_at_k[k])
-
-        return {
-            "accuracy@k": num_hits_at_k,
-            "precision@k": precisions_at_k,
-            "recall@k": recall_at_k,
-            "ndcg@k": ndcg,
-            "mrr@k": MRR,
-            "map@k": AveP_at_k,
-        }
+        metric_df = pd.DataFrame.from_records(metric_dicts)
+        return InformationRetrievalMetricsResult(
+            per_query_metrics=metric_df, aggregate_metrics=metric_df.describe()
+        )
 
     def output_scores(self, scores):
-        for k in scores["accuracy@k"]:
-            logger.info("Accuracy@{}: {:.2f}%".format(k, scores["accuracy@k"][k] * 100))
-
-        for k in scores["precision@k"]:
-            logger.info(
-                "Precision@{}: {:.2f}%".format(k, scores["precision@k"][k] * 100)
-            )
-
-        for k in scores["recall@k"]:
-            logger.info("Recall@{}: {:.2f}%".format(k, scores["recall@k"][k] * 100))
-
-        for k in scores["mrr@k"]:
-            logger.info("MRR@{}: {:.4f}".format(k, scores["mrr@k"][k]))
-
-        for k in scores["ndcg@k"]:
-            logger.info("NDCG@{}: {:.4f}".format(k, scores["ndcg@k"][k]))
-
-        for k in scores["map@k"]:
-            logger.info("MAP@{}: {:.4f}".format(k, scores["map@k"][k]))
-
-    @staticmethod
-    def compute_dcg_at_k(relevances, k):
-        dcg = 0
-        for i in range(min(len(relevances), k)):
-            dcg += relevances[i] / np.log2(i + 2)  # +2 as we start our idx at 0
-        return dcg
+        logger.info(f"scores: {scores}")
 
     def get_queries_dict(self):
         return dict(zip(self.queries_ids, self.queries))

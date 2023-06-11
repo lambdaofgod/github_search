@@ -12,32 +12,7 @@ from github_search.ir import (
     InformationRetrievalColumnConfig,
 )
 from github_search.ir.models import EmbedderPair
-
-
-def get_ir_dicts(input_df, query_col="tasks", doc_col="readme"):
-    df_copy = input_df.copy()
-    queries = df_copy[query_col].explode().drop_duplicates().reset_index(drop=True)
-    queries = pd.DataFrame(
-        {"query": queries, "query_id": [str(s) for s in queries.index]}
-    )
-    queries.index = queries["query_id"]
-    corpus = df_copy[doc_col]
-    corpus.index = [str(i) for i in corpus.index]
-    df_copy["doc_id"] = corpus.index
-    relevant_docs_str = df_copy[["doc_id", "tasks", doc_col]].explode(column="tasks")
-    relevant_docs = (
-        relevant_docs_str.merge(queries, left_on="tasks", right_on="query")[
-            ["doc_id", "query_id"]
-        ]
-        .groupby("query_id")
-        .apply(lambda df: set(df["doc_id"]))
-        .to_dict()
-    )
-    return {
-        "queries": queries["query"].to_dict(),
-        "corpus": corpus.to_dict(),
-        "relevant_docs": relevant_docs,
-    }
+from github_search.ir.ir_data import DictIRData
 
 
 def round_float_dict(d, rounding=3):
@@ -48,9 +23,10 @@ def round_float_dict(d, rounding=3):
 
 
 class InformationRetrievalEvaluator:
-
     """
     evaluate information retrieval metrics on unseen data
+
+    this class essentially is refactored version of evaluator from sentence-transformers
     """
 
     doc_col = "document"
@@ -70,9 +46,7 @@ class InformationRetrievalEvaluator:
         each entry in `query_col` is assumed to be a list of queries for a document
         `document_col` will be used for retrieval
         """
-        self.df = self.prepare_search_df(df, column_config).reset_index(
-            drop=True
-        )
+        self.df = self.prepare_search_df(df, column_config).reset_index(drop=True)
         ir_evaluator = self._get_ir_evaluator_impl(
             self.df, query_col=column_config.query_col, doc_col=self.doc_col
         )
@@ -99,29 +73,38 @@ class InformationRetrievalEvaluator:
             return search_df
 
     @staticmethod
-    def setup_from_config(ir_config: InformationRetrievalEvaluatorConfig):
-        raw_search_df = utils.pd_read_star(ir_config.search_df_path)
+    def setup_from_df(
+        search_df: pd.DataFrame, ir_config: InformationRetrievalEvaluatorConfig
+    ):
         embedder_pair = EmbedderPair.from_config(ir_config.embedder_config)
         ir_evaluator = InformationRetrievalEvaluator(embedder_pair)
         ir_evaluator.setup(
-            raw_search_df,
+            search_df,
             ir_config.column_config,
         )
         return ir_evaluator
 
-    def evaluate(self):
-        return round_float_dict(
-            self.get_ir_results(self.df[self.doc_col].to_list()), self.rounding
-        )
+    @staticmethod
+    def setup_from_config(ir_config: InformationRetrievalEvaluatorConfig):
+        raw_search_df = utils.pd_read_star(ir_config.search_df_path)
+        return InformationRetrievalEvaluator.setup_from_df(raw_search_df, ir_config)
 
-    def get_ir_results(
-        self,
-        corpus_representations: List[str],
+    def evaluate(
+        self, queries_result_list=None, score_function_name="cos_sim", rounding=3
     ):
+        if queries_result_list is None:
+            queries_result_list = self.get_results_list()
+        return self._ir_evaluator_impl.get_metrics_from_result_lists(
+            queries_result_list,
+            rounding=rounding,
+        )[score_function_name]
+
+    def get_results_list(self):
+        corpus_representations = self.df[self.doc_col].to_list()
         corpus_embeddings = self.document_embedder.encode(
             corpus_representations, convert_to_tensor=True
         )
-        return self._ir_evaluator_impl.compute_metrices(
+        return self._ir_evaluator_impl.get_queries_result_lists(
             self.query_embedder,
             self.document_embedder,
             corpus_embeddings=corpus_embeddings,
@@ -129,15 +112,21 @@ class InformationRetrievalEvaluator:
 
     @classmethod
     def _get_ir_evaluator_impl(cls, df, query_col="tasks", doc_col="doc"):
-        ir_dicts = get_ir_dicts(
+        """
+        the CustomInformationRetrievalEvaluatorImpl does the heavy lifting and is refactored
+        but still its interface is too complex so we're hiding this complexity here
+        """
+        ir_dicts = DictIRData.from_pandas(
             df.dropna(subset=[query_col, doc_col]).reset_index(drop=True),
             query_col,
             doc_col,
         )
         ir_evaluator = evaluator_impl.CustomInformationRetrievalEvaluatorImpl(
-            **ir_dicts,
+            queries=ir_dicts.queries,
+            corpus=ir_dicts.corpus,
+            relevant_docs=ir_dicts.relevant_docs,
             main_score_function="cos_sim",
-            map_at_k=[10],
+            map_at_k=[50],
             corpus_chunk_size=5000,
         )
         return ir_evaluator
@@ -175,16 +164,23 @@ class InformationRetrievalPredictor:
     name_col: str
 
     def get_predicted_documents(
-        self, used_similarity_metric="cos_sim"
+        self,
+        result_lists,
+        used_similarity_metric="cos_sim",
     ) -> Dict[str, pd.DataFrame]:
         names = self.ir_evaluator.df[self.name_col]
-        result_lists = self.ir_evaluator._ir_evaluator_impl.get_queries_result_lists(
-            self.ir_evaluator.query_embedder, self.ir_evaluator.document_embedder
-        )[used_similarity_metric]
+        if result_lists is None:
+            result_lists = (
+                self.ir_evaluator._ir_evaluator_impl.get_queries_result_lists(
+                    self.ir_evaluator.query_embedder,
+                    self.ir_evaluator.document_embedder,
+                )
+            )
+
         return self.ir_evaluator._get_retrieval_prediction_dfs(
             self.ir_evaluator._ir_evaluator_impl.get_queries_dict(),
             list(names),
-            result_lists,
+            result_lists[used_similarity_metric],
         )
 
     def get_best_worst_results_df(self, tasks_with_areas_df, k=10):

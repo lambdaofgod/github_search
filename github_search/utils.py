@@ -6,6 +6,17 @@ from operator import itemgetter
 import numpy as np
 import pandas as pd
 import os
+import yaml
+
+
+def load_config_yaml_key(cls, config_path, key):
+    """
+    loads appropriate config from path
+    the yaml file should contain 'key' and the 'cls' object will be created from its value
+    """
+    with open(config_path) as f:
+        conf = yaml.safe_load(f)[key]
+    return cls(**conf)
 
 
 def round_float_dict(d, rounding=3):
@@ -94,7 +105,7 @@ def get_current_memory_usage():
     with open("/proc/self/status") as f:
         memusage = f.read().split("VmRSS:")[1].split("\n")[0][:-3]
 
-    return round(int(memusage.strip()) / 1024**2, 2)
+    return round(int(memusage.strip()) / 1024 ** 2, 2)
 
 
 def kwargs_only(cls):
