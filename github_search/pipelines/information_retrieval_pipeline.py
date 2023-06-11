@@ -8,6 +8,8 @@ from github_search.ir.evaluator import (
 )
 import logging
 from clearml import Task, Logger
+import itertools
+import yaml
 
 logging.basicConfig(level=logging.INFO)
 
@@ -68,7 +70,7 @@ def report_ir_metrics(logger, ir_results):
     logger.report_table(
         title="ir_metrics",
         series="ir_metrics",
-        matrix=pd.DataFrame(ir_results),
+        table_plot=pd.DataFrame(ir_results),
         iteration=0,
     )
     for metric_name, k_by_metric in ir_results.items():
@@ -87,7 +89,7 @@ def report_generation_metrics(logger, evaluated_df):
     logger.report_table(
         title="generation_metrics",
         series="generation_metrics",
-        matrix=evaluated_df.describe(),
+        table_plot=evaluated_df.describe(),
         iteration=0,
     )
 
@@ -104,6 +106,7 @@ def run_information_retrieval_evaluation_task(
         column_config_type=column_config_type,
         embedder_config_type=embedder_config_type,
     )
+    logging.info(f"running task with {params}")
     task.connect(params)
     evaluated_df = pd.read_json(evaluated_df_path, orient="records", lines=True)
     ir_result = evaluate_information_retrieval(
@@ -116,9 +119,20 @@ def run_information_retrieval_evaluation_task(
 
 
 if __name__ == "__main__":
-    __ = run_information_retrieval_evaluation_task(
-        search_df_path="../../output/nbow_data_test.parquet",
-        evaluated_df_path="../../output/pipelines/rwkv-4-raven-7b_evaluated_records.json",
-        column_config_type="dependencies_with_generated_tasks",
-        embedder_config_type="mpnet",
-    )
+    with open("conf/retrieval.yaml") as f:
+        embedder_types = yaml.safe_load(f).keys()
+    with open("conf/column_configs.yaml") as f:
+        column_config_types = yaml.safe_load(f).keys()
+
+    search_df_path = "../../output/nbow_data_test.parquet"
+    evaluated_df_path = "../../output/pipelines/rwkv-4-raven-7b_evaluated_records.json"
+
+    for (column_config_type, embedder_type) in itertools.product(
+        column_config_types, embedder_types
+    ):
+        run_information_retrieval_evaluation_task(
+            search_df_path=search_df_path,
+            evaluated_df_path=evaluated_df_path,
+            embedder_config_type=embedder_type,
+            column_config_type=column_config_type,
+        )
