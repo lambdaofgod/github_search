@@ -29,17 +29,17 @@ def expand_documents_step(
     text_generation_config: dict, prompt_config: dict, prompt_infos: List[dict]
 ):
     from tgutil.prompting_runner import expand_documents
-    from tgutil.configs import TextGenerationConfig, PromptConfig
+    from tgutil.configs import load_config_from_dict, PromptConfig
     from tgutil.prompting import PromptInfo
 
-    text_generation_config = TextGenerationConfig(**text_generation_config)
+    text_generation_config = load_config_from_dict(text_generation_config)
     prompt_config = PromptConfig(**prompt_config)
-    prompt_infos = [PromptInfo(**prompt_info) for prompt_info in prompt_infos]
     return expand_documents(text_generation_config, prompt_config, prompt_infos)
 
 
 def sample_data_step(sampling_config: dict):
     from tgutil.prompting_runner import sample_data
+    from tgutil.configs import SamplingConfig
 
     sampling_config = SamplingConfig(**sampling_config)
     return sample_data(sampling_config)
@@ -48,7 +48,7 @@ def sample_data_step(sampling_config: dict):
 @pa.check_input(
     pa.DataFrameSchema(
         {
-            "tasks": pa.Column(List[str]),
+            "true_tasks": pa.Column(List[str]),
             "generated_text": pa.Column(str),
             "repo": pa.Column(str),
         }
@@ -62,9 +62,9 @@ def evaluate_generated_texts(generated_texts_df, paperswithcode_path):
     from tgutil.evaluation.preprocessing import EvalDFPreprocessor
 
     repo_tasks_df = load_paperswithcode_df(paperswithcode_path)
-    texts_df = EvalDFPreprocessor.get_eval_df_from_raw_generated_text(
-        generated_texts_df, repo_tasks_df
-    )
+    texts_df = EvalDFPreprocessor(
+        id_col="repo", reference_text_col="true_tasks"
+    ).get_eval_df_from_raw_generated_text(generated_texts_df, repo_tasks_df)
     eval_df = (
         TextGenerationEvaluator.from_metric_names(
             metric_names=[
@@ -92,4 +92,9 @@ def evaluate_information_retrieval_step(
 
 
 def evaluate_generated_texts_step(generated_texts_df, paperswithcode_path):
-    return evaluate_generated_texts(generated_texts_df, paperswithcode_path)
+    from github_search.pipelines.steps import evaluate_generated_texts
+
+    generation_evaluation_df = evaluate_generated_texts(
+        generated_texts_df, paperswithcode_path
+    )
+    return generation_evaluation_df
