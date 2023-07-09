@@ -25,16 +25,12 @@ pipeline_output_path = output_path / "pipelines"
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
-
-#+END_SRC
-
 #+RESULTS:
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
 logging.basicConfig(level="INFO")
 
-sampling = "micro"
+sampling = "no_sampling"
 generation_method = "api_rwkv"
 
 cfg_path = "conf/text_generation/config.yaml"
@@ -68,13 +64,21 @@ type(prompt_infos[0])
 #+RESULTS:
 : <class 'tgutil.prompting.PromptInfo'>
 
-** Expand documents (generate texts)
-
-#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
-generated_records = expand_documents_step({**generation_config.dict(), "n_generations":1}, prompt_config.dict(), prompt_infos[:10])
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both
+len(prompt_infos)
 #+END_SRC
 
 #+RESULTS:
+: 4301
+
+** Expand documents (generate texts)
+
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
+generated_records = expand_documents_step({**generation_config.dict(), "n_generations":3}, prompt_config.dict(), prompt_infos)
+#+END_SRC
+
+#+RESULTS:
+: /tmp/babel-P8ogQz/python-zZItDJ
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 generated_records.iloc[0]["generated_text"]

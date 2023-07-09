@@ -1,0 +1,5 @@
+column_config:
+  document_cols:
+  - generated_tasks
+  list_cols: []
+  query_col: tasks

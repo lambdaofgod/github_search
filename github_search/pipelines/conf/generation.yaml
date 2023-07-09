@@ -4,14 +4,14 @@ rwkv:
   templates_path: "prompt_templates"
   data_path: "data/prompt_infos.jsonl"
   out_dir: "output"
-  n_generations: 5
+  n_generations: 3
 api_rwkv:
   endpoint_url: "http://localhost:8765/generate"
   out_dir: "output"
   model_name: "rwkv-4-raven-7b"
-  n_generations: 5
+  n_generations: 3
 api_redpajama:
   endpoint_url: "http://localhost:8765/generate"
   out_dir: "output"
-  n_generations: 5
+  n_generations: 3 
   model_name: "togethercomputer-RedPajama-INCITE-7B-Chat"

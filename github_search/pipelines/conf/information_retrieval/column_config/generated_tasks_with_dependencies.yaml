@@ -1,0 +1,6 @@
+column_config:
+  document_cols:
+  - generated_tasks
+  - dependencies
+  list_cols: []
+  query_col: tasks
