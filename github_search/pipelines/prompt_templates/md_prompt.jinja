@@ -1,13 +1,13 @@
-{% for repo_record in repo_records %}
+{% for repo_record in context_prompt_infos %}
 ## repository
-{{repo_record["repo"]}}
+{{repo_record["name"]}}
 ## files
-{{repo_record["dependencies"]}}
+{{repo_record["content"]}}
 ## tags
-{{repo_record["tasks"]}}
+{{repo_record["true_text"]}}
 {% endfor %}
 ## repository
-{{predicted_repo_record["repo"]}}
+{{prompt_info["name"]}}
 ## files
-{{predicted_repo_record["dependencies"]}}
+{{prompt_info["content"]}}
 ## tags

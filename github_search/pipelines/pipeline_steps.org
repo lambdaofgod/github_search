@@ -1,5 +1,5 @@
 #+title: Pipeline_steps
-#+PROPERTY: header-args :tangle test_pipeline_steps.py
+#+PROPERTY: header-args :tangle tangle/pipeline_steps.py
 
 Conda env github_search
 
@@ -18,7 +18,6 @@ from github_search.utils import load_config_yaml_key
 #+RESULTS:
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both
-
 output_path = Path("../../output")
 pipeline_output_path = output_path / "pipelines"
 #+END_SRC
@@ -30,7 +29,7 @@ pipeline_output_path = output_path / "pipelines"
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
 logging.basicConfig(level="INFO")
 
-sampling = "no_sampling"
+sampling = "micro"
 generation_method = "api_rwkv"
 
 cfg_path = "conf/text_generation/config.yaml"
@@ -52,7 +51,7 @@ model_type
 
 ** Sample
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
-prompt_infos = sample_data_step(sampling_config.dict())
+prompt_infos = sample_data_step(prompt_config.dict(), sampling_config.dict())
 #+END_SRC
 
 #+RESULTS:
@@ -62,36 +61,29 @@ type(prompt_infos[0])
 #+END_SRC
 
 #+RESULTS:
-: <class 'tgutil.prompting.PromptInfo'>
+: <class 'tgutil.prompting.ContextPromptInfo'>
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both
 len(prompt_infos)
 #+END_SRC
 
 #+RESULTS:
-: 4301
+: 10
 
 ** Expand documents (generate texts)
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
-generated_records = expand_documents_step({**generation_config.dict(), "n_generations":3}, prompt_config.dict(), prompt_infos)
+generated_records, _ = expand_documents_step({**generation_config.dict(), "n_generations":2}, prompt_config.dict(), prompt_infos)
 #+END_SRC
 
 #+RESULTS:
-: /tmp/babel-P8ogQz/python-zZItDJ
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 generated_records.iloc[0]["generated_text"]
 #+END_SRC
 
 #+RESULTS:
-:
-: ['io'], ['join_dicts'], ['read_anno_json']
-:
-: ## repository
-: yusukekamiya/cog-v2
-: ## files
-: yusuke/yolo-v2-coco
+| \n[Dataset]\n\n## repository\npydigeru/PyData-for-Dentistry\n## files\nbionic-data bonic-models bionic-config bionic-tools bionic-config-ui b |
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 generated_records.to_json(pipeline_output_path / f"{model_type}_generated_records_{sampling}.json", orient="records", lines=True)
@@ -100,14 +92,8 @@ generated_records.to_json(pipeline_output_path / f"{model_type}_generated_record
 #+RESULTS:
 : None
 
-#+BEGIN_SRC python :session pipeline_steps.org  :exports both
-#+END_SRC
-
-#+RESULTS:
 
 ** Evaluate text generation
-#+RESULTS:
-: None
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 generated_records = pd.read_json(pipeline_output_path / f"{model_type}_generated_records_{sampling}.json", orient="records", lines=True)
@@ -117,29 +103,36 @@ generated_records = pd.read_json(pipeline_output_path / f"{model_type}_generated
 
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
-generated_records["repo"] = generated_records["predicted_repo_record"].apply(lambda rec: rec["repo"])
-generated_records["tasks"] = generated_records["true_tasks"]
-generated_records.columns
+from operator import itemgetter
+
+def process_generated_records(generated_records):
+    return pd.DataFrame(
+        repo=generated_records["prompt_info"].apply(itemgetter("name")),
+        tasks=generated_records["generated_text"],
+        true_tasks=generated_records["tasks"],
+        generated_text=generated_records["generated_text"].apply(itemgetter(0)),
+        prompt_info=generated_records["prompt_info"].apply(dict)
+    )
 #+END_SRC
 
 #+RESULTS:
-: Index(['repo_records', 'predicted_repo_record', 'true_tasks',
-:        'repo_text_field', 'input_text', 'generated_text', 'generation_id',
-:        'repo', 'tasks'],
-:       dtype='object')
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
-evaluated_df = evaluate_generated_texts_step(generated_records.assign(true_tasks=generated_records["tasks"])[["repo", "generated_text", "true_tasks"]], "../../data/paperswithcode_with_tasks.csv")
+evaluated_df = evaluate_generated_texts_step(
+    process_generated_records(generated_records),
+    "../../data/paperswithcode_with_tasks.csv"
+)
 #+END_SRC
 
 #+RESULTS:
+: /tmp/babel-bSJdAX/python-R7a7N5
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 evaluated_df.to_json(pipeline_output_path / f"{model_type}_evaluated_records_{sampling}.json", orient="records", lines=True)
 #+END_SRC
 
 #+RESULTS:
-: None
+: /tmp/babel-bSJdAX/python-TDytPr
 
 *** Results
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
@@ -147,19 +140,7 @@ evaluated_df.describe()
 #+END_SRC
 
 #+RESULTS:
-#+begin_example
-       edit_word  jaccard_lst  ...        wmd  sentence_transformer_similarity
-count       10.0         10.0  ...  10.000000                        10.000000
-mean         1.0          0.0  ...   0.287944                         0.192476
-std          0.0          0.0  ...   0.052435                         0.069246
-min          1.0          0.0  ...   0.215587                         0.087547
-25%          1.0          0.0  ...   0.263481                         0.129964
-50%          1.0          0.0  ...   0.287206                         0.210127
-75%          1.0          0.0  ...   0.311062                         0.247257
-max          1.0          0.0  ...   0.396426                         0.274029
-
-[8 rows x 9 columns]
-#+end_example
+: /tmp/babel-bSJdAX/python-HpqqX0
 
 ** Evaluate information retrieval
 
@@ -208,6 +189,28 @@ ir_df = make_ir_df(pd.read_parquet(output_path / "nbow_data_test.parquet"), eval
 
 #+RESULTS:
 
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both
+ir_df
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+                                        repo  ...                             truncated_dependencies
+0     0bserver07/One-Hundred-Layers-Tiramisu  ...  helper.py model-tiramasu-103.py model-tiramasu...
+1           101vinayak/Neural-Style-Transfer  ...  images2gif.py get_cKDTree writeGif NeuQuant Gi...
+2        12kleingordon34/NLP_masters_project  ...  process_winogender_data.py process_occ_stats p...
+3        131250208/TPlinker-joint-extraction  ...  setup.py tplinker/tplinker.py tplinker/config....
+4                     15saurabh16/Multipoles  ...  COMET_fMRI.py CLIQUE_multipoles_algorithm.py q...
+...                                      ...  ...                                                ...
+4296                         zyf12389/GC-Net  ...  main.py read_sceneflow.py read_data.py gc_net....
+4297                zyf12389/LayoutGAN-Alpha  ...  layoutgan.py model.py dataset.py Dataset Gener...
+4298           zykls/performative-prediction  ...  experiments/neurips2020/data_prep.py experimen...
+4299     zzwells/jdd2018-population-forecast  ...  data_process.py attention.py model.py features...
+4300      zzzace2000/dropout-feature-ranking  ...  exp/DFRdatasets/models/ProblemType.py exp/DFRd...
+
+[4301 rows x 18 columns]
+#+end_example
+
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 processed_text = ir_df["generated_text"].apply(process_generated_text).iloc[0]
 processed_text
@@ -235,221 +238,36 @@ ir_results = ir_evaluator.evaluate()
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :results output :async
-import pprint
-
-pprint.pprint(ir_results)
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both
+def write_dataclass_with_dataframes(dc, write_dir):
+    p = Path(write_dir).expanduser()
+    p.mkdir(exist_ok=True, parents=True)
+    for (k, v) in dict(dc).items():
+        print(k)
+        if type(v) is pd.DataFrame:
+            out_path = str(p / k) + ".csv"
+            print(out_path)
+            v.to_csv(out_path)
 #+END_SRC
 
 #+RESULTS:
-#+begin_example
-InformationRetrievalMetricsResult(per_query_metrics=                                    hit@1  hit@3  hit@5  hit@10  ...  recall@10  MRR@10  ndcg@10  AveP@50
-query                                                            ...
-semantic segmentation                   0      1      1       1  ...      0.016     0.5    0.643    0.382
-style transfer                          1      1      1       1  ...      0.047     1.0    1.000    0.974
-word embeddings                         1      1      1       1  ...      0.043     1.0    0.848    0.330
-relation extraction                     0      1      1       1  ...      0.040     0.5    0.344    0.057
-time series                             1      1      1       1  ...      0.042     1.0    0.890    0.374
-...                                   ...    ...    ...     ...  ...        ...     ...      ...      ...
-robust speech recognition               0      0      0       0  ...      0.000     0.0    0.000    0.000
-deformable object manipulation          0      0      0       0  ...      0.000     0.0    0.000    0.000
-unsupervised semantic segmentation      0      0      0       0  ...      0.000     0.0    0.000    0.027
-graph reconstruction                    0      0      0       0  ...      0.000     0.0    0.000    0.000
-sentence compression                    0      0      0       0  ...      0.000     0.0    0.000    0.000
-
-[306 rows x 15 columns], aggregate_metrics=         hit@1    hit@3    hit@5   hit@10  precisions@1  ...  recall@5  recall@10   MRR@10  ndcg@10  AveP@50
-count  306.000  306.000  306.000  306.000       306.000  ...   306.000    306.000  306.000  306.000  306.000
-mean     0.108    0.212    0.252    0.288         0.108  ...     0.028      0.039    0.169    0.090    0.040
-std      0.311    0.410    0.435    0.453         0.311  ...     0.086      0.100    0.323    0.186    0.110
-min      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-25%      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-50%      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-75%      0.000    0.000    0.750    1.000         0.000  ...     0.005      0.029    0.192    0.109    0.028
-max      1.000    1.000    1.000    1.000         1.000  ...     1.000      1.000    1.000    1.000    1.000
-
-[8 rows x 15 columns])
-#+end_example
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :results output
-import pprint
-
-pprint.pprint(ir_results)
+write_dataclass_with_dataframes(ir_results, f"results/{model_type}_{sampling}")
 #+END_SRC
 
 #+RESULTS:
-#+begin_example
-ob_comint_async_python_file_/tmp/babel-PoFTyD/python-YvIkN5
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-bvcpK8
->>> WARNING:evaluate_modules.metrics.evaluate-metric--bleurt.98e148b2f8c4a88aba5037e4e0e90c9fd9ec35dc37a054ded8cfef0fa801ffab.bleurt:Using default BLEURT-Base checkpoint for sequence maximum length 128. You can use a bigger model for better results with e.g.: evaluate.load('bleurt', 'bleurt-large-512').
-INFO:tensorflow:Reading checkpoint /home/kuba/.cache/huggingface/metrics/bleurt/default/downloads/extracted/2b1fcf356a3ad0e8639af8cc60e127c402bb223f69d9705206b1f6771a089a63/bleurt-base-128.
-INFO:tensorflow:Reading checkpoint /home/kuba/.cache/huggingface/metrics/bleurt/default/downloads/extracted/2b1fcf356a3ad0e8639af8cc60e127c402bb223f69d9705206b1f6771a089a63/bleurt-base-128.
-INFO:tensorflow:Config file found, reading.
-INFO:tensorflow:Config file found, reading.
-INFO:tensorflow:Will load checkpoint bert_custom
-INFO:tensorflow:Will load checkpoint bert_custom
-INFO:tensorflow:Loads full paths and checks that files exists.
-INFO:tensorflow:Loads full paths and checks that files exists.
-INFO:tensorflow:... name:bert_custom
-INFO:tensorflow:... name:bert_custom
-INFO:tensorflow:... vocab_file:vocab.txt
-INFO:tensorflow:... vocab_file:vocab.txt
-INFO:tensorflow:... bert_config_file:bert_config.json
-INFO:tensorflow:... bert_config_file:bert_config.json
-INFO:tensorflow:... do_lower_case:True
-INFO:tensorflow:... do_lower_case:True
-INFO:tensorflow:... max_seq_length:128
-INFO:tensorflow:... max_seq_length:128
-INFO:tensorflow:Creating BLEURT scorer.
-INFO:tensorflow:Creating BLEURT scorer.
-INFO:tensorflow:Creating WordPiece tokenizer.
-INFO:tensorflow:Creating WordPiece tokenizer.
-INFO:tensorflow:WordPiece tokenizer instantiated.
-INFO:tensorflow:WordPiece tokenizer instantiated.
-INFO:tensorflow:Creating Eager Mode predictor.
-INFO:tensorflow:Creating Eager Mode predictor.
-INFO:tensorflow:Loading model.
-INFO:tensorflow:Loading model.
-2023-06-21 22:55:53.078661: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.079756: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.079957: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.081351: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.081542: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.081701: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.993919: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.994071: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.994173: I tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.cc:996] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero. See more at https://github.com/torvalds/linux/blob/v6.0/Documentation/ABI/testing/sysfs-bus-pci#L344-L355
-2023-06-21 22:55:53.994265: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1635] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 5503 MB memory:  -> device: 0, name: NVIDIA GeForce RTX 3090, pci bus id: 0000:08:00.0, compute capability: 8.6
-INFO:tensorflow:BLEURT initialized.
-INFO:tensorflow:BLEURT initialized.
-INFO:gensim.models.keyedvectors:loading projection weights from /home/kuba/gensim-data/glove-twitter-25/glove-twitter-25.gz
-INFO:gensim.utils:KeyedVectors lifecycle event {'msg': 'loaded (1193514, 25) matrix of type float32 from /home/kuba/gensim-data/glove-twitter-25/glove-twitter-25.gz', 'binary': False, 'encoding': 'utf8', 'datetime': '2023-06-21T22:56:10.082710', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'load_word2vec_format'}
-INFO:sentence_transformers.SentenceTransformer:Load pretrained SentenceTransformer: paraphrase-distilroberta-base-v1
-INFO:sentence_transformers.SentenceTransformer:Use pytorch device: cuda
-2023-06-21 22:56:11.316033: I tensorflow/compiler/xla/stream_executor/cuda/cuda_blas.cc:637] TensorFloat-32 will be used for the matrix multiplication. This will only be logged once.
-INFO:absl:Using default tokenizer.
-INFO:gensim.models.keyedvectors:Removed 1 and 11 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<25 unique tokens: ['a', 'c', 'e', 'g', 'i']...> from 2 documents (total 98 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<25 unique tokens: ['a', 'c', 'e', 'g', 'i']...> from 2 documents (total 98 corpus positions)", 'datetime': '2023-06-21T22:56:11.354867', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 1 and 13 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<25 unique tokens: ['a', 'd', 'e', 'g', 'i']...> from 2 documents (total 138 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<25 unique tokens: ['a', 'd', 'e', 'g', 'i']...> from 2 documents (total 138 corpus positions)", 'datetime': '2023-06-21T22:56:11.391678', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 3 and 9 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<27 unique tokens: [',', 'a', 'c', 'd', 'e']...> from 2 documents (total 161 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<27 unique tokens: [',', 'a', 'c', 'd', 'e']...> from 2 documents (total 161 corpus positions)", 'datetime': '2023-06-21T22:56:11.392283', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 1 and 23 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<24 unique tokens: ['a', 'c', 'e', 'h', 'm']...> from 2 documents (total 104 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<24 unique tokens: ['a', 'c', 'e', 'h', 'm']...> from 2 documents (total 104 corpus positions)", 'datetime': '2023-06-21T22:56:11.392819', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 1 and 32 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<24 unique tokens: ['a', 'd', 'e', 'g', 'i']...> from 2 documents (total 89 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<24 unique tokens: ['a', 'd', 'e', 'g', 'i']...> from 2 documents (total 89 corpus positions)", 'datetime': '2023-06-21T22:56:11.393318', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 1 and 13 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<24 unique tokens: ['a', 'd', 'e', 'g', 'i']...> from 2 documents (total 137 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<24 unique tokens: ['a', 'd', 'e', 'g', 'i']...> from 2 documents (total 137 corpus positions)", 'datetime': '2023-06-21T22:56:11.393799', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 1 and 14 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<25 unique tokens: ['a', 'c', 'd', 'e', 'i']...> from 2 documents (total 118 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<25 unique tokens: ['a', 'c', 'd', 'e', 'i']...> from 2 documents (total 118 corpus positions)", 'datetime': '2023-06-21T22:56:11.394288', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 1 and 7 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<22 unique tokens: ['c', 'd', 'e', 'i', 'k']...> from 2 documents (total 104 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<22 unique tokens: ['c', 'd', 'e', 'i', 'k']...> from 2 documents (total 104 corpus positions)", 'datetime': '2023-06-21T22:56:11.394773', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 1 and 18 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<27 unique tokens: ['a', 'd', 'e', 'g', 'i']...> from 2 documents (total 150 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<27 unique tokens: ['a', 'd', 'e', 'g', 'i']...> from 2 documents (total 150 corpus positions)", 'datetime': '2023-06-21T22:56:11.395267', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-INFO:gensim.models.keyedvectors:Removed 1 and 8 OOV words from document 1 and 2 (respectively).
-INFO:gensim.corpora.dictionary:adding document #0 to Dictionary<0 unique tokens: []>
-INFO:gensim.corpora.dictionary:built Dictionary<21 unique tokens: ['a', 'c', 'e', 'g', 'i']...> from 2 documents (total 127 corpus positions)
-INFO:gensim.utils:Dictionary lifecycle event {'msg': "built Dictionary<21 unique tokens: ['a', 'c', 'e', 'g', 'i']...> from 2 documents (total 127 corpus positions)", 'datetime': '2023-06-21T22:56:11.395769', 'gensim': '4.3.1', 'python': '3.10.11 | packaged by conda-forge | (main, May 10 2023, 18:58:44) [GCC 11.3.0]', 'platform': 'Linux-5.4.0-150-generic-x86_64-with-glibc2.31', 'event': 'created'}
-Batches:   0% 0/1 [00:00<?, ?it/s]Batches: 100% 1/1 [00:00<00:00, 140.13it/s]
-Batches:   0% 0/1 [00:00<?, ?it/s]Batches: 100% 1/1 [00:00<00:00, 278.58it/s]
-ob_comint_async_python_file_/tmp/babel-PoFTyD/python-cpLbIN
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-zQGEqa
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-h73BUZ
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-OLniMk
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-AFRzAC
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-QhqNsk
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-mVuITg
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-MzDcsg
->>> ob_comint_async_python_file_/tmp/babel-PoFTyD/python-IKIcgz
->>> INFO:sentence_transformers.SentenceTransformer:Load pretrained SentenceTransformer: ../../output/models/best_model/dependencies/nbow_query_1
-INFO:sentence_transformers.models.WordWeights:0 of 4395 words without a weighting value. Set weight to 1
-INFO:sentence_transformers.SentenceTransformer:Use pytorch device: cuda
-INFO:sentence_transformers.SentenceTransformer:Load pretrained SentenceTransformer: ../../output/models/best_model/dependencies/nbow_document_1
-INFO:sentence_transformers.models.WordWeights:0 of 53559 words without a weighting value. Set weight to 1
-INFO:sentence_transformers.SentenceTransformer:Use pytorch device: cuda
-Batches:   0% 0/135 [00:00<?, ?it/s]Batches:   1% 1/135 [00:00<00:17,  7.48it/s]Batches:   1% 2/135 [00:00<00:15,  8.34it/s]Batches:   3% 4/135 [00:00<00:12, 10.20it/s]Batches:   4% 6/135 [00:00<00:11, 11.51it/s]Batches:   6% 8/135 [00:00<00:09, 12.79it/s]Batches:   7% 10/135 [00:00<00:08, 14.68it/s]Batches:  10% 13/135 [00:00<00:07, 16.76it/s]Batches:  12% 16/135 [00:01<00:06, 18.89it/s]Batches:  14% 19/135 [00:01<00:05, 21.73it/s]Batches:  17% 23/135 [00:01<00:04, 25.60it/s]Batches:  20% 27/135 [00:01<00:03, 29.36it/s]Batches:  24% 32/135 [00:01<00:03, 33.28it/s]Batches:  27% 37/135 [00:01<00:02, 37.03it/s]Batches:  32% 43/135 [00:01<00:02, 41.49it/s]Batches:  36% 49/135 [00:01<00:01, 45.84it/s]Batches:  41% 55/135 [00:01<00:01, 49.58it/s]Batches:  46% 62/135 [00:02<00:01, 53.88it/s]Batches:  51% 69/135 [00:02<00:01, 57.61it/s]Batches:  56% 76/135 [00:02<00:00, 61.00it/s]Batches:  62% 84/135 [00:02<00:00, 64.72it/s]Batches:  68% 92/135 [00:02<00:00, 68.57it/s]Batches:  75% 101/135 [00:02<00:00, 74.38it/s]Batches:  84% 113/135 [00:02<00:00, 87.45it/s]Batches: 100% 135/135 [00:02<00:00, 49.01it/s]
-INFO:github_search.ir.evaluator_impl:Queries: 306
-INFO:github_search.ir.evaluator_impl:Corpus: 4301
+: per_query_metrics
+: results/rwkv-4-raven-7b_micro/per_query_metrics.csv
+: aggregate_metrics
+: results/rwkv-4-raven-7b_micro/aggregate_metrics.csv
 
-  0% 0/306 [00:00<?, ?it/s]  0% 1/306 [00:03<17:27,  3.43s/it]  1% 2/306 [00:03<08:45,  1.73s/it]  3% 8/306 [00:04<01:50,  2.69it/s] 12% 37/306 [00:05<00:19, 13.46it/s] 40% 122/306 [00:05<00:03, 54.19it/s] 46% 140/306 [00:05<00:03, 54.19it/s] 65% 200/306 [00:06<00:01, 88.67it/s]100% 306/306 [00:06<00:00, 50.63it/s]
-  0% 0/306 [00:00<?, ?it/s]100% 306/306 [00:00<00:00, 3579.89it/s]
-INFO:github_search.ir.evaluator_impl:Score-Function: cos_sim
-INFO:github_search.ir.evaluator_impl:scores: {'hit@1': 0.108, 'hit@3': 0.212, 'hit@5': 0.252, 'hit@10': 0.288, 'precisions@1': 0.108, 'precisions@3': 0.105, 'precisions@5': 0.091, 'precisions@10': 0.072, 'recall@1': 0.011, 'recall@3': 0.021, 'recall@5': 0.028, 'recall@10': 0.039, 'MRR@10': 0.169, 'ndcg@10': 0.09, 'AveP@50': 0.04}
-INFO:github_search.ir.evaluator_impl:Score-Function: dot_score
-INFO:github_search.ir.evaluator_impl:scores: {'hit@1': 0.042, 'hit@3': 0.069, 'hit@5': 0.088, 'hit@10': 0.157, 'precisions@1': 0.042, 'precisions@3': 0.034, 'precisions@5': 0.031, 'precisions@10': 0.032, 'recall@1': 0.003, 'recall@3': 0.005, 'recall@5': 0.007, 'recall@10': 0.015, 'MRR@10': 0.067, 'ndcg@10': 0.036, 'AveP@50': 0.015}
-ob_comint_async_python_file_/tmp/babel-PoFTyD/python-OZ2HqO
->>> ob_comint_async_python_start_5acb660d8c245e2d885e381e3f861f26
-InformationRetrievalMetricsResult(per_query_metrics=                                    hit@1  hit@3  hit@5  hit@10  ...  recall@10  MRR@10  ndcg@10  AveP@50
-query                                                            ...
-semantic segmentation                   0      1      1       1  ...      0.016     0.5    0.643    0.382
-style transfer                          1      1      1       1  ...      0.047     1.0    1.000    0.974
-word embeddings                         1      1      1       1  ...      0.043     1.0    0.848    0.330
-relation extraction                     0      1      1       1  ...      0.040     0.5    0.344    0.057
-time series                             1      1      1       1  ...      0.042     1.0    0.890    0.374
-...                                   ...    ...    ...     ...  ...        ...     ...      ...      ...
-robust speech recognition               0      0      0       0  ...      0.000     0.0    0.000    0.000
-deformable object manipulation          0      0      0       0  ...      0.000     0.0    0.000    0.000
-unsupervised semantic segmentation      0      0      0       0  ...      0.000     0.0    0.000    0.027
-graph reconstruction                    0      0      0       0  ...      0.000     0.0    0.000    0.000
-sentence compression                    0      0      0       0  ...      0.000     0.0    0.000    0.000
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both
+evaluated_df.to_csv(f"results/{model_type}_{sampling}/generation_metrics")
+#+END_SRC
 
-[306 rows x 15 columns], aggregate_metrics=         hit@1    hit@3    hit@5   hit@10  precisions@1  ...  recall@5  recall@10   MRR@10  ndcg@10  AveP@50
-count  306.000  306.000  306.000  306.000       306.000  ...   306.000    306.000  306.000  306.000  306.000
-mean     0.108    0.212    0.252    0.288         0.108  ...     0.028      0.039    0.169    0.090    0.040
-std      0.311    0.410    0.435    0.453         0.311  ...     0.086      0.100    0.323    0.186    0.110
-min      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-25%      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-50%      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-75%      0.000    0.000    0.750    1.000         0.000  ...     0.005      0.029    0.192    0.109    0.028
-max      1.000    1.000    1.000    1.000         1.000  ...     1.000      1.000    1.000    1.000    1.000
-
-[8 rows x 15 columns])
-ob_comint_async_python_end_5acb660d8c245e2d885e381e3f861f26
->>> InformationRetrievalMetricsResult(per_query_metrics=                                    hit@1  hit@3  hit@5  hit@10  ...  recall@10  MRR@10  ndcg@10  AveP@50
-query                                                            ...
-semantic segmentation                   0      1      1       1  ...      0.016     0.5    0.643    0.382
-style transfer                          1      1      1       1  ...      0.047     1.0    1.000    0.974
-word embeddings                         1      1      1       1  ...      0.043     1.0    0.848    0.330
-relation extraction                     0      1      1       1  ...      0.040     0.5    0.344    0.057
-time series                             1      1      1       1  ...      0.042     1.0    0.890    0.374
-...                                   ...    ...    ...     ...  ...        ...     ...      ...      ...
-robust speech recognition               0      0      0       0  ...      0.000     0.0    0.000    0.000
-deformable object manipulation          0      0      0       0  ...      0.000     0.0    0.000    0.000
-unsupervised semantic segmentation      0      0      0       0  ...      0.000     0.0    0.000    0.027
-graph reconstruction                    0      0      0       0  ...      0.000     0.0    0.000    0.000
-sentence compression                    0      0      0       0  ...      0.000     0.0    0.000    0.000
-
-[306 rows x 15 columns], aggregate_metrics=         hit@1    hit@3    hit@5   hit@10  precisions@1  ...  recall@5  recall@10   MRR@10  ndcg@10  AveP@50
-count  306.000  306.000  306.000  306.000       306.000  ...   306.000    306.000  306.000  306.000  306.000
-mean     0.108    0.212    0.252    0.288         0.108  ...     0.028      0.039    0.169    0.090    0.040
-std      0.311    0.410    0.435    0.453         0.311  ...     0.086      0.100    0.323    0.186    0.110
-min      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-25%      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-50%      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-75%      0.000    0.000    0.750    1.000         0.000  ...     0.005      0.029    0.192    0.109    0.028
-max      1.000    1.000    1.000    1.000         1.000  ...     1.000      1.000    1.000    1.000    1.000
-
-[8 rows x 15 columns])
-#+end_example
-
-
+#+RESULTS:
+: None
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :results output
 import pprint
@@ -461,30 +279,32 @@ pprint.pprint(ir_results)
 #+begin_example
 InformationRetrievalMetricsResult(per_query_metrics=                                    hit@1  hit@3  hit@5  hit@10  ...  recall@10  MRR@10  ndcg@10  AveP@50
 query                                                            ...
-semantic segmentation                   0      1      1       1  ...      0.016     0.5    0.643    0.382
-style transfer                          1      1      1       1  ...      0.047     1.0    1.000    0.974
-word embeddings                         1      1      1       1  ...      0.043     1.0    0.848    0.330
-relation extraction                     0      1      1       1  ...      0.040     0.5    0.344    0.057
-time series                             1      1      1       1  ...      0.042     1.0    0.890    0.374
+semantic segmentation                   0      0      1       1  ...      0.016    0.25    0.531    0.321
+style transfer                          1      1      1       1  ...      0.047    1.00    1.000    0.951
+word embeddings                         1      1      1       1  ...      0.049    1.00    0.936    0.367
+relation extraction                     0      1      1       1  ...      0.027    0.50    0.249    0.047
+time series                             1      1      1       1  ...      0.042    1.00    0.915    0.368
 ...                                   ...    ...    ...     ...  ...        ...     ...      ...      ...
-robust speech recognition               0      0      0       0  ...      0.000     0.0    0.000    0.000
-deformable object manipulation          0      0      0       0  ...      0.000     0.0    0.000    0.000
-unsupervised semantic segmentation      0      0      0       0  ...      0.000     0.0    0.000    0.027
-graph reconstruction                    0      0      0       0  ...      0.000     0.0    0.000    0.000
-sentence compression                    0      0      0       0  ...      0.000     0.0    0.000    0.000
+robust speech recognition               0      0      0       0  ...      0.000    0.00    0.000    0.000
+deformable object manipulation          0      0      0       0  ...      0.000    0.00    0.000    0.000
+unsupervised semantic segmentation      0      0      0       0  ...      0.000    0.00    0.000    0.032
+graph reconstruction                    0      0      0       0  ...      0.000    0.00    0.000    0.000
+sentence compression                    0      0      0       0  ...      0.000    0.00    0.000    0.000
 
 [306 rows x 15 columns], aggregate_metrics=         hit@1    hit@3    hit@5   hit@10  precisions@1  ...  recall@5  recall@10   MRR@10  ndcg@10  AveP@50
 count  306.000  306.000  306.000  306.000       306.000  ...   306.000    306.000  306.000  306.000  306.000
-mean     0.108    0.212    0.252    0.288         0.108  ...     0.028      0.039    0.169    0.090    0.040
-std      0.311    0.410    0.435    0.453         0.311  ...     0.086      0.100    0.323    0.186    0.110
+mean     0.101    0.196    0.248    0.278         0.101  ...     0.028      0.038    0.159    0.085    0.036
+std      0.302    0.398    0.433    0.449         0.302  ...     0.086      0.101    0.315    0.177    0.091
 min      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
 25%      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
 50%      0.000    0.000    0.000    0.000         0.000  ...     0.000      0.000    0.000    0.000    0.000
-75%      0.000    0.000    0.750    1.000         0.000  ...     0.005      0.029    0.192    0.109    0.028
-max      1.000    1.000    1.000    1.000         1.000  ...     1.000      1.000    1.000    1.000    1.000
+75%      0.000    0.000    0.000    1.000         0.000  ...     0.000      0.023    0.156    0.085    0.024
+max      1.000    1.000    1.000    1.000         1.000  ...     1.000      1.000    1.000    1.000    0.951
 
 [8 rows x 15 columns])
 #+end_example
+**
+**
 
 ** Comparing IR to text generation metrics
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link

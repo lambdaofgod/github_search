@@ -2,7 +2,7 @@ import ast
 import json
 import logging
 from pathlib import Path as P
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import yaml
 from github_search.ir import InformationRetrievalEvaluatorConfig
@@ -22,39 +22,60 @@ from tgutil.configs import (
     TextGenerationConfig,
     PromptConfig,
 )
-from tgutil.prompting_runner import sample_data, expand_documents
+from typing import Annotated
+from zenml import pipeline, step
+from operator import itemgetter
 
 
+def _process_generated_records(generated_records):
+    prompt_info_dicts = generated_records["prompt_info"].apply(dict)
+    return pd.DataFrame(
+        dict(
+            repo=prompt_info_dicts.apply(itemgetter("name")),
+            tasks=generated_records["generated_text"],
+            true_tasks=prompt_info_dicts.apply(itemgetter("true_text")),
+            generated_text=generated_records["generated_text"].apply(itemgetter(0)),
+            prompt_info=prompt_info_dicts,
+        )
+    )
+
+
+@step(enable_cache=True)
 def expand_documents_step(
     text_generation_config: dict, prompt_config: dict, prompt_infos: List[dict]
-):
-    from tgutil.prompting_runner import expand_documents
+) -> Tuple[
+    Annotated[pd.DataFrame, "generated_texts_df"], Annotated[List[dict], "failures"]
+]:
+    from tgutil.prompting import ContextPromptInfo
+    from tgutil.prompting_runner import DocumentExpander
     from tgutil.configs import load_config_from_dict, PromptConfig
-    from tgutil.prompting import PromptInfo
 
     text_generation_config = load_config_from_dict(text_generation_config)
     prompt_config = PromptConfig(**prompt_config)
-    return expand_documents(text_generation_config, prompt_config, prompt_infos)
+    parsed_prompt_infos = [ContextPromptInfo.parse_obj(pi) for pi in prompt_infos]
+    raw_generated_texts_df, failures = DocumentExpander(
+        text_generation_config=text_generation_config, prompts_config=prompt_config
+    ).expand_documents(parsed_prompt_infos)
+    generated_texts_df = _process_generated_records(raw_generated_texts_df)
+    return generated_texts_df, failures
 
 
-def sample_data_step(sampling_config: dict):
-    from tgutil.prompting_runner import sample_data
-    from tgutil.configs import SamplingConfig
+@step(enable_cache=True)
+def sample_data_step(
+    prompt_config: dict, sampling_config: dict
+) -> Annotated[List[dict], "prompt_infos"]:
+    from tgutil.prompting_runner import DocumentExpander
+    from tgutil.configs import SamplingConfig, PromptConfig
 
     sampling_config = SamplingConfig(**sampling_config)
-    return sample_data(sampling_config)
+    prompt_config = PromptConfig(**prompt_config)
+    return DocumentExpander.sample_data(prompt_config, sampling_config)
 
 
-@pa.check_input(
-    pa.DataFrameSchema(
-        {
-            "true_tasks": pa.Column(List[str]),
-            "generated_text": pa.Column(str),
-            "repo": pa.Column(str),
-        }
-    )
-)
-def evaluate_generated_texts(generated_texts_df, paperswithcode_path):
+@step(enable_cache=True)
+def evaluate_generated_texts(
+    generated_texts_df: pd.DataFrame, paperswithcode_path: str
+) -> Annotated[pd.DataFrame, "generation_metrics_df"]:
     from github_search.utils import load_paperswithcode_df
     from tgutil.evaluation.evaluators import (
         TextGenerationEvaluator,
@@ -65,7 +86,7 @@ def evaluate_generated_texts(generated_texts_df, paperswithcode_path):
     texts_df = EvalDFPreprocessor(
         id_col="repo", reference_text_col="true_tasks"
     ).get_eval_df_from_raw_generated_text(generated_texts_df, repo_tasks_df)
-    eval_df = (
+    return (
         TextGenerationEvaluator.from_metric_names(
             metric_names=[
                 "edit_word",
@@ -79,7 +100,6 @@ def evaluate_generated_texts(generated_texts_df, paperswithcode_path):
         .get_evaluated_df(texts_df=texts_df)
         .sort_values(by="rougeL", ascending=False)
     )
-    return eval_df
 
 
 def evaluate_information_retrieval_step(

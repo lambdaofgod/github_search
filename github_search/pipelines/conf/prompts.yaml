@@ -3,3 +3,7 @@ few_shot_markdown:
   templates_path: "prompt_templates"
   data_path: "data/prompt_infos.jsonl"
   out_dir: "output"
+  field_mapping:
+    content: "dependencies"
+    name: "repo"
+    true_text: "tasks"
