@@ -5,6 +5,11 @@ rwkv:
   data_path: "data/prompt_infos.jsonl"
   out_dir: "output"
   n_generations: 3
+falcon_7b_inference:
+  endpoint_url: "http://localhost:8181/generate"
+  out_dir: "output"
+  model_name: "falcon-7b"
+  n_generations: 3
 api_rwkv:
   endpoint_url: "http://localhost:8765/generate"
   out_dir: "output"

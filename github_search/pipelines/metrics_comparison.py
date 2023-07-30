@@ -18,6 +18,36 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 
 
+class RunConfig(BaseModel):
+    column_config_type: str
+    embedder_config_type: str
+    evaluated_df_path: str
+    ir_config: InformationRetrievalEvaluatorConfig
+
+    @classmethod
+    def load(
+        cls, search_df_path, column_config_type, evaluated_df_path, embedder_config_type
+    ):
+        ir_config = load_ir_config(
+            search_df_path, column_config_type, embedder_config_type
+        )
+        return RunConfig(
+            search_df_path=search_df_path,
+            column_config_type=column_config_type,
+            embedder_config_type=embedder_config_type,
+            ir_config=ir_config,
+            evaluated_df_path=evaluated_df_path,
+        )
+
+
+class MetricsDFs(BaseModel):
+    ir_df: pd.DataFrame
+    generation_df: pd.DataFrame
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
 def replace_list_chars(text):
     return text.replace("[", "").replace("]", "").replace(",", "").replace("'", "")
 
@@ -134,37 +164,43 @@ class MetricComparator:
         reported_metrics = self.get_reported_metrics(ir_results, evaluated_df)
         self._report_iteration_metrics(logger, reported_metrics, iteration)
 
-    def run(
-        self,
-        search_df_path,
-        evaluated_df_path,
-        column_config_type,
-        embedder_config_type,
-    ):
-        task = Task.create(
-            project_name="github_search",
-            task_name=f"information_retrieval_evaluation_{embedder_config_type}_{column_config_type}",
+    def run(self, run_config: RunConfig, metrics_dfs):
+        self.setup_logger(run_config)
+        self.run_evaluation(
+            metrics_dfs.generation_df, metrics_dfs.ir_df, run_config.ir_config
         )
-        ir_config = load_ir_config(
-            search_df_path, column_config_type, embedder_config_type
-        )
-        params = ir_config.dict()
-        params["search_df_path"] = search_df_path
-        params["evaluated_df_path"] = evaluated_df_path
-        logging.info(f"running task with {params}")
-        task.connect(params)
-        input_ir_df = pd_read_star(search_df_path)
-        evaluated_df = pd.read_json(evaluated_df_path, orient="records", lines=True)
-        logger = task.get_logger()
-        for generation_id in set(evaluated_df["generation_id"]):
+
+    @pa.check_input(
+        pa.DataFrameSchema(
+            {
+                "true_tasks": pa.Column(List[str]),
+                "generated_text": pa.Column(str),
+                "repo": pa.Column(str),
+                "generation": pa.Column(int),
+            }
+        ),
+        "evaluated_df",
+    )
+    def run_evaluation(self, evaluated_df, input_ir_df, ir_config):
+        for generation_id in set(evaluated_df["generation"]):
             chunk_evaluated_df = evaluated_df[
-                evaluated_df["generation_id"] == generation_id
+                evaluated_df["generation"] == generation_id
             ]
             ir_result = evaluate_information_retrieval(
                 input_ir_df, chunk_evaluated_df, ir_config
             )
-            self.report_metrics(logger, ir_result, evaluated_df, generation_id)
-            logger.flush()
+            self.report_metrics(self.logger, ir_result, evaluated_df, generation_id)
+            self.logger.flush()
+
+    def setup_logger(self, run_config):
+        params = run_config.dict()
+        logging.info(f"running task with {params}")
+        self.task = Task.create(
+            project_name="github_search",
+            task_name=f"information_retrieval_evaluation_{run_config.embedder_config_type}_{run_config.column_config_type}",
+        )
+        self.task.connect(params)
+        self.logger = self.task.get_logger()
 
 
 class EmbedderConfig(BaseModel):
@@ -183,17 +219,20 @@ class MetricComparisonConfig(BaseModel):
 
     @classmethod
     def load(
-        embedder_config_path, column_config_path, search_df_path, evaluated_df_path
+        cls, embedder_config_path, column_config_path, search_df_path, evaluated_df_path
     ):
         with open(embedder_config_path) as f:
             embedder_configs = {
-                k: EmbedderConfig(**conf) for k, conf in yaml.safe_load(f)
+                k: EmbedderConfig(**conf) for k, conf in yaml.safe_load(f).items()
             }
         with open(column_config_path) as f:
-            column_configs = {k: conf for k, conf in yaml.safe_load(f)}
+            column_configs = {k: conf for k, conf in yaml.safe_load(f).items()}
 
         return MetricComparisonConfig(
-            embedder_configs=embedder_configs, column_configs=column_configs
+            embedder_configs=embedder_configs,
+            column_configs=column_configs,
+            search_df_path=search_df_path,
+            evaluated_df_path=evaluated_df_path,
         )
 
 
@@ -213,10 +252,20 @@ if __name__ == "__main__":
         itertools.product(config.column_configs.keys(), config.embedder_configs.keys())
     )
 
+    metrics_dfs = MetricsDFs(
+        ir_df=pd_read_star(config.search_df_path),
+        generation_df=pd.read_json(
+            config.evaluated_df_path, orient="records", lines=True
+        ),
+    )
+    import ipdb
+
+    ipdb.set_trace()
     for column_config_type, embedder_type in configs_grid:
-        MetricComparator().run(
-            search_df_path=config.search_df_path,
-            evaluated_df_path=config.evaluated_df_path,
-            embedder_config_type=embedder_type,
-            column_config_type=column_config_type,
+        run_config = RunConfig.load(
+            config.search_df_path,
+            column_config_type,
+            config.evaluated_df_path,
+            embedder_type,
         )
+        MetricComparator().run(run_config, metrics_dfs)

@@ -25,6 +25,9 @@ from tgutil.configs import (
 from typing import Annotated
 from zenml import pipeline, step
 from operator import itemgetter
+from tgutil.prompting import ContextPromptInfo
+from tgutil.prompting_runner import DocumentExpander
+from tgutil.configs import load_config_from_dict, PromptConfig
 
 
 def _process_generated_records(generated_records):
@@ -36,6 +39,7 @@ def _process_generated_records(generated_records):
             true_tasks=prompt_info_dicts.apply(itemgetter("true_text")),
             generated_text=generated_records["generated_text"].apply(itemgetter(0)),
             prompt_info=prompt_info_dicts,
+            generation=generated_records["generation"],
         )
     )
 
@@ -46,16 +50,13 @@ def expand_documents_step(
 ) -> Tuple[
     Annotated[pd.DataFrame, "generated_texts_df"], Annotated[List[dict], "failures"]
 ]:
-    from tgutil.prompting import ContextPromptInfo
-    from tgutil.prompting_runner import DocumentExpander
-    from tgutil.configs import load_config_from_dict, PromptConfig
-
     text_generation_config = load_config_from_dict(text_generation_config)
     prompt_config = PromptConfig(**prompt_config)
     parsed_prompt_infos = [ContextPromptInfo.parse_obj(pi) for pi in prompt_infos]
     raw_generated_texts_df, failures = DocumentExpander(
         text_generation_config=text_generation_config, prompts_config=prompt_config
     ).expand_documents(parsed_prompt_infos)
+    assert len(raw_generated_texts_df) == len(parsed_prompt_infos), "generating failed"
     generated_texts_df = _process_generated_records(raw_generated_texts_df)
     return generated_texts_df, failures
 
@@ -97,7 +98,7 @@ def evaluate_generated_texts(
                 "sentence_transformer_similarity",
             ]
         )
-        .get_evaluated_df(texts_df=texts_df)
+        .get_evaluated_df(texts_df=texts_df, stratify="generation")
         .sort_values(by="rougeL", ascending=False)
     )
 
