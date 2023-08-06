@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 from github_search.ir import InformationRetrievalEvaluatorConfig
+from github_search.pipelines.configs import EvaluationConfig
 import clearml
 import fire
 import jsonlines
@@ -40,6 +41,7 @@ def _process_generated_records(generated_records):
             generated_text=generated_records["generated_text"].apply(itemgetter(0)),
             prompt_info=prompt_info_dicts,
             generation=generated_records["generation"],
+            input_text=generated_records["input_text"],
         )
     )
 
@@ -56,7 +58,10 @@ def expand_documents_step(
     raw_generated_texts_df, failures = DocumentExpander(
         text_generation_config=text_generation_config, prompts_config=prompt_config
     ).expand_documents(parsed_prompt_infos)
-    assert len(raw_generated_texts_df) == len(parsed_prompt_infos), "generating failed"
+    assert (
+        len(raw_generated_texts_df)
+        == len(parsed_prompt_infos) * text_generation_config.n_generations
+    ), "generating failed"
     generated_texts_df = _process_generated_records(raw_generated_texts_df)
     return generated_texts_df, failures
 
@@ -75,7 +80,9 @@ def sample_data_step(
 
 @step(enable_cache=True)
 def evaluate_generated_texts(
-    generated_texts_df: pd.DataFrame, paperswithcode_path: str
+    generated_texts_df: pd.DataFrame,
+    paperswithcode_path: str,
+    evaluation_config: EvaluationConfig,
 ) -> Annotated[pd.DataFrame, "generation_metrics_df"]:
     from github_search.utils import load_paperswithcode_df
     from tgutil.evaluation.evaluators import (
@@ -85,18 +92,12 @@ def evaluate_generated_texts(
 
     repo_tasks_df = load_paperswithcode_df(paperswithcode_path)
     texts_df = EvalDFPreprocessor(
-        id_col="repo", reference_text_col="true_tasks"
+        id_col=evaluation_config.id_col,
+        reference_text_col=evaluation_config.reference_text_col,
     ).get_eval_df_from_raw_generated_text(generated_texts_df, repo_tasks_df)
     return (
         TextGenerationEvaluator.from_metric_names(
-            metric_names=[
-                "edit_word",
-                "jaccard_lst",
-                "bleurt",
-                "rouge",
-                "wmd",
-                "sentence_transformer_similarity",
-            ]
+            metric_names=evaluation_config.metric_names
         )
         .get_evaluated_df(texts_df=texts_df, stratify="generation")
         .sort_values(by="rougeL", ascending=False)

@@ -1,5 +1,6 @@
 import zenml
 
+from github_search.pipelines.configs import EvaluationConfig
 from github_search.pipelines.steps import (
     expand_documents_step,
     sample_data_step,
@@ -18,8 +19,8 @@ from tgutil.configs import (
 
 
 def load_pipeline_config(
-    sampling="small",
-    generation_method="falcon_7b_inference",
+    sampling="micro",
+    generation_method="api_rwkv",
     prompting_method="few_shot_markdown",
     paperswithcode_path="../../data/paperswithcode_with_tasks.csv",
 ):
@@ -53,7 +54,9 @@ def generation_pipeline():
         dict(config.generation_config), dict(config.prompt_config), prompt_infos
     )
     generation_eval_df = evaluate_generated_texts(
-        generated_texts_df, config.paperswithcode_path
+        generated_texts_df,
+        config.paperswithcode_path,
+        EvaluationConfig(reference_text_col="true_tasks"),
     )
 
 
