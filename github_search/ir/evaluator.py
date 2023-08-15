@@ -1,9 +1,8 @@
 import ast
 from dataclasses import dataclass
-from typing import Dict, List, Optional
-
+from typing import Dict, List
+import numpy as np
 import pandas as pd
-import sentence_transformers
 from github_search import utils
 from github_search.ir import (
     evaluator_impl,
@@ -68,8 +67,14 @@ class InformationRetrievalEvaluator:
             return search_df.assign(
                 **{query_col: search_df[query_col].apply(ast.literal_eval)}
             )
+        elif query_type is np.ndarray:
+            return search_df.assign(
+                **{query_col: search_df[query_col].apply(lambda a: a.tolist())}
+            )
         else:
-            assert query_type is list, "column {} unsupported query type"
+            assert (
+                query_type is list
+            ), f"column {query_col} unsupported query type: {query_type}"
             return search_df
 
     @staticmethod

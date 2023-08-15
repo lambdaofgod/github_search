@@ -61,7 +61,6 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         },  # Score function, higher=more similar
         main_score_function: str = None,
     ):
-
         self.queries_ids = []
         for qid in queries:
             if qid in relevant_docs and len(relevant_docs[qid]) > 0:
@@ -374,7 +373,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
             )
 
         metric_dict = {}
-        for (metric_name, metric_values_dict) in zip(
+        for metric_name, metric_values_dict in zip(
             [
                 "hit",
                 "precisions",
@@ -385,7 +384,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
             ],
             (hit_at_k, precisions_at_k, recall_at_k, MRR, ndcg, AveP_at_k),
         ):
-            for (k, value) in metric_values_dict.items():
+            for k, value in metric_values_dict.items():
                 metric_dict[f"{metric_name}@{k}"] = value
         metric_dict["query"] = self.queries[self.queries_ids.index(query_id)]
         return metric_dict
@@ -396,7 +395,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         # Compute scores on results
         n_queries = len(queries_result_list)
         metric_dicts = []
-        for query_itr in tqdm.tqdm(range(n_queries)):
+        for query_itr in range(n_queries):
             query_id = self.queries_ids[query_itr]
             query_relevant_docs = self.relevant_docs[query_id]
             metric_dict = self.compute_per_query_metrics(

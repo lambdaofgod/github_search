@@ -1,3 +1,7 @@
+import ast
+import numpy as np
+import tqdm
+from typing import Any
 from github_search.utils import load_config_yaml_key, pd_read_star
 import pandas as pd
 from github_search.ir.evaluator import (
@@ -14,35 +18,29 @@ import yaml
 import pandera as pa
 from typing import List, Dict, Optional
 from pydantic import BaseModel
+from typing import List, Dict, Optional, Tuple
 
 logging.basicConfig(level=logging.INFO)
 
 
-class RunConfig(BaseModel):
+class RunConfig(BaseModel, frozen=True):
     column_config_type: str
     embedder_config_type: str
-    evaluated_df_path: str
     ir_config: InformationRetrievalEvaluatorConfig
 
     @classmethod
-    def load(
-        cls, search_df_path, column_config_type, evaluated_df_path, embedder_config_type
-    ):
-        ir_config = load_ir_config(
-            search_df_path, column_config_type, embedder_config_type
-        )
+    def load(cls, column_config_type, embedder_config_type):
+        ir_config = load_ir_config(column_config_type, embedder_config_type)
         return RunConfig(
-            search_df_path=search_df_path,
             column_config_type=column_config_type,
             embedder_config_type=embedder_config_type,
             ir_config=ir_config,
-            evaluated_df_path=evaluated_df_path,
         )
 
 
 class MetricsDFs(BaseModel):
-    ir_df: pd.DataFrame
-    generation_df: pd.DataFrame
+    search_df: pd.DataFrame
+    generation_eval_df: pd.DataFrame
 
     class Config:
         arbitrary_types_allowed = True
@@ -56,25 +54,21 @@ def process_generated_text(text):
     return replace_list_chars(text.strip().split("\n")[0])
 
 
-def make_ir_df(input_ir_df, evaluated_df):
+def make_search_df(input_search_df, evaluated_df):
     max_len = 100
-    ir_df = input_ir_df[["repo", "dependencies"]].merge(evaluated_df, on="repo")
-    ir_df = ir_df.assign(
-        generated_tasks=ir_df["generated_text"].apply(process_generated_text)
+    search_df = input_search_df[["repo", "dependencies"]].merge(evaluated_df, on="repo")
+    search_df = search_df.assign(
+        generated_tasks=search_df["generated_text"].apply(process_generated_text)
     )
-    ir_df = ir_df.assign(
-        truncated_dependencies=ir_df["dependencies"].apply(
+    search_df = search_df.assign(
+        truncated_dependencies=search_df["dependencies"].apply(
             lambda doc: " ".join(doc.split()[:max_len])
         )
     )
-    return ir_df
+    return search_df
 
 
-def load_ir_df(search_df_path, evaluated_df_path):
-    return make_ir_df(input_ir_df, evaluated_df)
-
-
-def load_ir_config(search_df_path, column_config_type, embedder_config_type):
+def load_ir_config(column_config_type, embedder_config_type):
     logging.info("Loading configs")
     embedder_config = load_config_yaml_key(
         EmbedderPairConfig, "conf/retrieval.yaml", embedder_config_type
@@ -83,15 +77,14 @@ def load_ir_config(search_df_path, column_config_type, embedder_config_type):
         InformationRetrievalColumnConfig, "conf/column_configs.yaml", column_config_type
     )
     return InformationRetrievalEvaluatorConfig(
-        search_df_path=search_df_path,
         embedder_config=embedder_config,
         column_config=column_config,
     )
 
 
-def evaluate_information_retrieval(input_ir_df, evaluated_df, ir_config):
-    ir_df = make_ir_df(input_ir_df, evaluated_df)
-    ir_evaluator = InformationRetrievalEvaluator.setup_from_df(ir_df, ir_config)
+def evaluate_information_retrieval(input_search_df, evaluated_df, ir_config):
+    search_df = make_search_df(input_search_df, evaluated_df)
+    ir_evaluator = InformationRetrievalEvaluator.setup_from_df(search_df, ir_config)
     logging.info("Loaded evaluator, evaluating...")
     return ir_evaluator.evaluate()
 
@@ -164,10 +157,15 @@ class MetricComparator:
         reported_metrics = self.get_reported_metrics(ir_results, evaluated_df)
         self._report_iteration_metrics(logger, reported_metrics, iteration)
 
-    def run(self, run_config: RunConfig, metrics_dfs):
-        self.setup_logger(run_config)
-        self.run_evaluation(
-            metrics_dfs.generation_df, metrics_dfs.ir_df, run_config.ir_config
+    def run(
+        self, run_config: RunConfig, metrics_dfs
+    ) -> Dict[int, Tuple[InformationRetrievalMetricsResult, pd.DataFrame]]:
+        return dict(
+            self.run_evaluation(
+                metrics_dfs.generation_eval_df,
+                metrics_dfs.search_df,
+                run_config.ir_config,
+            )
         )
 
     @pa.check_input(
@@ -181,26 +179,24 @@ class MetricComparator:
         ),
         "evaluated_df",
     )
-    def run_evaluation(self, evaluated_df, input_ir_df, ir_config):
+    def run_evaluation(
+        self, evaluated_df, input_search_df, ir_config
+    ) -> Dict[int, Tuple[InformationRetrievalMetricsResult, pd.DataFrame]]:
+        """
+        run information retrieval evaluation
+        for each generation from evalueated_df
+        """
         for generation_id in set(evaluated_df["generation"]):
             chunk_evaluated_df = evaluated_df[
                 evaluated_df["generation"] == generation_id
             ]
             ir_result = evaluate_information_retrieval(
-                input_ir_df, chunk_evaluated_df, ir_config
+                input_search_df, chunk_evaluated_df, ir_config
             )
-            self.report_metrics(self.logger, ir_result, evaluated_df, generation_id)
-            self.logger.flush()
-
-    def setup_logger(self, run_config):
-        params = run_config.dict()
-        logging.info(f"running task with {params}")
-        self.task = Task.create(
-            project_name="github_search",
-            task_name=f"information_retrieval_evaluation_{run_config.embedder_config_type}_{run_config.column_config_type}",
-        )
-        self.task.connect(params)
-        self.logger = self.task.get_logger()
+            yield generation_id, (
+                ir_result,
+                chunk_evaluated_df,
+            )
 
 
 class EmbedderConfig(BaseModel):
@@ -208,19 +204,14 @@ class EmbedderConfig(BaseModel):
     document_embedder_path: str
     query_embedder_path: str
     query_max_length: Optional[int]
-    search_df_path: str
 
 
 class MetricComparisonConfig(BaseModel):
     embedder_configs: Dict[str, EmbedderConfig]
     column_configs: Dict[str, dict]
-    search_df_path: str
-    evaluated_df_path: str
 
     @classmethod
-    def load(
-        cls, embedder_config_path, column_config_path, search_df_path, evaluated_df_path
-    ):
+    def load(cls, embedder_config_path, column_config_path):
         with open(embedder_config_path) as f:
             embedder_configs = {
                 k: EmbedderConfig(**conf) for k, conf in yaml.safe_load(f).items()
@@ -231,8 +222,85 @@ class MetricComparisonConfig(BaseModel):
         return MetricComparisonConfig(
             embedder_configs=embedder_configs,
             column_configs=column_configs,
-            search_df_path=search_df_path,
-            evaluated_df_path=evaluated_df_path,
+        )
+
+
+DataFrameRecords = List[Dict[str, Any]]
+
+
+class MetricsExperimentResult(BaseModel):
+    """
+    this class is what is stored per run in ZenML
+
+    we have to write some boilerplate because
+    ZenML can't guess that dict with pandas dataframe is serializable
+    """
+
+    ir_config: InformationRetrievalEvaluatorConfig
+    per_query_metrics: Dict[int, DataFrameRecords]
+    aggregate_metrics: Dict[int, DataFrameRecords]
+    generation_metrics: Dict[int, DataFrameRecords]
+
+    @classmethod
+    def create_from_results(
+        cls,
+        ir_config,
+        run_results: Dict[int, Tuple[InformationRetrievalMetricsResult, pd.DataFrame]],
+    ):
+        per_query_metrics = {
+            generation_id: result.per_query_metrics.to_dict(orient="records")
+            for (generation_id, (result, _)) in run_results.items()
+        }
+        aggregate_metrics = {
+            generation_id: result.per_query_metrics.to_dict(orient="records")
+            for (generation_id, (result, _)) in run_results.items()
+        }
+        generation_metrics = {
+            generation_id: cls.drop_invalid_dtypes(df).to_dict(orient="records")
+            for (generation_id, (_, df)) in run_results.items()
+        }
+        return MetricsExperimentResult(
+            ir_config=ir_config,
+            per_query_metrics=per_query_metrics,
+            aggregate_metrics=aggregate_metrics,
+            generation_metrics=generation_metrics,
+        )
+
+    @classmethod
+    def drop_invalid_dtypes(cls, df):
+        dtypes = {col: type(df[col].iloc[0]) for col in df.columns}
+        return df[[col for (col, dtype) in dtypes.items() if not dtype is np.ndarray]]
+
+    class Config:
+        arbitrary_types_allowed = True
+        frozen = True
+
+
+def get_run_metrics(
+    config: MetricComparisonConfig,
+    search_df: pd.DataFrame,
+    generation_eval_df: pd.DataFrame,
+):
+    configs_grid = list(
+        itertools.product(config.column_configs.keys(), config.embedder_configs.keys())
+    )
+
+    generation_eval_df = generation_eval_df.assign(
+        true_tasks=generation_eval_df["true_tasks"].apply(list)
+    )
+
+    metrics_dfs = MetricsDFs(search_df=search_df, generation_eval_df=generation_eval_df)
+
+    for column_config_type, embedder_type in tqdm.tqdm(configs_grid):
+        run_config = RunConfig.load(
+            column_config_type,
+            embedder_type,
+        )
+        run_results = MetricComparator().run(run_config, metrics_dfs)
+
+        yield MetricsExperimentResult.create_from_results(
+            ir_config=run_config.ir_config,
+            run_results=run_results,
         )
 
 
@@ -240,32 +308,6 @@ if __name__ == "__main__":
     conf_dict = dict(
         embedder_config_path="conf/retrieval.yaml",
         column_config_path="conf/column_configs.yaml",
-        search_df_path="../../output/nbow_data_test.parquet",
-        evaluated_df_path=(
-            "../../output/pipelines/api_rwkv_evaluated_records_no_sampling.json"
-        ),
     )
-
     config = MetricComparisonConfig.load(**conf_dict)
-
-    configs_grid = list(
-        itertools.product(config.column_configs.keys(), config.embedder_configs.keys())
-    )
-
-    metrics_dfs = MetricsDFs(
-        ir_df=pd_read_star(config.search_df_path),
-        generation_df=pd.read_json(
-            config.evaluated_df_path, orient="records", lines=True
-        ),
-    )
-    import ipdb
-
-    ipdb.set_trace()
-    for column_config_type, embedder_type in configs_grid:
-        run_config = RunConfig.load(
-            config.search_df_path,
-            column_config_type,
-            config.evaluated_df_path,
-            embedder_type,
-        )
-        MetricComparator().run(run_config, metrics_dfs)
+    list(compare_metrics(config))

@@ -1,34 +1,17 @@
-import ast
-import json
-import logging
-from pathlib import Path as P
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
-import yaml
+import ast
 from github_search.ir import InformationRetrievalEvaluatorConfig
-from github_search.pipelines.configs import EvaluationConfig
-import clearml
-import fire
-import jsonlines
-import numpy as np
+from github_search.pipelines.configs import EvaluationConfig, SearchDataConfig
 import pandas as pd
-import tqdm
-from clearml import Dataset, PipelineController, Task
-from mlutil.text import rwkv_utils
-from pydantic.dataclasses import dataclass
-import pandera as pa
-from tgutil.configs import (
-    PipelineConfig,
-    SamplingConfig,
-    TextGenerationConfig,
-    PromptConfig,
-)
 from typing import Annotated
-from zenml import pipeline, step
+from zenml import step
 from operator import itemgetter
 from tgutil.prompting import ContextPromptInfo
 from tgutil.prompting_runner import DocumentExpander
 from tgutil.configs import load_config_from_dict, PromptConfig
+from github_search import utils
+from github_search.pipelines.metrics_comparison import *
 
 
 def _process_generated_records(generated_records):
@@ -104,19 +87,49 @@ def evaluate_generated_texts(
     )
 
 
-def evaluate_information_retrieval_step(
-    searched_df, ir_config: InformationRetrievalEvaluatorConfig
-):
+@step(enable_cache=True)
+def prepare_search_df(
+    search_data_config: SearchDataConfig,
+) -> Annotated[pd.DataFrame, "search_df"]:
+    path = search_data_config.search_df_path
+    return utils.pd_read_star(path)
+
+
+@step(enable_cache=True)
+def evaluate_information_retrieval(
+    search_df: pd.DataFrame,
+    ir_config: InformationRetrievalEvaluatorConfig,
+) -> Tuple[
+    Annotated[pd.DataFrame, "per_query_metrics"],
+    Annotated[pd.DataFrame, "aggregate_metrics"],
+]:
     from github_search.ir.evaluator import InformationRetrievalEvaluator
 
-    ir_evaluator = InformationRetrievalEvaluator.setup_from_df(searched_df, ir_config)
-    return ir_evaluator.evaluate()
+    ir_evaluator = InformationRetrievalEvaluator.setup_from_df(search_df, ir_config)
+    ir_metrics_df = ir_evaluator.evaluate()
+    return (ir_metrics_df.per_query_metrics, ir_metrics_df.aggregate_metrics)
 
 
-def evaluate_generated_texts_step(generated_texts_df, paperswithcode_path):
-    from github_search.pipelines.steps import evaluate_generated_texts
-
-    generation_evaluation_df = evaluate_generated_texts(
-        generated_texts_df, paperswithcode_path
+@step(enable_cache=True)
+def prepare_search_df(
+    search_data_config: SearchDataConfig, generated_texts_df: pd.DataFrame
+) -> Annotated[pd.DataFrame, "search_df"]:
+    path = search_data_config.search_df_path
+    raw_search_df = utils.pd_read_star(path)
+    search_df = raw_search_df.merge(
+        generated_texts_df, on="repo", suffixes=["", "_generated"]
     )
-    return generation_evaluation_df
+    return search_df
+
+
+@step(enable_cache=True)
+def get_ir_experiments_results(
+    search_df: pd.DataFrame, generation_eval_df: pd.DataFrame
+) -> Annotated[List[MetricsExperimentResult], "ir_experiments_results"]:
+    conf_dict = dict(
+        embedder_config_path="conf/retrieval.yaml",
+        column_config_path="conf/column_configs.yaml",
+    )
+    config = MetricComparisonConfig.load(**conf_dict)
+    run_results = get_run_metrics(config, search_df, generation_eval_df)
+    return list(run_results)
