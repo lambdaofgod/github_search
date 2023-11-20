@@ -1,0 +1,9 @@
+few_shot_markdown:
+  prompt_template_name: "md_prompt.jinja"
+  templates_path: "inputs/prompt_templates"
+  data_path: "data/prompt_infos.jsonl"
+  out_dir: "output"
+  field_mapping:
+    content: "dependencies"
+    name: "repo"
+    true_text: "tasks"

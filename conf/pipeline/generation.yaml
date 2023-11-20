@@ -1,0 +1,25 @@
+rwkv:
+  model_name: "sgugger/rwkv-7b-pile"
+  prompt_template_name: "md_prompt.jinja"
+  templates_path: "prompt_templates"
+  data_path: "data/prompt_infos.jsonl"
+  out_dir: "output"
+  n_generations: 3
+falcon_7b_inference:
+  endpoint_url: "http://localhost:8181/generate"
+  out_dir: "output"
+  model_name: "falcon-7b"
+  n_generations: 3
+  flavor: "text-generation-inference"
+api_rwkv:
+  endpoint_url: "http://localhost:4321/generate"
+  out_dir: "output"
+  model_name: "rwkv-4-raven-7b"
+  n_generations: 3
+  flavor: "lmserver"
+api_lmserver:
+  endpoint_url: "http://localhost:8765/generate"
+  out_dir: "output"
+  n_generations: 3 
+  model_name: "starcoder-3b"
+  flavor: "lmserver"
