@@ -7,7 +7,7 @@ Conda env github_search
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
 import pandas as pd
-from github_search.pipelines.steps import sample_data_step, expand_documents_step, evaluate_generated_texts_step 
+from github_search.pipelines.steps import sample_data_step, expand_documents_step
 from tgutil.configs import PipelineConfig, ConfigPaths, APIConfig, TextGenerationConfig, SamplingConfig, PromptConfig
 import logging
 import yaml
@@ -29,8 +29,8 @@ pipeline_output_path = output_path / "pipelines"
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link
 logging.basicConfig(level="INFO")
 
-sampling = "micro"
-generation_method = "api_rwkv"
+sampling = "no_sampling"
+generation_method = "api_lmserver"
 
 cfg_path = "conf/text_generation/config.yaml"
 generation_config = load_config_yaml_key(APIConfig, "conf/generation.yaml", generation_method)
@@ -47,7 +47,7 @@ model_type
 #+END_SRC
 
 #+RESULTS:
-: rwkv-4-raven-7b
+: starcoder-3b
 
 ** Sample
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
@@ -68,7 +68,7 @@ len(prompt_infos)
 #+END_SRC
 
 #+RESULTS:
-: 10
+: 4301
 
 ** Expand documents (generate texts)
 
@@ -78,12 +78,62 @@ generated_records, _ = expand_documents_step({**generation_config.dict(), "n_gen
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
-generated_records.iloc[0]["generated_text"]
+#+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async :results output
+import json
+for k, v in generated_records.iloc[0].to_dict().items():
+    print(f"KEY {k}:")
+    print(v)
+    print()
 #+END_SRC
 
 #+RESULTS:
-| \n[Dataset]\n\n## repository\npydigeru/PyData-for-Dentistry\n## files\nbionic-data bonic-models bionic-config bionic-tools bionic-config-ui b |
+#+begin_example
+KEY repo:
+sungsoo-ahn/genetic-expert-guided-learning
+
+KEY tasks:
+["\n['genetic algorithm']\n\n## repository\ngoogleinterns/flax-covid\n## files\nflax_covid/modeling/models/base_model.py flax_covid/modeling/layers/layer_factory."]
+
+KEY true_tasks:
+['imitation learning']
+
+KEY generated_text:
+
+['genetic algorithm']
+
+## repository
+googleinterns/flax-covid
+## files
+flax_covid/modeling/models/base_model.py flax_covid/modeling/layers/layer_factory.
+
+KEY prompt_info:
+{'content': 'model/genetic_expert.py util/smiles/dataset.py runner/gegl_trainer.py model/neural_apprentice.py run_gegl_constrained.py util/smiles/char_dict.py runner/pretrain_trainer.py run_pretrain.py get_low_scoring_dataset.py model/genetic_operator/mutate.py', 'id': 'b2c09745accb54912142967fff385361', 'name': 'sungsoo-ahn/genetic-expert-guided-learning', 'true_text': "['imitation learning']"}
+
+KEY generation:
+0
+
+KEY input_text:
+
+## repository
+matthew-norton/Diametrical_Learning
+## files
+run_CIFAR10_resnet20.py models/fc_net.py drm_train_test.py models/wrap_net.py models/resnet.py fast_random.py run_MNIST_FC.py run_CIFAR10_FC.py utils.py datastore.py
+## tags
+['generalization bounds']
+
+## repository
+urban-resilience-lab/deepcovidnet
+## files
+deepcovidnet/config/CountyWiseTimeDependentFeaturesConfig.py deepcovidnet/utils.py deepcovidnet/DeepFM.py deepcovidnet/CountyWiseTimeDependentFeatures.py deepcovidnet/HypotheticalDatasets.py deepcovidnet/config/model_hyperparam_config.py deepcovidnet/config/GeometryUtilityConfig.py deepcovidnet/BaseRunner.py deepcovidnet/CovidCountyDataset.py tests/test_baseRunner.py
+## tags
+['time series']
+
+## repository
+sungsoo-ahn/genetic-expert-guided-learning
+## files
+model/genetic_expert.py util/smiles/dataset.py runner/gegl_trainer.py model/neural_apprentice.py run_gegl_constrained.py util/smiles/char_dict.py runner/pretrain_trainer.py run_pretrain.py get_low_scoring_dataset.py model/genetic_operator/mutate.py
+## tags
+#+end_example
 
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 generated_records.to_json(pipeline_output_path / f"{model_type}_generated_records_{sampling}.json", orient="records", lines=True)
@@ -91,6 +141,7 @@ generated_records.to_json(pipeline_output_path / f"{model_type}_generated_record
 
 #+RESULTS:
 : None
+
 
 
 ** Evaluate text generation
@@ -105,14 +156,7 @@ generated_records = pd.read_json(pipeline_output_path / f"{model_type}_generated
 #+BEGIN_SRC python :session pipeline_steps.org  :exports both :comments link :async
 from operator import itemgetter
 
-def process_generated_records(generated_records):
-    return pd.DataFrame(
-        repo=generated_records["prompt_info"].apply(itemgetter("name")),
-        tasks=generated_records["generated_text"],
-        true_tasks=generated_records["tasks"],
-        generated_text=generated_records["generated_text"].apply(itemgetter(0)),
-        prompt_info=generated_records["prompt_info"].apply(dict)
-    )
+
 #+END_SRC
 
 #+RESULTS:

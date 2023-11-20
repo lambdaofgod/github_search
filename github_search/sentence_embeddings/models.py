@@ -6,7 +6,6 @@ from mlutil.sentence_rnn import SentenceRNN
 from sentence_transformers import InputExample, SentenceTransformer, evaluation, models
 from typing import Optional
 
-from github_search.ir.ir_utils import get_ir_evaluator
 from github_search.imports import tokenization
 from dataclasses import dataclass
 

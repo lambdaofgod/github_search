@@ -36,26 +36,24 @@ class PipelineConfig(BaseModel):
     generation_config: GenerationPipelineConfig
     name: str
     project: str
-    paperswithcode_path: str
 
     @staticmethod
     def load_from_paths(
         name: str,
         project: str,
-        paperswithcode_path: str,
         sampling="small",
         generation_method="api_rwkv",
         prompting_method="few_shot_markdown",
-        search_config_path="conf/search.yaml",
+        search_config_path="conf/pipeline/search.yaml",
     ):
         generation_config = load_config_yaml_key(
-            APIConfig, "conf/generation.yaml", generation_method
+            APIConfig, "conf/pipeline/generation.yaml", generation_method
         )
         sampling_config = load_config_yaml_key(
-            SamplingConfig, "conf/sampling.yaml", sampling
+            SamplingConfig, "conf/pipeline/sampling.yaml", sampling
         )
         prompt_config = load_config_yaml_key(
-            PromptConfig, "conf/prompts.yaml", prompting_method
+            PromptConfig, "conf/pipeline/prompts.yaml", prompting_method
         )
 
         generation_pipeline_config = GenerationPipelineConfig(
@@ -64,11 +62,9 @@ class PipelineConfig(BaseModel):
             prompt_config=prompt_config,
             project="github_search/document_expansion",
             name=f"{sampling}-sampled document expansion pipeline",
-            paperswithcode_path=paperswithcode_path,
         )
         return PipelineConfig(
             generation_config=generation_pipeline_config,
             name=name,
             project=project,
-            paperswithcode_path=paperswithcode_path,
         )

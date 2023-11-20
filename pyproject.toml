@@ -33,4 +33,5 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poe.tasks.generation_pipeline]
-script = "github_search.pipelines.pipeline:run_generation"
+script = "github_search.pipelines.pipeline:run_generation(sampling, generation_method, prompting_method)"
+args = ["sampling", "generation_method", "prompting_method"]

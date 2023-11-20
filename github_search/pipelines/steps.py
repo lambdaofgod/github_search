@@ -35,6 +35,9 @@ def expand_documents_step(
 ) -> Tuple[
     Annotated[pd.DataFrame, "generated_texts_df"], Annotated[List[dict], "failures"]
 ]:
+    logging.info("expanding documents")
+    logging.info(f"using text generation config: {text_generation_config}")
+    logging.info(f"using prompt config: {prompt_config}")
     text_generation_config = load_config_from_dict(text_generation_config)
     prompt_config = PromptConfig(**prompt_config)
     parsed_prompt_infos = [ContextPromptInfo.parse_obj(pi) for pi in prompt_infos]
@@ -64,8 +67,8 @@ def sample_data_step(
 @step(enable_cache=True)
 def evaluate_generated_texts(
     generated_texts_df: pd.DataFrame,
-    paperswithcode_path: str,
     evaluation_config: EvaluationConfig,
+    paperswithcode_path: str = "../../data/paperswithcode_with_tasks.csv",
 ) -> Annotated[pd.DataFrame, "generation_metrics_df"]:
     from github_search.utils import load_paperswithcode_df
     from tgutil.evaluation.evaluators import (

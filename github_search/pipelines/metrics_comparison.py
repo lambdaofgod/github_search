@@ -12,7 +12,6 @@ from github_search.ir.evaluator import (
 )
 from github_search.ir.models import InformationRetrievalMetricsResult
 import logging
-from clearml import Task, Logger
 import itertools
 import yaml
 import pandera as pa
@@ -101,26 +100,25 @@ class MetricComparator:
         "evaluated_df",
     )
     def get_reported_metrics(
-        self, ir_results: InformationRetrievalMetricsResult, evaluated_df: pd.DataFrame
+        self, per_query_ir_metrics: pd.DataFrame, evaluated_df: pd.DataFrame
     ):
         evaluated_df = evaluated_df.rename(columns={"tasks": "task"}).explode("task")
         query_metrics_df = (
-            ir_results.per_query_metrics.merge(
-                evaluated_df, left_index=True, right_on="task"
-            )
+            per_query_ir_metrics.merge(evaluated_df, left_index=True, right_on="task")
             .groupby("task")
             .mean()
         )
-        ir_metric_names = ir_results.per_query_metrics.columns
+        ir_metric_names = per_query_ir_metrics.columns
         generation_metric_names = evaluated_df.select_dtypes(include="number").columns
         ir_vs_generation_metrics_df = query_metrics_df.corr(method="kendall").loc[
             ir_metric_names, generation_metric_names
         ]
+        aggregate_metrics = per_query_ir_metrics.describe()
         return {
-            "ir_metrics_df": pd.DataFrame(ir_results.aggregate_metrics),
+            "ir_metrics_df": pd.DataFrame(aggregate_metrics),
             "ir_vs_generation_metrics_df": ir_vs_generation_metrics_df,
             "mean_generation_metrics": evaluated_df.mean().to_dict(),
-            "mean_ir_metrics": ir_results.aggregate_metrics.loc["mean"].to_dict(),
+            "mean_ir_metrics": aggregate_metrics.loc["mean"].to_dict(),
             "generation_metrics_summary": evaluated_df.describe(),
         }
 
@@ -284,9 +282,8 @@ def get_run_metrics(
     configs_grid = list(
         itertools.product(config.column_configs.keys(), config.embedder_configs.keys())
     )
-
-    generation_eval_df = generation_eval_df.assign(
-        true_tasks=generation_eval_df["true_tasks"].apply(list)
+    generation_eval_df["true_tasks"] = generation_eval_df["true_tasks"].apply(
+        ast.literal_eval
     )
 
     metrics_dfs = MetricsDFs(search_df=search_df, generation_eval_df=generation_eval_df)

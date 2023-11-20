@@ -45,6 +45,7 @@ class PairEncoder(Encoder):
         transformer = SentenceTransformer(input_path)
         return PairEncoder(transformer)
 
+
 class PairSimilarityModel(TrainableModel):
     def __init__(self, model_path_or_name, lr=1e-3, *args, **kwargs):
         self.lr = lr

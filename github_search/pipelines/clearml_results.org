@@ -10,7 +10,7 @@ len(task_list)
 #+END_SRC
 
 #+RESULTS:
-: 1
+: 0
 
 
 #+BEGIN_SRC python :session clearml_results.org  :exports both :async

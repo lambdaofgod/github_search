@@ -46,7 +46,9 @@ def run(model, train_dataset, val_dataset, params):
 # launch training
 pl.seed_everything(42, workers=True)
 
-df = pd.read_json("data/papers-with-abstracts.json.gz").dropna(subset=["title", "abstract"])
+df = pd.read_json("data/papers-with-abstracts.json.gz").dropna(
+    subset=["title", "abstract"]
+)
 
 print(f"loaded {len(df)} papers with abstracts")
 cols = ["title", "abstract"]

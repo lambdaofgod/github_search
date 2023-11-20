@@ -3,9 +3,9 @@ from typing import List, Dict
 from torch.utils.data import Dataset
 from quaterion.dataset.similarity_samples import SimilarityPairSample
 
-class PairDataset(Dataset):
 
-    def __init__(self, dataset : List[Dict[str, str]]):
+class PairDataset(Dataset):
+    def __init__(self, dataset: List[Dict[str, str]]):
         self.dataset = dataset
 
     def __getitem__(self, index) -> SimilarityPairSample:
@@ -32,10 +32,7 @@ class PairDataset(Dataset):
     def from_pandas(df, columns):
         df = df[columns]
         df.columns = ["text", "other_text"]
-        return PairDataset([
-            record.to_dict()
-            for __, record in df.iterrows()
-        ])
+        return PairDataset([record.to_dict() for __, record in df.iterrows()])
 
     @staticmethod
     def from_path(path):

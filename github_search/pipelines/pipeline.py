@@ -71,7 +71,7 @@ def metrics_pipeline():
 
 def run_generation(
     sampling="no_sampling",
-    generation_method="api_rwkv",
+    generation_method="api_lmserver",
     prompting_method="few_shot_markdown",
 ):
     generation_pipeline(sampling, generation_method, prompting_method)
