@@ -403,7 +403,7 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
             )
             metric_dicts.append(metric_dict)
 
-        metric_df = pd.DataFrame.from_records(metric_dicts).set_index("query")
+        metric_df = pd.DataFrame.from_records(metric_dicts)
         return InformationRetrievalMetricsResult(
             per_query_metrics=metric_df, aggregate_metrics=metric_df.describe()
         )

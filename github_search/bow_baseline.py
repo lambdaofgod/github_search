@@ -6,17 +6,12 @@ import string
 import tokenize
 from operator import itemgetter
 
-import dask
-import dask.dataframe as ddf
 import nltk
 import numpy as np
 import pandas as pd
 import rank_bm25
 import stop_words
 import tqdm
-from haystack import document_stores
-from haystack.nodes import retriever as haystack_retriever
-
 from github_search import paperswithcode_tasks
 from github_search.ir import ir_utils
 from github_search.python_call_graph import try_run
@@ -26,7 +21,7 @@ def get_comment_contents(file_contents):
     docstrings = re.findall('""".*?"""', file_contents.replace("\n", ""))
     docstring_contents = [d.replace('"""', "") for d in docstrings]
     comments = [
-        tok.replace("#", "")
+        replace.tok("#", "")
         for (toktype, tok, _, _, _) in tokenize.generate_tokens(
             io.StringIO(file_contents).readline
         )
@@ -114,6 +109,11 @@ def make_query_results_list(searcher, queries, queries_ids, topn=10):
 
 
 def prepare_bow_retrieval_evaluation_results(upstream, index, product):
+    try:
+        from haystack import document_stores
+        from haystack.nodes import retriever as haystack_retriever
+    except ImportError:
+        pass
     logging.getLogger().setLevel(logging.ERROR)
     document_store = document_stores.ElasticsearchDocumentStore(index=index)
     retriever = haystack_retriever.sparse.ElasticsearchRetriever(document_store)

@@ -1,3 +1,6 @@
+import os
+import polars as pl
+
 __all__ = [
     "get_modules_string",
     "get_module_corpus",
@@ -12,7 +15,6 @@ import json
 import logging
 import pickle
 
-import fasttext
 import gensim
 import numpy as np
 import pandas as pd
@@ -188,12 +190,12 @@ def postprocess_dependency_records(
     )
 
 
-import polars as pl
-import os
-## TODO: WYTRENUJ WORD2VECA Z PYTHON CODE TOKENIZEREMM
+# TODO: WYTRENUJ WORD2VECA Z PYTHON CODE TOKENIZEREMM
 
 
 def train_python_token_fasttext(python_file_path, epoch, dim, n_cores, product):
+    import fasttext
+
     python_files_df = (
         pl.scan_parquet(python_file_path)
         .select([pl.col("content")])
@@ -234,5 +236,5 @@ def prepare_function_signatures_df(product, n_cores, python_file_path):
 
 
 def _word_vectors_to_word2vec_format_generator(vocabulary, word_vectors):
-    for (word, vector) in zip(vocabulary, word_vectors):
+    for word, vector in zip(vocabulary, word_vectors):
         yield word + " " + " ".join([str("{:.5f}".format(f)) for f in vector])

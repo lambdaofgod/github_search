@@ -16,8 +16,7 @@ markdown2 = "^2.4.10"
 #umap-learn = "^0.5.4"
 stop-words = "^2018.7.23"
 docstring-parser = "^0.15"
-rank-bm25 = "^0.2.2"
-#paperswithcode-client = "^0.3.1"
+rank-bm25 = "^0.2.1"
 poethepoet = "^0.24.4"
 six = "^1.16.0"
 zenml = "^0.47.0"
@@ -26,7 +25,26 @@ tgutil = {path = "../tgutil"}
 pydantic-core = "^2.14.4"
 mlutil = {path = "../shared/mlutil"}
 pandera = "^0.17.2"
+ploomber = "^0.23.0"
+paperswithcode = {path = "../forks/paperswithcode-client"}
+farm-haystack = "^1.22.1"
+astunparse = "^1.6.3"
+csrgraph = "^0.1.28"
+igraph = "^0.11.3"
+nodevectors = "^0.1.23"
+polars = "^0.19.15"
+pandas-parallel-apply = "^2.2"
+h5py = "^3.10.0"
+findkit = {path = "../findkit"}
+livelossplot = "^0.5.5"
+torch = "^2.1.1"
+bounter = "^1.2.0"
+mlutil-rust = {path = "../mlutil_rust"}
 
+[tool.poetry.group.dev.dependencies]
+torch-geometric = "^2.4.0"
+fastai = "^2.7.13"
+neptune = "^1.8.5"
 
 [build-system]
 requires = ["poetry-core"]

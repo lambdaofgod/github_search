@@ -23,7 +23,7 @@ def make_trivial_graph(
             vertex_encoder.extract_features(vertex_texts, show_progress_bar=False)
         ),
         edge_index=torch.LongTensor([[i, i] for i in range(len(vertex_texts))]).T,
-        names=vertex_texts,
+        vertex_names=vertex_texts,
     )
 
 

@@ -9,7 +9,6 @@ from github_search import python_tokens
 from sentence_transformers.models import tokenizer
 
 
-
 class PythonCodeTokenizer(tokenizer.WordTokenizer):
     """
     Import tokenizer to work with sentence_transformers models

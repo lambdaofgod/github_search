@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import os
 import yaml
+from returns.result import Success, Failure, Result
 
 
 def load_config_yaml_key(cls, config_path, key):
@@ -76,7 +77,7 @@ def get_multilabel_samplewise_topk_accuracy(labels: np.ndarray, scores: np.ndarr
     scores_indices = np.argsort(-scores, axis=1)
     labels_indices = np.argsort(-labels, axis=1)
     total_n_classes = (labels > 0).sum()
-    for (labels_row, scores_indices_row, labels_indices_row) in zip(
+    for labels_row, scores_indices_row, labels_indices_row in zip(
         labels, scores_indices, labels_indices
     ):
         n_classes = (labels_row > 0).sum()
@@ -105,7 +106,7 @@ def get_current_memory_usage():
     with open("/proc/self/status") as f:
         memusage = f.read().split("VmRSS:")[1].split("\n")[0][:-3]
 
-    return round(int(memusage.strip()) / 1024 ** 2, 2)
+    return round(int(memusage.strip()) / 1024**2, 2)
 
 
 def kwargs_only(cls):
@@ -151,3 +152,13 @@ def concatenate_cols(df, cols, target_col, sep=" "):
     for col in cols[1:]:
         df[target_col] = df[target_col] + sep + df[col]
     return df
+
+
+def return_result(f):
+    def wrapped(*args, **kwargs):
+        try:
+            return Success(f(*args, **kwargs))
+        except Exception as e:
+            return Failure(e)
+
+    return wrapped

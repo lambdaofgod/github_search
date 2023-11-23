@@ -1,11 +1,7 @@
-/data/*
-/output/*
 /notebooks/*
 *ipynb
 mlruns/*
 metrics/*
-output/*
-outputs/*
 .dvc/*
 .mypy_cache/*
 /github_search/.mypy_cache/*

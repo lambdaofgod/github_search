@@ -9,10 +9,8 @@ numpy
 Cython
 markdown2
 umap-learn
-altair
 stop-words
 docstring-parser
 rank-bm25
-recordlinkage
-paperswithcode-client
-pyarrow
+returns
+zenml
