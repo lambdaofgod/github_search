@@ -22,10 +22,8 @@ six = "^1.16.0"
 zenml = "^0.47.0"
 returns = "^0.22.0"
 pydantic-core = "^2.14.4"
-mlutil = {path = "../shared/mlutil"}
 pandera = "^0.17.2"
 ploomber = "^0.23.0"
-paperswithcode = {path = "../forks/paperswithcode-client"}
 farm-haystack = "^1.22.1"
 astunparse = "^1.6.3"
 csrgraph = "^0.1.28"
@@ -34,13 +32,15 @@ nodevectors = "^0.1.23"
 polars = "^0.19.15"
 pandas-parallel-apply = "^2.2"
 h5py = "^3.10.0"
-findkit = {path = "../findkit"}
 livelossplot = "^0.5.5"
 torch = "^2.1.1"
 bounter = "^1.2.0"
-mlutil-rust = {path = "../mlutil_rust"}
-tgutil = {path = "../tgutil", develop = true}
 bleurt = {git = "https://github.com/google-research/bleurt.git"}
+mlutil = {git = "https://github.com/lambdaofgod/mlutil.git"}
+mlutil-rust = {git = "https://github.com/lambdaofgod/mlutil_rust.git"}
+findkit = {git= "https://github.com/lambdaofgod/findkit.git"}
+tgutil = {git = "https://github.com/lambdaofgod/tgutil.git"}
+paperswithcode = {git = "https://github.com/lambdaofgod/paperswithcode-client.git"}
 
 [tool.poetry.group.dev.dependencies]
 torch-geometric = "^2.4.0"
