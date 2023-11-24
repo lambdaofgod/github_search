@@ -12,28 +12,14 @@ from tgutil.prompting_runner import DocumentExpander
 from tgutil.configs import load_config_from_dict, PromptConfig
 from github_search import utils
 from github_search.pipelines.metrics_comparison import *
+from github_search.pipelines.postprocessing import GenerationPostprocessor
 
 
-def _process_generated_records(generated_records):
-    prompt_info_dicts = generated_records["prompt_info"].apply(dict)
-    return pd.DataFrame(
-        dict(
-            repo=prompt_info_dicts.apply(itemgetter("name")),
-            tasks=generated_records["generated_text"],
-            true_tasks=prompt_info_dicts.apply(itemgetter("true_text")),
-            generated_text=generated_records["generated_text"].apply(itemgetter(0)),
-            prompt_info=prompt_info_dicts,
-            generation=generated_records["generation"],
-            input_text=generated_records["input_text"],
-        )
-    )
-
-
-@step(enable_cache=True)
+@step(enable_cache=False)
 def expand_documents_step(
     text_generation_config: dict, prompt_config: dict, prompt_infos: List[dict]
 ) -> Tuple[
-    Annotated[pd.DataFrame, "generated_texts_df"], Annotated[List[dict], "failures"]
+    Annotated[pd.DataFrame, "raw_generated_texts_df"], Annotated[List[dict], "failures"]
 ]:
     logging.info("expanding documents")
     logging.info(f"using text generation config: {text_generation_config}")
@@ -48,11 +34,20 @@ def expand_documents_step(
         len(raw_generated_texts_df)
         == len(parsed_prompt_infos) * text_generation_config.n_generations
     ), "generating failed"
-    generated_texts_df = _process_generated_records(raw_generated_texts_df)
-    return generated_texts_df, failures
+    raw_generated_texts_df = GenerationPostprocessor.convert_cols_to_dict(
+        raw_generated_texts_df, ["prompt_info", "context_prompt_infos"]
+    )
+    return raw_generated_texts_df, failures
 
 
-@step(enable_cache=True)
+@step(enable_cache=False)
+def postprocess_generated_texts(
+    raw_generated_texts_df: pd.DataFrame,
+) -> Annotated[pd.DataFrame, "generated_texts_df"]:
+    return GenerationPostprocessor.run(raw_generated_texts_df)
+
+
+@step(enable_cache=False)
 def sample_data_step(
     prompt_config: dict, sampling_config: dict
 ) -> Annotated[List[dict], "prompt_infos"]:
@@ -68,7 +63,7 @@ def sample_data_step(
 def evaluate_generated_texts(
     generated_texts_df: pd.DataFrame,
     evaluation_config: EvaluationConfig,
-    paperswithcode_path: str = "../../data/paperswithcode_with_tasks.csv",
+    paperswithcode_path: str,
 ) -> Annotated[pd.DataFrame, "generation_metrics_df"]:
     from github_search.utils import load_paperswithcode_df
     from tgutil.evaluation.evaluators import (
@@ -127,12 +122,11 @@ def prepare_search_df(
 
 @step(enable_cache=True)
 def get_ir_experiments_results(
-    search_df: pd.DataFrame, generation_eval_df: pd.DataFrame
+    search_df: pd.DataFrame,
+    generation_eval_df: pd.DataFrame,
+    column_config_path: str,
+    embedder_config_path: str,
 ) -> Annotated[List[MetricsExperimentResult], "ir_experiments_results"]:
-    conf_dict = dict(
-        embedder_config_path="conf/retrieval.yaml",
-        column_config_path="conf/column_configs.yaml",
-    )
-    config = MetricComparisonConfig.load(**conf_dict)
+    config = MetricComparisonConfig.load(embedder_config_path, column_config_path)
     run_results = get_run_metrics(config, search_df, generation_eval_df)
     return list(run_results)

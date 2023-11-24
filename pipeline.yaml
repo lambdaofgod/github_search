@@ -237,6 +237,18 @@ tasks:
   #
   #
 
+  # Records from Neo4J
+  - source: github_search.neo4j_graph.prepare_neo4j_dependency_records
+    upstream:
+      - prepare_repo_train_test_split
+    params:
+      graph_dependencies_path: "output/dependency_records/repo_dependencies_articlerank.json"
+      id_col: repo
+      rel_col: edge_type
+    product:
+      train: "output/dependency_records/graph_dependencies_train.json"
+      test: "output/dependency_records/graph_dependencies_test.json"
+
   # extract python function df
   # f has columns
   # ['repo_name', 'path', 'function_name', 'function_code']

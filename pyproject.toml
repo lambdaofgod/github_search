@@ -21,7 +21,6 @@ poethepoet = "^0.24.4"
 six = "^1.16.0"
 zenml = "^0.47.0"
 returns = "^0.22.0"
-tgutil = {path = "../tgutil"}
 pydantic-core = "^2.14.4"
 mlutil = {path = "../shared/mlutil"}
 pandera = "^0.17.2"
@@ -40,11 +39,15 @@ livelossplot = "^0.5.5"
 torch = "^2.1.1"
 bounter = "^1.2.0"
 mlutil-rust = {path = "../mlutil_rust"}
+tgutil = {path = "../tgutil", develop = true}
+bleurt = {git = "https://github.com/google-research/bleurt.git"}
 
 [tool.poetry.group.dev.dependencies]
 torch-geometric = "^2.4.0"
 fastai = "^2.7.13"
 neptune = "^1.8.5"
+black = "^23.11.0"
+ipdb = "^0.13.13"
 
 [build-system]
 requires = ["poetry-core"]
@@ -53,3 +56,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poe.tasks.generation_pipeline]
 script = "github_search.pipelines.pipeline:run_generation(sampling, generation_method, prompting_method)"
 args = ["sampling", "generation_method", "prompting_method"]
+
+
+[tool.poe.tasks.metrics_pipeline]
+script = "github_search.pipelines.pipeline:metrics_pipeline(ir_config_path='conf/pipeline/ir_config.yaml',embedder_config_path='conf/pipeline/retrieval.yaml',column_config_path='conf/pipeline/column_configs.yaml',search_df_path='output/nbow_data_test.parquet',paperswithcode_path='data/paperswithcode_with_tasks.csv')"

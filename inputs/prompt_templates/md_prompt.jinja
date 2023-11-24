@@ -1,0 +1,14 @@
+{% for repo_record in context_prompt_infos %}
+## repository
+{{repo_record["name"]}}
+## files
+{{repo_record["content"]}}
+## tags
+[{{repo_record["true_text"]}}]
+{% endfor %}
+## repository
+{{prompt_info["name"]}}
+## files
+{{prompt_info["content"]}}
+## 3 tags
+[

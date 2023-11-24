@@ -22,14 +22,51 @@ from typing import List, Dict, Optional, Tuple
 logging.basicConfig(level=logging.INFO)
 
 
+class EmbedderConfig(BaseModel):
+    doc_max_length: Optional[int]
+    document_embedder_path: str
+    query_embedder_path: str
+    query_max_length: Optional[int]
+
+
+class MetricComparisonConfig(BaseModel):
+    embedder_configs: Dict[str, EmbedderConfig]
+    column_configs: Dict[str, dict]
+    embedder_config_path: str
+    column_config_path: str
+
+    @classmethod
+    def load(cls, embedder_config_path, column_config_path):
+        with open(embedder_config_path) as f:
+            embedder_configs = {
+                k: EmbedderConfig(**conf) for k, conf in yaml.safe_load(f).items()
+            }
+        with open(column_config_path) as f:
+            column_configs = {k: conf for k, conf in yaml.safe_load(f).items()}
+
+        return MetricComparisonConfig(
+            embedder_configs=embedder_configs,
+            column_configs=column_configs,
+            embedder_config_path=embedder_config_path,
+            column_config_path=column_config_path,
+        )
+
+
 class RunConfig(BaseModel, frozen=True):
     column_config_type: str
     embedder_config_type: str
     ir_config: InformationRetrievalEvaluatorConfig
 
     @classmethod
-    def load(cls, column_config_type, embedder_config_type):
-        ir_config = load_ir_config(column_config_type, embedder_config_type)
+    def load(
+        cls,
+        comparison_config: MetricComparisonConfig,
+        column_config_type,
+        embedder_config_type,
+    ):
+        ir_config = load_ir_config(
+            comparison_config, column_config_type, embedder_config_type
+        )
         return RunConfig(
             column_config_type=column_config_type,
             embedder_config_type=embedder_config_type,
@@ -67,13 +104,15 @@ def make_search_df(input_search_df, evaluated_df):
     return search_df
 
 
-def load_ir_config(column_config_type, embedder_config_type):
+def load_ir_config(comparison_config, column_config_type, embedder_config_type):
     logging.info("Loading configs")
     embedder_config = load_config_yaml_key(
-        EmbedderPairConfig, "conf/retrieval.yaml", embedder_config_type
+        EmbedderPairConfig, comparison_config.embedder_config_path, embedder_config_type
     )
     column_config = load_config_yaml_key(
-        InformationRetrievalColumnConfig, "conf/column_configs.yaml", column_config_type
+        InformationRetrievalColumnConfig,
+        comparison_config.column_config_path,
+        column_config_type,
     )
     return InformationRetrievalEvaluatorConfig(
         embedder_config=embedder_config,
@@ -197,32 +236,6 @@ class MetricComparator:
             )
 
 
-class EmbedderConfig(BaseModel):
-    doc_max_length: Optional[int]
-    document_embedder_path: str
-    query_embedder_path: str
-    query_max_length: Optional[int]
-
-
-class MetricComparisonConfig(BaseModel):
-    embedder_configs: Dict[str, EmbedderConfig]
-    column_configs: Dict[str, dict]
-
-    @classmethod
-    def load(cls, embedder_config_path, column_config_path):
-        with open(embedder_config_path) as f:
-            embedder_configs = {
-                k: EmbedderConfig(**conf) for k, conf in yaml.safe_load(f).items()
-            }
-        with open(column_config_path) as f:
-            column_configs = {k: conf for k, conf in yaml.safe_load(f).items()}
-
-        return MetricComparisonConfig(
-            embedder_configs=embedder_configs,
-            column_configs=column_configs,
-        )
-
-
 DataFrameRecords = List[Dict[str, Any]]
 
 
@@ -282,14 +295,13 @@ def get_run_metrics(
     configs_grid = list(
         itertools.product(config.column_configs.keys(), config.embedder_configs.keys())
     )
-    generation_eval_df["true_tasks"] = generation_eval_df["true_tasks"].apply(
-        ast.literal_eval
-    )
+    generation_eval_df["true_tasks"] = generation_eval_df["true_tasks"].str.split(", ")
 
     metrics_dfs = MetricsDFs(search_df=search_df, generation_eval_df=generation_eval_df)
 
     for column_config_type, embedder_type in tqdm.tqdm(configs_grid):
         run_config = RunConfig.load(
+            config,
             column_config_type,
             embedder_type,
         )

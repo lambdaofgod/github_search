@@ -9,6 +9,7 @@ from github_search.pipelines.steps import (
     evaluate_information_retrieval,
     prepare_search_df,
     get_ir_experiments_results,
+    postprocess_generated_texts,
 )
 
 from github_search.ir import InformationRetrievalEvaluatorConfig
@@ -35,9 +36,10 @@ def generation_pipeline(
     prompt_infos = sample_data_step(
         dict(config.prompt_config), dict(config.sampling_config)
     )
-    generated_texts_df, failures = expand_documents_step(
+    raw_generated_texts_df, failures = expand_documents_step(
         dict(config.generation_config), dict(config.prompt_config), prompt_infos
     )
+    generated_texts_df = postprocess_generated_texts(raw_generated_texts_df)
 
 
 @step(enable_cache=True)
@@ -51,22 +53,29 @@ def load_generation_pipeline_df() -> Annotated[pd.DataFrame, "generated_texts_df
 
 
 @pipeline
-def metrics_pipeline():
+def metrics_pipeline(
+    ir_config_path="conf/pipeline/ir_config.yaml",
+    embedder_config_path="conf/pipeline/retrieval.yaml",
+    column_config_path="conf/pipeline/column_configs.yaml",
+    search_df_path="output/nbow_data_test.parquet",
+    paperswithcode_path="data/paperswithcode_with_tasks.csv",
+):
     generated_texts_df = load_generation_pipeline_df()
     generation_eval_df = evaluate_generated_texts(
         generated_texts_df,
         EvaluationConfig(reference_text_col="true_tasks"),
+        paperswithcode_path,
     )
 
     ir_config = load_config_yaml_key(
-        InformationRetrievalEvaluatorConfig, "conf/ir_config.yaml", "nbow"
+        InformationRetrievalEvaluatorConfig, ir_config_path, "nbow"
     )
-    search_data_config = SearchDataConfig(
-        search_df_path="../../output/nbow_data_test.parquet"
-    )
+    search_data_config = SearchDataConfig(search_df_path=search_df_path)
 
     search_df = prepare_search_df(search_data_config, generated_texts_df)
-    get_ir_experiments_results(search_df, generation_eval_df)
+    get_ir_experiments_results(
+        search_df, generation_eval_df, column_config_path, embedder_config_path
+    )
 
 
 def run_generation(
@@ -75,6 +84,7 @@ def run_generation(
     prompting_method="few_shot_markdown",
 ):
     generation_pipeline(sampling, generation_method, prompting_method)
+
 
 def run_metrics():
     metrics_pipeline()
