@@ -1,21 +1,26 @@
-import zenml
+from typing import Annotated
+
 import pandas as pd
-from typing import Tuple, Annotated
-from github_search.pipelines.configs import EvaluationConfig, SearchDataConfig
+import zenml
+from github_search.ir import InformationRetrievalEvaluatorConfig
+from github_search.pipelines.configs import (
+    EvaluationConfig,
+    PipelineConfig,
+    SearchDataConfig,
+)
 from github_search.pipelines.steps import (
     expand_documents_step,
-    sample_data_step,
-    evaluate_generated_texts,
-    evaluate_information_retrieval,
-    prepare_search_df,
-    get_ir_experiments_results,
     postprocess_generated_texts,
+    sample_data_step,
 )
-
-from github_search.ir import InformationRetrievalEvaluatorConfig
+from github_search.pipelines.metrics_steps import (
+    evaluate_generation,
+    evaluate_information_retrieval,
+    get_ir_experiments_results,
+    prepare_search_df,
+)
 from github_search.utils import load_config_yaml_key
 from zenml import pipeline, step
-from github_search.pipelines.configs import PipelineConfig
 
 
 @pipeline
@@ -42,13 +47,18 @@ def generation_pipeline(
     generated_texts_df = postprocess_generated_texts(raw_generated_texts_df)
 
 
-@step(enable_cache=True)
+@step(enable_cache=False)
 def load_generation_pipeline_df() -> Annotated[pd.DataFrame, "generated_texts_df"]:
     client = zenml.client.Client()
-    run = client.get_pipeline("generation_pipeline").runs[0]
-    generated_texts_df = (
-        run.steps["expand_documents_step"].outputs["generated_texts_df"].load()
-    )
+    # runs = client.get_pipeline("generation_pipeline").runs
+    # zenml_run = [r for r in runs if r.status == "completed"][0]
+    # generated_texts_df = (
+    #     zenml_run.steps["postprocess_generated_texts"]
+    #     .outputs["generated_texts_df"]
+    #     .load()
+    # )
+    artifact = client.get_artifact("d6f9f42e-a0b7-416e-a82f-fba6b627121a")
+    generated_texts_df = artifact.load()
     return generated_texts_df
 
 
@@ -58,13 +68,11 @@ def metrics_pipeline(
     embedder_config_path="conf/pipeline/retrieval.yaml",
     column_config_path="conf/pipeline/column_configs.yaml",
     search_df_path="output/nbow_data_test.parquet",
-    paperswithcode_path="data/paperswithcode_with_tasks.csv",
 ):
     generated_texts_df = load_generation_pipeline_df()
-    generation_eval_df = evaluate_generated_texts(
+    generation_eval_df = evaluate_generation(
         generated_texts_df,
         EvaluationConfig(reference_text_col="true_tasks"),
-        paperswithcode_path,
     )
 
     ir_config = load_config_yaml_key(
@@ -72,7 +80,7 @@ def metrics_pipeline(
     )
     search_data_config = SearchDataConfig(search_df_path=search_df_path)
 
-    search_df = prepare_search_df(search_data_config, generated_texts_df)
+    search_df = prepare_search_df(generated_texts_df, ir_config.column_config.dict())
     get_ir_experiments_results(
         search_df, generation_eval_df, column_config_path, embedder_config_path
     )

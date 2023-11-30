@@ -8,15 +8,15 @@ import re
 class GenerationPostprocessor:
     @classmethod
     def _clean_parens(cls, s):
-        s_without_enclosing_parens = re.sub(r"\]\s*\[", ", ", s)
-        s_without_enclosing_parens = re.sub(
-            r"\],\s*\[", ", ", s_without_enclosing_parens
+        s_without_enclosing_parens = re.sub(r"\]", ", ", s)
+        s_semi_cleaned = re.sub(r",\s*,", ", ", s_without_enclosing_parens).replace(
+            "\n", " "
         )
-        return re.sub(r",\s*,", ", ", s_without_enclosing_parens).replace("]", "")
+        return re.sub(",\W+", ", ", s_semi_cleaned)
 
     @classmethod
     def _sanitize_generated_text(cls, raw_generated_text, input_text):
-        raw_generated_text = raw_generated_text[0].replace(input_text, "")
+        raw_generated_text = raw_generated_text.replace(input_text, "")
         generated_text = raw_generated_text.split("##")[0].strip()
         return cls._clean_parens(generated_text)
 
@@ -28,14 +28,12 @@ class GenerationPostprocessor:
             generated_records["generated_text"],
             generated_records["input_text"],
         ):
-            d["true_text"] = d["true_text"][0]
-            d["generated_text"] = cls._sanitize_generated_text(
-                generated_text, input_text
-            )
+            d["generated_text"] = generated_text[0]
+            d["tasks"] = cls._sanitize_generated_text(generated_text[0], input_text)
         return pd.DataFrame(
             dict(
                 repo=prompt_info_dicts.apply(itemgetter("name")),
-                tasks=generated_records["generated_text"],
+                tasks=prompt_info_dicts.apply(itemgetter("tasks")),
                 true_tasks=prompt_info_dicts.apply(itemgetter("true_text")),
                 generated_text=prompt_info_dicts.apply(itemgetter("generated_text")),
                 prompt_info=prompt_info_dicts,

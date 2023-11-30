@@ -20,7 +20,7 @@ class EvaluationConfig(BaseModel):
         default_factory=lambda: [
             "edit_word",
             "jaccard_lst",
-            "bleurt",
+            "bertscore",
             "rouge",
             # "wmd",
             "sentence_transformer_similarity",

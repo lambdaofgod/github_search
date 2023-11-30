@@ -90,20 +90,6 @@ def process_generated_text(text):
     return replace_list_chars(text.strip().split("\n")[0])
 
 
-def make_search_df(input_search_df, evaluated_df):
-    max_len = 100
-    search_df = input_search_df[["repo", "dependencies"]].merge(evaluated_df, on="repo")
-    search_df = search_df.assign(
-        generated_tasks=search_df["generated_text"].apply(process_generated_text)
-    )
-    search_df = search_df.assign(
-        truncated_dependencies=search_df["dependencies"].apply(
-            lambda doc: " ".join(doc.split()[:max_len])
-        )
-    )
-    return search_df
-
-
 def load_ir_config(comparison_config, column_config_type, embedder_config_type):
     logging.info("Loading configs")
     embedder_config = load_config_yaml_key(
@@ -120,14 +106,13 @@ def load_ir_config(comparison_config, column_config_type, embedder_config_type):
     )
 
 
-def evaluate_information_retrieval(input_search_df, evaluated_df, ir_config):
-    search_df = make_search_df(input_search_df, evaluated_df)
+def evaluate_information_retrieval(search_df, ir_config):
     ir_evaluator = InformationRetrievalEvaluator.setup_from_df(search_df, ir_config)
     logging.info("Loaded evaluator, evaluating...")
     return ir_evaluator.evaluate()
 
 
-class MetricComparator:
+class ExperimentAggregator:
     @pa.check_input(
         pa.DataFrameSchema(
             {
@@ -141,7 +126,9 @@ class MetricComparator:
     def get_reported_metrics(
         self, per_query_ir_metrics: pd.DataFrame, evaluated_df: pd.DataFrame
     ):
-        evaluated_df = evaluated_df.rename(columns={"tasks": "task"}).explode("task")
+        evaluated_df = evaluated_df.rename(columns={"true_tasks": "task"}).explode(
+            "task"
+        )
         query_metrics_df = (
             per_query_ir_metrics.merge(evaluated_df, left_index=True, right_on="task")
             .groupby("task")
@@ -190,15 +177,11 @@ class MetricComparator:
                     title=title, series=title, value=value, iteration=iteration
                 )
 
-    def report_metrics(self, logger, ir_results, evaluated_df, iteration):
-        reported_metrics = self.get_reported_metrics(ir_results, evaluated_df)
-        self._report_iteration_metrics(logger, reported_metrics, iteration)
-
     def run(
         self, run_config: RunConfig, metrics_dfs
     ) -> Dict[int, Tuple[InformationRetrievalMetricsResult, pd.DataFrame]]:
         return dict(
-            self.run_evaluation(
+            self.evaluate_chunks(
                 metrics_dfs.generation_eval_df,
                 metrics_dfs.search_df,
                 run_config.ir_config,
@@ -216,7 +199,7 @@ class MetricComparator:
         ),
         "evaluated_df",
     )
-    def run_evaluation(
+    def evaluate_chunks(
         self, evaluated_df, input_search_df, ir_config
     ) -> Dict[int, Tuple[InformationRetrievalMetricsResult, pd.DataFrame]]:
         """
@@ -227,9 +210,7 @@ class MetricComparator:
             chunk_evaluated_df = evaluated_df[
                 evaluated_df["generation"] == generation_id
             ]
-            ir_result = evaluate_information_retrieval(
-                input_search_df, chunk_evaluated_df, ir_config
-            )
+            ir_result = evaluate_information_retrieval(input_search_df, ir_config)
             yield generation_id, (
                 ir_result,
                 chunk_evaluated_df,
@@ -305,7 +286,7 @@ def get_run_metrics(
             column_config_type,
             embedder_type,
         )
-        run_results = MetricComparator().run(run_config, metrics_dfs)
+        run_results = ExperimentAggregator().run(run_config, metrics_dfs)
 
         yield MetricsExperimentResult.create_from_results(
             ir_config=run_config.ir_config,

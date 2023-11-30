@@ -35,12 +35,12 @@ h5py = "^3.10.0"
 livelossplot = "^0.5.5"
 torch = "^2.1.1"
 bounter = "^1.2.0"
-bleurt = {git = "https://github.com/google-research/bleurt.git"}
-mlutil = {git = "https://github.com/lambdaofgod/mlutil.git"}
+mlutil = {git = "https://github.com/lambdaofgod/mlutil"}
 mlutil-rust = {git = "https://github.com/lambdaofgod/mlutil_rust.git"}
 findkit = {git= "https://github.com/lambdaofgod/findkit.git"}
-tgutil = {git = "https://github.com/lambdaofgod/tgutil.git"}
 paperswithcode = {git = "https://github.com/lambdaofgod/paperswithcode-client.git"}
+bert-score = "^0.3.13"
+seaborn = "^0.13.0"
 
 [tool.poetry.group.dev.dependencies]
 torch-geometric = "^2.4.0"
@@ -48,15 +48,19 @@ fastai = "^2.7.13"
 neptune = "^1.8.5"
 black = "^23.11.0"
 ipdb = "^0.13.13"
+ipykernel = "^6.27.1"
+tgutil = {path = "../tgutil"}
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poe.tasks.generation_pipeline]
+# example
+# poetry run poe generation_pipeline --sampling small --generation_method api_lmserver --prompting_method few_shot_markdown
 script = "github_search.pipelines.pipeline:run_generation(sampling, generation_method, prompting_method)"
 args = ["sampling", "generation_method", "prompting_method"]
 
 
 [tool.poe.tasks.metrics_pipeline]
-script = "github_search.pipelines.pipeline:metrics_pipeline(ir_config_path='conf/pipeline/ir_config.yaml',embedder_config_path='conf/pipeline/retrieval.yaml',column_config_path='conf/pipeline/column_configs.yaml',search_df_path='output/nbow_data_test.parquet',paperswithcode_path='data/paperswithcode_with_tasks.csv')"
+script = "github_search.pipelines.pipeline:metrics_pipeline(ir_config_path='conf/pipeline/ir_config.yaml',embedder_config_path='conf/pipeline/retrieval.yaml',column_config_path='conf/pipeline/column_configs.yaml',search_df_path='output/nbow_data_test.parquet')"

@@ -20,18 +20,24 @@ api_rwkv:
 api_lmserver:
   endpoint_url: "http://localhost:8765/generate"
   out_dir: "output"
-  n_generations: 3 
+  n_generations: 3
+  model_name: "starcoder-7b"
+  flavor: "lmserver"
+api_lmserver_dbg:
+  endpoint_url: "http://localhost:8765/generate"
+  out_dir: "output"
+  n_generations: 1
   model_name: "starcoder-3b"
   flavor: "lmserver"
 api_vllm:
   endpoint_url: "http://localhost:8000/generate"
   out_dir: "output"
   n_generations: 3
-  model_name: "starcoder-3b"
+  model_name: "starcoder-7b"
   flavor: "vllm"
 api_vllm_dbg:
   endpoint_url: "http://localhost:8000/generate"
   out_dir: "output"
   n_generations: 1
-  model_name: "starcoder-3b"
+  model_name: "starcoder-7b"
   flavor: "vllm"
