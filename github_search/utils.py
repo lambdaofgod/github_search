@@ -33,7 +33,10 @@ def iunzip(iterable, n=2):
 
 
 def load_paperswithcode_df(path, drop_na_cols=["tasks"], list_cols=["tasks", "titles"]):
-    df = pd.read_csv(path)
+    if path.endswith(".csv"):
+        df = pd.read_csv(path)
+    else:
+        df = pd.read_json(path)
     drop_na_cols = [col for col in drop_na_cols if col in df.columns]
     df = df.dropna(subset=drop_na_cols).copy()
     for col in list_cols:
