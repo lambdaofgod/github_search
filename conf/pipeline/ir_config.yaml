@@ -1,8 +1,8 @@
 nbow:
   column_config:
     document_cols:
-    - generated_text
     - dependencies
+    - tasks
     list_cols: []
     query_col: true_tasks
   embedder_config:

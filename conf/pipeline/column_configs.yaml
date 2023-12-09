@@ -1,18 +1,16 @@
 dependencies_with_generated_tasks:
   document_cols:
-  - generated_tasks
   - dependencies
+  - tasks
   list_cols: []
   query_col: true_tasks
 dependencies:
   document_cols:
-  - generated_tasks
   - dependencies
   list_cols: []
   query_col: true_tasks
 generated_tasks:
   document_cols:
-  - generated_tasks
-  - dependencies
+  - tasks
   list_cols: []
   query_col: true_tasks

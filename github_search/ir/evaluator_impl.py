@@ -325,8 +325,8 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
 
     def compute_per_query_metrics(self, query_id, result_list, query_relevant_docs):
         # Init score computation values
-        hit_at_k = {k: 0 for k in self.accuracy_at_k}
-        precisions_at_k = {k: [] for k in self.precision_recall_at_k}
+        accuracy_at_k = {k: 0 for k in self.accuracy_at_k}
+        hits_at_k = {k: [] for k in self.precision_recall_at_k}
         recall_at_k = {k: [] for k in self.precision_recall_at_k}
         MRR = {k: 0 for k in self.mrr_at_k}
         ndcg = {k: [] for k in self.ndcg_at_k}
@@ -341,16 +341,14 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
             )
             # for hit in top_hits[0:k_val]:
             #    if hit["corpus_id"] in query_relevant_docs:
-            #        hit_at_k[k_val] += 1
+            #        accuracy_at_k[k_val] += 1
             #        break
-            hit_at_k[k_val] = 1 * (
-                fast_count(retrieved_corpus_ids, np_relevant_docs) > 0
-            )
+            num_correct = fast_count(retrieved_corpus_ids, np_relevant_docs)
+            accuracy_at_k[k_val] = 1 * (num_correct > 0)
 
             # Precision and Recall@k
-            num_correct = fast_count(retrieved_corpus_ids, np_relevant_docs)
 
-            precisions_at_k[k_val] = num_correct / k_val
+            hits_at_k[k_val] = num_correct
             recall_at_k[k_val] = num_correct / len(query_relevant_docs)
 
         # MRR@k
@@ -375,14 +373,14 @@ class CustomInformationRetrievalEvaluatorImpl(SentenceEvaluator):
         metric_dict = {}
         for metric_name, metric_values_dict in zip(
             [
-                "hit",
-                "precisions",
+                "accuracy",
+                "hits",
                 "recall",
                 "MRR",
                 "ndcg",
                 "AveP",
             ],
-            (hit_at_k, precisions_at_k, recall_at_k, MRR, ndcg, AveP_at_k),
+            (accuracy_at_k, hits_at_k, recall_at_k, MRR, ndcg, AveP_at_k),
         ):
             for k, value in metric_values_dict.items():
                 metric_dict[f"{metric_name}@{k}"] = value

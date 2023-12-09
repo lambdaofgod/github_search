@@ -136,7 +136,7 @@ class ExperimentAggregator:
         )
         ir_metric_names = per_query_ir_metrics.columns
         generation_metric_names = evaluated_df.select_dtypes(include="number").columns
-        ir_vs_generation_metrics_df = query_metrics_df.corr(method="kendall").loc[
+        ir_vs_generation_metrics_df = query_metrics_df.corr(method="spearman").loc[
             ir_metric_names, generation_metric_names
         ]
         aggregate_metrics = per_query_ir_metrics.describe()

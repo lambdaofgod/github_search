@@ -18,11 +18,9 @@ class EvaluationConfig(BaseModel):
     reference_text_col: str = Field(default="true_text")
     metric_names: List[str] = Field(
         default_factory=lambda: [
-            "edit_word",
-            "jaccard_lst",
             "bertscore",
             "rouge",
-            # "wmd",
+            "wmd",
             "sentence_transformer_similarity",
         ]
     )

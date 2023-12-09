@@ -32,14 +32,20 @@ tasks:
       paperswithcode_path: "{{paperswithcode_path}}"
       task_counts_path: "output/task_counts.csv"
 
+  # READMEs
   # get github readmes
-  - source: github_search.papers_with_code.ploomber.prepare_paperswithcode_with_readmes_df
-    name: pwc_data.prepare_paperswithcode_with_readmes_df
+  - source: github_search.elixir_runner.download_readmes_pb
+    name: pwc_data.download_readmes
     upstream:
       - pwc_data.prepare_final_paperswithcode_df
-    params:
-      max_workers: 4
-    product: "output/papers_with_readmes.csv"
+    product: "output/paperswithcode_readmes.json"
+
+  - source: github_search.papers_with_code.ploomber.prepare_paperswithcode_with_readmes_pb
+    name: pwc_data.prepare_paperswithcode_with_readmes
+    upstream:
+      - pwc_data.prepare_final_paperswithcode_df
+      - pwc_data.download_readmes
+    product: "output/paperswithcode_with_readmes.json.gz"
 
   # train-test split for tasks
   # tasks are stratified by paperswithcode area
@@ -122,7 +128,7 @@ tasks:
   # run word2vec on natural language data
   - source: github_search.word2vec.train_abstract_readme_w2v
     upstream:
-      - pwc_data.prepare_paperswithcode_with_readmes_df
+      - pwc_data.prepare_paperswithcode_with_readmes
     params:
       embedding_dim: "{{word2vec.dimension}}"
       epochs: "{{word2vec.epochs}}"

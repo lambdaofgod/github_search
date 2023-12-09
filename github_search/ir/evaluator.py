@@ -21,6 +21,54 @@ def round_float_dict(d, rounding=3):
         return float(round(d, rounding))
 
 
+class SearchDataFrameExtractor:
+    """
+    convert dataframe to format that can be used in IR evaluator
+    """
+
+    @classmethod
+    def prepare_search_df(cls, df, column_config: InformationRetrievalColumnConfig):
+        search_df = utils.concatenate_flattened_list_cols(
+            df,
+            str_list_cols=column_config.list_cols,
+            concat_cols=column_config.document_cols,
+            target_col=InformationRetrievalEvaluator.doc_col,
+        )
+        query_col = column_config.query_col
+        example_query = search_df[query_col].iloc[0]
+        return search_df.assign(
+            **{
+                query_col: search_df[query_col].apply(
+                    cls._make_query_parser(example_query)
+                )
+            }
+        )
+
+    @classmethod
+    def _make_query_parser(cls, example_query):
+        query_type = type(example_query)
+        if query_type is str:
+            query_is_python_string_list = cls._is_query_python_string_list(
+                example_query
+            )
+            if query_is_python_string_list:
+                return lambda s: ast.literal_eval(s)
+            else:
+                return lambda s: s.split(", ")
+        elif query_type is np.ndarray:
+            return lambda q: q.tolist()
+        else:
+            return lambda q: q
+
+    @classmethod
+    def _is_query_python_string_list(cls, example_query):
+        try:
+            ast.literal_eval(example_query)
+            return True
+        except:
+            return False
+
+
 class InformationRetrievalEvaluator:
     """
     evaluate information retrieval metrics on unseen data
@@ -45,37 +93,15 @@ class InformationRetrievalEvaluator:
         each entry in `query_col` is assumed to be a list of queries for a document
         `document_col` will be used for retrieval
         """
-        self.df = self.prepare_search_df(df, column_config).reset_index(drop=True)
+        self.df = SearchDataFrameExtractor.prepare_search_df(
+            df, column_config
+        ).reset_index(drop=True)
         ir_evaluator = self._get_ir_evaluator_impl(
             self.df, query_col=column_config.query_col, doc_col=self.doc_col
         )
         self.query_col = column_config.query_col
         self.document_cols = column_config.document_cols
         self._ir_evaluator_impl = ir_evaluator
-
-    @classmethod
-    def prepare_search_df(cls, df, column_config: InformationRetrievalColumnConfig):
-        search_df = utils.concatenate_flattened_list_cols(
-            df,
-            str_list_cols=column_config.list_cols,
-            concat_cols=column_config.document_cols,
-            target_col=InformationRetrievalEvaluator.doc_col,
-        )
-        query_col = column_config.query_col
-        query_type = type(search_df[query_col].iloc[0])
-        if query_type is str:
-            return search_df.assign(
-                **{query_col: search_df[query_col].apply(ast.literal_eval)}
-            )
-        elif query_type is np.ndarray:
-            return search_df.assign(
-                **{query_col: search_df[query_col].apply(lambda a: a.tolist())}
-            )
-        else:
-            assert (
-                query_type is list
-            ), f"column {query_col} unsupported query type: {query_type}"
-            return search_df
 
     @staticmethod
     def setup_from_df(
