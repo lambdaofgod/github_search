@@ -23,7 +23,8 @@ def evaluate_generation(
         reference_text=generated_texts_df["true_tasks"],
         generated_text=generated_texts_df["tasks"],
     )
-    generation_metrics_df = run_evaluation(evaluation_config, generated_texts_df)
+    generation_metrics_df = run_evaluation(
+        evaluation_config, generated_texts_df)
     return generation_metrics_df
 
 
@@ -77,7 +78,8 @@ def evaluate_information_retrieval(
     Annotated[pd.DataFrame, "per_query_metrics"],
     Annotated[pd.DataFrame, "aggregate_metrics"],
 ]:
-    ir_evaluator = InformationRetrievalEvaluator.setup_from_df(search_df, ir_config)
+    ir_evaluator = InformationRetrievalEvaluator.setup_from_df(
+        search_df, ir_config)
     ir_metrics_df = ir_evaluator.evaluate()
     return (ir_metrics_df.per_query_metrics, ir_metrics_df.aggregate_metrics)
 
@@ -89,6 +91,7 @@ def get_ir_experiments_results(
     column_config_path: str,
     embedder_config_path: str,
 ) -> Annotated[List[MetricsExperimentResult], "ir_experiments_results"]:
-    config = MetricComparisonConfig.load(embedder_config_path, column_config_path)
+    config = MetricComparisonConfig.load(
+        embedder_config_path, column_config_path)
     run_results = get_run_metrics(config, search_df, generation_eval_df)
     return list(run_results)

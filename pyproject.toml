@@ -65,4 +65,4 @@ args = ["sampling", "generation_method", "prompting_method"]
 
 
 [tool.poe.tasks.metrics_pipeline]
-script = "github_search.pipelines.pipeline:metrics_pipeline(ir_config_path='conf/pipeline/ir_config.yaml',embedder_config_path='conf/pipeline/retrieval.yaml',column_config_path='conf/pipeline/column_configs.yaml',search_df_path='output/nbow_data_test.parquet')"
+script = "github_search.pipelines.pipeline:metrics_pipeline(paperswithcode_path='output/paperswithcode_with_readmes.json.gz', ir_config_path='conf/pipeline/ir_config.yaml',embedder_config_path='conf/pipeline/retrieval.yaml',column_config_path='conf/pipeline/column_configs.yaml')"

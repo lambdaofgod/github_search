@@ -1,5 +1,6 @@
 import subprocess
 import fire
+import logging
 
 
 def download_readmes(input_data_path, output_path):
@@ -10,8 +11,8 @@ def download_readmes(input_data_path, output_path):
 def download_readmes_pb(upstream, product):
     input_data_path = upstream["pwc_data.prepare_final_paperswithcode_df"]["paperswithcode_path"]
     output_path = str(product)
-    print(f"Downloading readmes from {input_data_path}")
-    print(f"to {output_path}")
+    logging.info(f"Downloading readmes from {input_data_path}")
+    logging.info(f"to {output_path}")
     download_readmes(input_data_path, output_path)
 
 

@@ -6,6 +6,7 @@ from github_search.papers_with_code.paperswithcode_tasks import (
     get_paperswithcode_dfs,
 )
 from github_search import github_readmes
+import logging
 
 
 def prepare_paperswithcode_df(paperswithcode_filename, papers_filename, product):
@@ -48,6 +49,7 @@ def prepare_paperswithcode_with_readmes_pb(upstream, product):
     readmes_path = str(upstream["pwc_data.download_readmes"])
     readme_df = prepare_paperswithcode_with_readmes(
         pwc_path, readmes_path)
+    logging.info("extracted {} readmes".format(len(readme_df)))
     return readme_df.to_json(product)
 
 

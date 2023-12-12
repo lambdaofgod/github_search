@@ -42,13 +42,14 @@ def generation_pipeline(
         dict(config.prompt_config), dict(config.sampling_config)
     )
     raw_generated_texts_df, failures = expand_documents_step(
-        dict(config.generation_config), dict(config.prompt_config), prompt_infos
+        dict(config.generation_config), dict(
+            config.prompt_config), prompt_infos
     )
     generated_texts_df = postprocess_generated_texts(raw_generated_texts_df)
 
 
 @step(enable_cache=False)
-def load_generation_pipeline_df() -> Annotated[pd.DataFrame, "generated_texts_df"]:
+def load_generation_pipeline_df(paperswithcode_path) -> Annotated[pd.DataFrame, "generated_texts_df"]:
     client = zenml.client.Client()
     # runs = client.get_pipeline("generation_pipeline").runs
     # zenml_run = [r for r in runs if r.status == "completed"][0]
@@ -57,19 +58,33 @@ def load_generation_pipeline_df() -> Annotated[pd.DataFrame, "generated_texts_df
     #     .outputs["generated_texts_df"]
     #     .load()
     # )
-    artifact = client.get_artifact("d6f9f42e-a0b7-416e-a82f-fba6b627121a")
+
+    artifact = client.get_artifact('36c1d840-5347-40ee-85a8-103a544aaed9')
     generated_texts_df = artifact.load()
-    return generated_texts_df
+    paperswithcode_df = load_filtered_paperswithcode_df(
+        paperswithcode_path, generated_texts_df.columns)
+
+    return generated_texts_df.merge(
+        paperswithcode_df, on="repo")
+
+
+def load_filtered_paperswithcode_df(paperswithcode_path, ignore_cols):
+    paperswithcode_df = pd.read_json(paperswithcode_path)
+    paperswithcode_df = paperswithcode_df[~paperswithcode_df["readme"].isna()]
+    selected_cols = [
+        col for col in paperswithcode_df.columns if col not in ignore_cols or col == "repo"
+    ]
+    return paperswithcode_df[selected_cols]
 
 
 @pipeline
 def metrics_pipeline(
+    paperswithcode_path,
     ir_config_path="conf/pipeline/ir_config.yaml",
     embedder_config_path="conf/pipeline/retrieval.yaml",
     column_config_path="conf/pipeline/column_configs.yaml",
-    search_df_path="output/nbow_data_test.parquet",
 ):
-    generated_texts_df = load_generation_pipeline_df()
+    generated_texts_df = load_generation_pipeline_df(paperswithcode_path)
     generation_eval_df = evaluate_generation(
         generated_texts_df,
         EvaluationConfig(reference_text_col="true_tasks"),
@@ -78,9 +93,11 @@ def metrics_pipeline(
     ir_config = load_config_yaml_key(
         InformationRetrievalEvaluatorConfig, ir_config_path, "nbow"
     )
-    search_data_config = SearchDataConfig(search_df_path=search_df_path)
 
-    search_df = prepare_search_df(generated_texts_df, ir_config.column_config.dict())
+    search_df = prepare_search_df(
+        generated_texts_df,
+        ir_config.column_config.dict()
+    )
     get_ir_experiments_results(
         search_df, generation_eval_df, column_config_path, embedder_config_path
     )
