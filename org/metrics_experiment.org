@@ -8,7 +8,7 @@ We sample 100 repositories, prepare 2 other repos and use LLaMa 13b model in few
 
 Example prompt:
 
-#+BEGIN_SRC python :session evaluation.org  :exports both
+#+BEGIN_SRC python :session metrics_experiment.org  :exports both
 repository: 3DVisionISR/3DRegNet
 files: ['data/readMat.py', 'main.py', 'test.py', 'data/data.py', 'registration/global_registration.py', 'registration/setupPly.py', 'registration/registration.py', 'config.py', 'ops.py', 'archs/arch.py']
 tags: ['frame']
@@ -23,7 +23,7 @@ tags:
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session evaluation.org  :exports results
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results
 ## load data
 from pathlib import Path as P
 import matplotlib.pyplot as plt
@@ -31,36 +31,76 @@ import seaborn as sns
 #+END_SRC
 
 #+RESULTS:
-
-#+BEGIN_SRC python :session evaluation.org  :exports results
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results
 import pandas as pd
+from zenml.client import Client
+
 pd.set_option("display.max_columns", 10)
 pd.set_option("display.max_colwidth", 30)
 
 #p = list(P("../data").rglob("*.jsonl"))[0]
 #evaluated_df = pd.read_json(p, orient="records", lines=True).set_index("repo", drop=True)
-evaluated_df = pd.read_csv("../data/sample_df.csv.gz")
+artifact = Client().get_artifact('8eb34559-0386-4f39-aa0a-8ef4ad1a0373')
+loaded_artifact = artifact.load()
+evaluated_df = artifact.load()
 #+END_SRC
 
 #+RESULTS:
-: None
+
+#+BEGIN_SRC python :session metrics_experiment.org  :exports both
+evaluated_df.columns
+#+END_SRC
+
+#+RESULTS:
+: Index(['repo', 'tasks_x', 'true_tasks', 'generated_text', 'prompt_info',
+:        'generation', 'input_text', 'paper_urls', 'paper_titles', 'titles',
+:        'arxiv_ids', 'authors', 'tasks_y', 'raw_generated_text',
+:        'raw_reference_text', 'reference_text', 'edit_word', 'jaccard_lst',
+:        'precision', 'recall', 'f1', 'hashcode', 'rouge1', 'rouge2', 'rougeL',
+:        'rougeLsum', 'sentence_transformer_similarity'],
+:       dtype='object')
+
+
+#+BEGIN_SRC python :session metrics_experiment.org  :exports both
+
+import matplotlib.pyplot as plt
+
+sns.
+evaluated_df
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+66     semantic information retri...
+68     data collection, SARS-CoV-...
+67       data extraction, security,
+201    semantic segmentation, unt...
+203    computer vision, spatial c...
+202    segmentation, losses, src_...
+197                            wsd,
+195               clfs, clustering,
+196    image retrieval, one-shot,...
+63     PointCloud, Denoising, Eye...
+Name: tasks_x, dtype: object
+#+end_example
+
 ** Metrics
 
 We explore
 
 - ROUGE
-- BLEURT
+- BertScore
 - Word Mover's Distance
 - sentence-transformers based similarity
 
 * Records with highest ROUGE
 
-#+BEGIN_SRC python :session evaluation.org  :exports results :results both
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results :results both
 import pprint
 import json
 
 import tabulate
-viewed_columns = ["reference_text", "predicted_text", "rougeL", "bleurt", "wmd", "sentence_transformer_similarity"]
+viewed_columns = ["reference_text", "predicted_text", "rougeL", "f1", "precision", "recall", "wmd", "sentence_transformer_similarity"]
 
 #tabulate.tabulate(evaluated_df[viewed_columns].head(5), headers=viewed_columns, maxcolwidths=20)
 #evaluated_df[viewed_columns].head(5).to_latex()
@@ -68,14 +108,39 @@ viewed_columns = ["reference_text", "predicted_text", "rougeL", "bleurt", "wmd",
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session evaluation.org  :exports both :results output
-print(evaluated_df["reference_text"].iloc[[1,10]].to_list())
-print(evaluated_df["predicted_text"].iloc[[1,10]].to_list())
+#+BEGIN_SRC python :session metrics_experiment.org  :exports both
+evaluated_df["reference_text"]
 #+END_SRC
 
 #+RESULTS:
+#+begin_example
+66     information retrieval tabl...
+68     information retrieval tabl...
+67     information retrieval tabl...
+201    instance segmentation auto...
+203    instance segmentation auto...
+                   ...
+4                 adversarial attack
+1      single image deraining rai...
+297    optical character recognition
+294                anomaly detection
+299    optical character recognition
+Name: reference_text, Length: 300, dtype: object
+#+end_example
 
-#+BEGIN_SRC latex :session evaluation.org  :exports results
+#+BEGIN_SRC python :session metrics_experiment.org  :exports both :results output
+print(evaluated_df["reference_text"].iloc[[1,10]])
+print(evaluated_df["predicted_text"].iloc[[1,10]])
+#+END_SRC
+
+#+RESULTS:
+: 68    information retrieval tabl...
+: 64    template matching instance...
+: Name: reference_text, dtype: object
+
+
+* Latex?
+#+BEGIN_SRC latex :session metrics_experiment.org  :exports results
 \begin{tabular}{lllrrrr}
 \toprule
 {} &                 reference\_text &                 predicted\_text &    rougeL &    bleurt &       wmd &  sentence\_transformer\_similarity \\
@@ -110,14 +175,14 @@ GeoZcx/A-deeply-supervised-... &  change detection for remot... &  attention mec
 
 ** Records with lowest ROUGE
 
-#+BEGIN_SRC python :session evaluation.org  :exports results :results both
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results :results both
 #evaluated_df[viewed_columns].tail(5).to_latex()
 pass
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC latex :session evaluation.org  :exports results
+#+BEGIN_SRC latex :session metrics_experiment.org  :exports results
 \begin{tabular}{lllrrrr}
 \toprule
 {} &                 reference\_text &                 predicted\_text &  rougeL &    bleurt &       wmd &  sentence\_transformer\_similarity \\
@@ -149,14 +214,14 @@ HLR/LatentAlignmentProcedural &  reading comprehension, que... &  latent alignme
 #+end_export
 
 ** Sample data summary
-#+BEGIN_SRC python :session evaluation.org  :exports results :results output
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results :results output
 #print(evaluated_df.drop(columns=["rouge1", "rouge2"]).describe().round(2).to_latex())
 pass
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC latex :session evaluation.org  :exports results
+#+BEGIN_SRC latex :session metrics_experiment.org  :exports results
 \begin{tabular}{lrrrrrr}
 \toprule
 {} &  bleurt &  rougeL &  rougeLsum &     wmd &  sbert\_similarity &  token\_length \\
@@ -187,7 +252,7 @@ min   &   -1.97 &    0.00 &       0.00 &    0.00 &                           0.0
 max   &    1.03 &    1.00 &       1.00 &    4.21 &                           1.00 &         66.00 \\
 #+end_export
 
-#+BEGIN_SRC python :session evaluation.org  :exports results
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results
 llama_path = "/home/kuba/models/llama-7b-hf"
 #+END_SRC
 
@@ -195,7 +260,7 @@ llama_path = "/home/kuba/models/llama-7b-hf"
 
 *** Token lengths
 
-#+BEGIN_SRC python :session evaluation.org  :exports results
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results
 from tgutil.evaluation_utils import ColumnEnricher
 
 evaluated_df = ColumnEnricher(df=evaluated_df).add_token_length("reference_text", llama_path).df
@@ -203,14 +268,14 @@ evaluated_df = ColumnEnricher(df=evaluated_df).add_token_length("reference_text"
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session evaluation.org  :exports results
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results
 evaluated_df["token_length"].describe()
 #+END_SRC
 
 #+RESULTS:
 
 ** True tasks length in tokens
-#+BEGIN_SRC python :session evaluation.org  :exports results :results file :var f="plots/length_histogram.png"
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results :results file :var f="plots/length_histogram.png"
 import matplotlib.pyplot as plt
 import seaborn as sns
 fig=plt.figure(figsize=(8,6))
@@ -224,7 +289,7 @@ f
 [[file:]]
 * Correlations between distances
 
-#+BEGIN_SRC python :session evaluation.org  :exports results :results file :var f="plots/metric_correlations.png"
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results :results file :var f="plots/metric_correlations.png"
 correlations = evaluated_df[["bleurt", "rougeL", "wmd", "sentence_transformer_similarity"]].corr(method="kendall")
 fig=plt.figure(figsize=(8,6))
 
@@ -245,7 +310,7 @@ Because of this and the different behavior with respect to text length we will e
 * Additional plots
 ** Length vs ROUGEL
 
-#+BEGIN_SRC python :session evaluation.org :exports results :results file :var f="plots/length_vs_rouge.png"
+#+BEGIN_SRC python :session metrics_experiment.org :exports results :results file :var f="plots/length_vs_rouge.png"
 import matplotlib.pyplot as plt
 import seaborn as sns
 fig=plt.figure(figsize=(7,7))
@@ -259,7 +324,7 @@ f
 [[file:]]
 * Length vs BLEURT
 
-#+BEGIN_SRC python :session evaluation.org  :exports results :results file :var f="plots/length_vs_bleurt.png"
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results :results file :var f="plots/length_vs_bleurt.png"
 import matplotlib.pyplot as plt
 fig=plt.figure(figsize=(7,7))
 
@@ -273,7 +338,7 @@ f
 ** Length vs Word Mover's Distance
 
 Texts are embedded using FastText
-#+BEGIN_SRC python :session evaluation.org  :exports results :results file :var f="plots/length_vs_wmdistance.png"
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results :results file :var f="plots/length_vs_wmdistance.png"
 import matplotlib.pyplot as plt
 fig=plt.figure(figsize=(7,7))
 
@@ -288,7 +353,7 @@ f
 ** Length vs sentence transformer similarity
 
 
-#+BEGIN_SRC python :session evaluation.org  :exports results :results file :var f="plots/length_vs_similarity.png"
+#+BEGIN_SRC python :session metrics_experiment.org  :exports results :results file :var f="plots/length_vs_similarity.png"
 import matplotlib.pyplot as plt
 fig=plt.figure(figsize=(7,7))
 
@@ -301,7 +366,7 @@ f
 [[file:]]
 
 
-#+BEGIN_SRC python :session evaluation.org  :exports both
+#+BEGIN_SRC python :session metrics_experiment.org  :exports both
 evaluated_df.info()
 #+END_SRC
 

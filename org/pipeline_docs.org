@@ -1,0 +1,326 @@
+#+title: Pipeline_docs
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+import pandas as pd
+from functools import partial
+import json
+#+END_SRC
+
+#+RESULTS:
+
+* Train-test split
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+repos_train_df = pd.read_csv("../output/repos_train.csv")
+repos_train_df.columns
+#+END_SRC
+
+#+RESULTS:
+: Index(['repo', 'paper_urls', 'paper_titles', 'titles', 'arxiv_ids', 'authors',
+:        'tasks'],
+:       dtype='object')
+
+
+
+* Dependency records
+
+** Older
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+prompt_input_df = pd.read_parquet("../output/nbow_data_test.parquet")
+prompt_input_df.columns
+#+END_SRC
+
+#+RESULTS:
+: Index(['repo', 'tasks', 'titles', 'Unnamed: 0', 'index', 'dependencies',
+:        'readme', 'path', 'function_name', 'function_signature', 'count'],
+:       dtype='object')
+
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+prompt_input_df[["repo", "tasks"]].iloc[:][:25]
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+                                                   repo                                              tasks
+2000                    ermongroup/generative_adversary                             ['adversarial attack']
+2001                              ermongroup/neuralsort                        ['stochastic optimization']
+2002              ernestgong/data2text-three-dimensions  ['table to text generation', 'time series', 't...
+2003                                    errec-sun/mnist                              ['data augmentation']
+2004                                  ervinK/mxnetpixel  ['scene text detection', 'text classification'...
+2005             escorciav/Mixture-of-Embedding-Experts                                ['video retrieval']
+2006                   escorciav/Text-to-Clip_Retrieval  ['weakly supervised action localization', 'act...
+2007                           esennesh/categorical_bpl                              ['program induction']
+2008                                       eth-sri/eran                             ['adversarial attack']
+2009                   eth-sri/transformation-smoothing                            ['adversarial defense']
+2010             ethz-asl/modular_semantic_segmentation                          ['semantic segmentation']
+2011                                    ethz-asl/segmap         ['data compression', 'autonomous driving']
+2012                                  ethz-asl/segmatch                             ['autonomous driving']
+2013                                       etjoa003/gpt  ['explainable artificial intelligence', 'seman...
+2014                                       eugene/spngp              ['gaussian processes', 'time series']
+2015                                   eunh/low_dose_CT                                      ['denoising']
+2016                      evanmiltenburg/LabelingPeople                                ['text generation']
+2017             ezhan94/calibratable-style-consistency                             ['imitation learning']
+2018                                  ezhan94/gen-MA-BC                             ['imitation learning']
+2019        ezhan94/multiagent-programmatic-supervision                             ['imitation learning']
+2020                                    fGAIL3456/fGAIL                             ['imitation learning']
+2021  fabianbalsiger/point-cloud-segmentation-miccai...                          ['semantic segmentation']
+2022                              fabon/chatbot-intents        ['text classification', 'intent detection']
+2023                            facebookresearch/CoDraw                             ['imitation learning']
+2024                               facebookresearch/DME                                ['word embeddings']
+#+end_example
+
+** Graph
+<2023-11-21 Tue>
+
+These records were extracted using Neo4J.
+
+For each repository 10 nodes were extracted per relation type from dependency graph sorting them by inverse articlerank.
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+dependencies_df = pd.read_json("../output/graphs/repo_dependencies_articlerank.json", orient="records", lines=True)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+
+selected_repos = [
+    "A-Jacobson/Depth_in_The_Wild",
+    "000Justin000/torchdiffeq",
+    "5gon12eder/msc-graphstudy",
+    "9ruddls3/CRNN_Pytorch",
+    "A-ZHANG1/PSENet"
+]
+
+selected_df = dependencies_df[dependencies_df["repo"].isin(selected_repos)]
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+selected_df[selected_df["repo"] == selected_df["repo"].iloc[0]]["nodes"].iloc[0]
+#+END_SRC
+
+#+RESULTS:
+| MultiCropEnsemble | IC15Loader | wait_for_pool | ps_aux_grep | eq_color | get_contour_region_in_rect | get_contour_min_area_box | get_contour_region_in_min_area_rect | get_contour_region_iou | fill_bbox |
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+selected_df[selected_df["repo"] == selected_df["repo"].iloc[0]]["nodes"].iloc[1]
+#+END_SRC
+
+#+RESULTS:
+| models/pvanet.py | models/pvanet_1.py | test_ic15.py | train_ic15.py | dataset/icdar2015_loader.py | dataset/icdar2015_test_loader.py | eval/ic15/file_util.py | pypse.py | test_ctw1500.py | train_ctw1500.py |
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+selected_df[selected_df["repo"] == selected_df["repo"].iloc[0]]["nodes"].iloc[2]
+#+END_SRC
+
+#+RESULTS:
+| pypse | binary_th | min_kernel_area | img_paths | get_new_root | N4 | IC15Loader | cpse | training_losses | val_accuracies |
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+selected_df.groupby("repo")["nodes"].apply(lambda df: df.sum())
+#+END_SRC
+
+#+RESULTS:
+: repo
+: 5gon12eder/msc-graphstudy    [dmnames, fmtint, find_tools, prep_deps, call_...
+: 9ruddls3/CRNN_Pytorch        [Preparing, ToRNN, BiDireRNN, CNN_block, CRNN_...
+: A-ZHANG1/PSENet              [MultiCropEnsemble, IC15Loader, wait_for_pool,...
+: Name: nodes, dtype: object
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+def rename_join_cols(cols, unrenamed_cols, suffix):
+    return unrenamed_cols + [col + "_" + suffix for col in cols if not col in unrenamed_cols]
+
+
+df = selected_df
+id_col = "repo"
+rel_col = "edge_type"
+
+def stack_relations(df, id_col, rel_col):
+    rel_types = df[rel_col].unique()
+    rel_type = rel_types[0]
+    out_df = df[df[rel_col] == rel_type]
+    out_df.columns = rename_join_cols(df.columns, [id_col, rel_col], rel_type)
+    for rel_type in rel_types[1:]:
+        merged_df = df[df[rel_col] == rel_type]
+        merged_df.columns = rename_join_cols(df.columns, [id_col, rel_col], rel_type)
+        out_df = out_df.merge(merged_df, on=id_col)
+    return out_df
+
+
+stacked_df = stack_relations(selected_df, id_col, rel_col)
+stacked_df = stacked_df[["repo"] + [col for col in stacked_df.columns if "nodes" in col]]
+
+def select_elems(row, cols, k=15, per_col=5):
+    elem_lists = [row[col][:per_col] for col in cols]
+    return sum(elem_lists, [])[:k]
+
+selection_cols = ['nodes_HAS_FILE', 'nodes_HAS_FUNCTION', 'nodes_CALLS_FUNCTION']
+
+
+stacked_df["graph_dependencies"] = stacked_df.apply(lambda row: select_elems(row, cols=selection_cols), axis=1)
+#+END_SRC
+
+#+RESULTS:
+
+
+* Comparison
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+comparison_df = prompt_input_df.merge(stacked_df, on="repo")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+prompt_input_df[prompt_input_df["repo"].isin(stacked_df["repo"])]["tasks"]
+#+END_SRC
+
+#+RESULTS:
+: 19            ['graph generation', 'data augmentation']
+: 21    ['optical character recognition', 'scene text ...
+: 23    ['optical character recognition', 'scene text ...
+: Name: tasks, dtype: object
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+for r in comparison_df[["repo", "tasks", "dependencies", "graph_dependencies"]].iloc[:50].itertuples():
+    print("#" * 50)
+    print(r.repo, r.tasks)
+    print(r.dependencies[:200])
+    print(r.graph_dependencies)
+#+END_SRC
+
+#+RESULTS:
+
+
+* Joined with train-test split
+[[/home/kuba/Projects/github_search/pipeline.yaml::92][pipeline.yaml::92 (in /home/kuba/Projects/github_search/pipeline.yaml)]]
+
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+dependencies_test_df = pd.read_json("../output/dependency_records/graph_dependencies_test.json", lines=True, orient="records")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+(dependencies_test_df["readme"].isna()).sum()
+#+END_SRC
+
+#+RESULTS:
+: 1928
+
+* Document expansion results
+<2023-11-23 Thu>
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+from zenml.client import Client
+
+
+artifact = Client().get_artifact('0c719bc2-cb21-4d26-8096-66d6a0cd1a1b')
+generation_metrics_df = artifact.load()
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+generation_metrics_df
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+                                   repo  ...                                           document
+0                      xgfelicia/SRVRPG  ...  rllab/cartpole/gpomdp-cartpole.py, rllab/cartp...
+1                      xgfelicia/SRVRPG  ...  rllab/cartpole/gpomdp-cartpole.py, rllab/cartp...
+2                      xgfelicia/SRVRPG  ...  rllab/cartpole/gpomdp-cartpole.py, rllab/cartp...
+3                hula-ai/mc_dropconnect  ...  classification/ops.py, classification/DataLoad...
+4                hula-ai/mc_dropconnect  ...  classification/ops.py, classification/DataLoad...
+...                                 ...  ...                                                ...
+102736                  L4TTiCe/SAR2SAR  ...  u_net.py, mask_generator.py, inpaint.py, metri...
+102737                  L4TTiCe/SAR2SAR  ...  u_net.py, mask_generator.py, inpaint.py, metri...
+102738  BryanPlummer/Two_branch_network  ...  eval_embedding_nn.py, retrieval_model.py, trai...
+102739  BryanPlummer/Two_branch_network  ...  eval_embedding_nn.py, retrieval_model.py, trai...
+102740  BryanPlummer/Two_branch_network  ...  eval_embedding_nn.py, retrieval_model.py, trai...
+
+[102741 rows x 15 columns]
+#+end_example
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+generation_metrics_df["generated_text"].iloc[0]
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+
+## repository
+ginkyenglee/Explaining_Decision_of_Time_Series_Data
+## files
+FCN.py, visualization.py, load_data.py, training.py, class_breakdown, CNN_MC_dropout, CNN_MC_dropout_input_turnoff, CNN_MC_dropout_last_conv_turnoff, plot_train_history, readucr, loadarff, yticks, xticks, load_dataset
+## tags
+[classification, general classification, action recognition, temporal action localization, image classification]
+
+## repository
+rickyHong/FPN-repl
+## files
+caffe-fpn/examples/finetune_flickr_style/assemble_data.py, caffe-fpn/examples/pycaffe/caffenet.py, caffe-fpn/examples/pycaffe/layers/pyloss.py, caffe-fpn/examples/web_demo/app.py, caffe-fpn/examples/web_demo/exifutil.py, vis_rois_detection, _clip_pad, get_field_indecies, As_roisLayer, As_rois_MergeRcnnLayer, vis_rois_detection, BBOX_VOTE_WEIGHT_EMPTY, BBOX_VOTE_N_WEIGHTED_SCORE, IMAGE_STRIDE, get_field_indecies
+## tags
+[pedestrian detection, object detection]
+
+## repository
+xgfelicia/SRVRPG
+## files
+rllab/cartpole/gpomdp-cartpole.py, rllab/cartpole/srvrpg-cartpole.py, rllab/cartpole/svrpg-cartpole.py, rllab/mountain-car/gpomdp-mc.py, rllab/mountain-car/srvrpg-mc.py, averageSubGradient, averageSubGradient, averageSubGradient, averageSubGradient, averageSubGradient, func_importance_weights, func_train, func_train, set_rng, set_random_seed
+## 3 tags
+[model-based, policy gradient, cartpole(one), svm-policy
+#+end_example
+
+*
+
+* Information retrieval evaluation
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+from zenml.client import Client
+import pandas as pd
+
+artifact = Client().get_artifact('7e667d1c-7a73-4993-8410-c573e80aad84')
+loaded_artifact = artifact.load()
+pd.DataFrame.from_records(loaded_artifact[0].per_query_metrics[2]).columns
+#+END_SRC
+
+* Text generation evaluatio
+#+RESULTS:
+: Index(['hit@1', 'hit@3', 'hit@5', 'hit@10', 'precisions@1', 'precisions@3',
+:        'precisions@5', 'precisions@10', 'recall@1', 'recall@3', 'recall@5',
+:        'recall@10', 'MRR@10', 'ndcg@10', 'AveP@50', 'query'],
+:       dtype='object')
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+from zenml.client import Client
+
+artifact = Client().get_artifact('8fcc105d-f7eb-45a8-8284-c509200b0d7d')
+loaded_artifact = artifact.load()
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+#+END_SRC
+
+#+RESULTS:
+
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+e1 = loaded_artifact[0]
+generation_metrics_df = pd.DataFrame(e1.generation_metrics[0])
+#+END_SRC
+
+#+RESULTS:
+
+
+* Evaluating with BEIR
+
+[[/home/kuba/Projects/github_search/org/bm25_ir.org::41][bm25_ir.org::41 (in /home/kuba/Projects/github_search/org/bm25_ir.org)]]

@@ -1,0 +1,7 @@
+{"text_cols": [
+    ["tasks"],
+	["tasks", "dependencies"],
+    ["dependencies"],
+    ["readme"],
+    ["tasks", "readme"]
+]}

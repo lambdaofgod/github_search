@@ -1,0 +1,63 @@
+#+title: Bm25_ir
+
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+import rank_bm25
+import pandas as pd
+import nltk
+import json
+
+repo_text_df = pd.read_json("../output/dependency_records/graph_dependencies_test.json", lines=True, orient="records")
+
+repo_text_df = repo_text_df[~repo_text_df["readme"].isna()]
+#+END_SRC
+
+#+RESULTS:
+
+
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+queries = repo_text_df["tasks"].explode().drop_duplicates()
+#+END_SRC
+
+#+RESULTS:
+
+
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+repo_text_df["tokenized_readme"] = repo_text_df["readme"].apply(nltk.tokenize.wordpunct_tokenize)
+
+
+#+END_SRC
+
+#+RESULTS:
+
+
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+bm25_retriever = rank_bm25.BM25Okapi(repo_text_df["tokenized_readme"])
+#+END_SRC
+
+#+RESULTS:
+
+
+* BEIR results
+
+[[/home/kuba/Projects/github_search/github_search/ir/evaluate_bm25.py::31][evaluate_bm25.py::31 (in /home/kuba/Projects/github_search/github_search/ir/evaluate_bm25.py)]]
+
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+metrics_df = pd.read_json("/tmp/ir_metrics.json")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pipeline_docs.org  :exports both
+metrics_df.sort_values("NDCG@1")
+#+END_SRC
+
+#+RESULTS:
+:     NDCG@1   NDCG@3  ...   P@1000           text_columns
+: 2  0.09173  0.07490  ...  0.00143         [dependencies]
+: 0  0.13171  0.11741  ...  0.01332                [tasks]
+: 1  0.15721  0.13490  ...  0.01353  [tasks, dependencies]
+: 4  0.57882  0.54449  ...  0.04030        [tasks, readme]
+: 3  0.58205  0.54744  ...  0.04052               [readme]
+:
+: [5 rows x 25 columns]

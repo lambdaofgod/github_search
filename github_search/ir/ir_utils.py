@@ -1,12 +1,12 @@
 import os
 
 import pandas as pd
-from haystack.nodes import retriever as haystack_retriever
 from sentence_transformers import InputExample, SentenceTransformer, evaluation, models
 from toolz import partial
 
 from github_search.ir import evaluator
 from github_search import utils
+
 
 def make_search_df(df, ir_config, doc_col):
     return utils.concatenate_flattened_list_cols(
@@ -24,13 +24,6 @@ def get_ir_metrics(path):
     return metrics_df[[col for col in metrics_df if "cos" in col]]
 
 
-def get_result_metadata(retriever: haystack_retriever.BaseRetriever, query, topk=100):
-    return [
-        {**doc.meta, "score": doc.score}
-        for doc in retriever.retrieve(query, top_k=topk)
-    ]
-
-
 def get_normalized_ngram_distance(reference, other):
     reference_tokens = reference.split()
     return 1 - len(set(reference_tokens).intersection(set(other.split()))) / len(
@@ -44,23 +37,6 @@ def get_tasks_at_ngram_overlap(tasks, reference_task, threshold=0.5):
         for task in tasks
         if get_normalized_ngram_distance(reference_task, task) <= threshold
     ]
-
-
-def get_aggregated_results_df(
-    retriever: haystack_retriever.BaseRetriever, query, topk, prefilter_topk=100
-):
-    query_results_df = pd.DataFrame(
-        get_result_metadata(retriever, query, topk=prefilter_topk)
-    )
-    if len(query_results_df) == 0:
-        return
-    else:
-        return (
-            query_results_df.groupby("repo")
-            .agg({"score": "mean", "tasks": "first"})
-            .sort_values("score")
-            .iloc[:topk]
-        )
 
 
 def get_accuracy(matched_tasks):
@@ -103,15 +79,39 @@ def evaluate_query_results_df(query, results_df, thresholds, topk=10):
     }
 
 
-def evaluate_query_results(
-    retriever: haystack_retriever.BaseRetriever, query, thresholds, topk=10
-):
-    df = get_aggregated_results_df(retriever, query, topk)
-    if df is None:
+class BEIRAdapter:
+    @classmethod
+    def get_corpus_df(cls, generation_metrics_df, id_col, text_cols):
+        df = generation_metrics_df.copy()
+        df = df.set_index(id_col)
+        df["text"] = ""
+        for col in text_cols:
+            df["text"] = df["text"] + " " + df[col]
+        return df
+
+    @classmethod
+    def get_corpus(cls, generation_metrics_df, id_col, text_cols):
+        corpus_df = cls.get_corpus_df(generation_metrics_df, id_col, text_cols)
+        rs = list(corpus_df.head().iterrows())
         return {
-            "accuracy": 0,
-            **{f"accuracy@overlap={threshold}": 0 for threshold in thresholds},
-            "precision": 0,
-            **{f"precision@overlap={threshold}": 0 for threshold in thresholds},
+            id: {"text": row["text"], "true_tasks": row["true_tasks"]}
+            for (id, row) in corpus_df.iterrows()
         }
-    return evaluate_query_results_df(query, df, thresholds)
+
+    @classmethod
+    def get_queries(cls, generation_metrics_df, query_col):
+        queries_list = (
+            generation_metrics_df[query_col].explode().drop_duplicates().tolist()
+        )
+        return {q: q for q in queries_list}
+
+    @classmethod
+    def _get_qrels_values(cls, doc_ids):
+        return {doc_id: 1 for doc_id in doc_ids.tolist()}
+
+    @classmethod
+    def get_qrels(cls, df, id_col, query_col):
+        query_gb = df[[id_col, query_col]].explode(query_col).groupby(query_col)
+        return {
+            name: cls._get_qrels_values(group[id_col]) for (name, group) in query_gb
+        }
