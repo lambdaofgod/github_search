@@ -1,0 +1,9 @@
+#+title: Merging_ir_evaluation
+
+* Merge custom per-repo metrics with bm25 script
+
+** BM25 script
+
+[[/home/kuba/Projects/github_search/github_search/ir/evaluate_bm25.py::29][evaluate_bm25.py::29 (in /home/kuba/Projects/github_search/github_search/ir/evaluate_bm25.py)]]
+
+** Move code from notebook to the evaluation script mentioned above

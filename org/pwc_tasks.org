@@ -1,0 +1,132 @@
+#+title: Pwc_tasks
+
+* Task cleanup
+
+The results of the step below are in gsheet
+https://docs.google.com/spreadsheets/d/1jCu5juUy_g7TNSvBrYIX0ZedKSwI1kgugFwafkA-I8o/edit#gid=1691095566
+
+They can be compared to label duplicate tasks
+
+** Selecting top similar tasks using embeddings
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+import pandas as pd
+from github_search.utils import load_paperswithcode_df
+import numpy as np
+import sentence_transformers
+from sklearn.metrics.pairwise import cosine_similarity
+
+paperswithcode_df = load_paperswithcode_df("../data/paperswithcode_with_tasks.csv")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+tasks = paperswithcode_df["tasks"].explode().drop_duplicates().reset_index(drop=True)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+tasks[tasks.str.contains("feature engineering")]
+#+END_SRC
+
+#+RESULTS:
+: 132              feature engineering
+: 686    automated feature engineering
+: Name: tasks, dtype: object
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+problematic_tasks = pd.read_csv("../output/results/colbert_code_0hits_tasks.csv")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+problematic_tasks.iloc[:25]
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+                                   query
+0                    text classification
+1                         style transfer
+2         natural language understanding
+3                              denoising
+4                 common sense reasoning
+5      multi tissue nucleus segmentation
+6     retinal oct disease classification
+7           temporal action localization
+8            linear probe classification
+9                    feature engineering
+10      pedestrian attribute recognition
+11                  pedestrian detection
+12  semi supervised image classification
+13                 pancreas segmentation
+14              skin cancer segmentation
+15      pedestrian trajectory prediction
+16                  nuclear segmentation
+17                 action classification
+18                   autonomous vehicles
+19               document classification
+20    multi agent reinforcement learning
+21                 panoptic segmentation
+22                     model compression
+23                        crowd counting
+24                          colorization
+#+end_example
+
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+tasks[tasks.str.contains("autonomous")]
+#+END_SRC
+
+#+RESULTS:
+: 11     autonomous navigation
+: 18       autonomous vehicles
+: 196       autonomous driving
+: Name: tasks, dtype: object
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both :async
+
+glove_embedder = sentence_transformers.SentenceTransformer('sentence-transformers/average_word_embeddings_glove.6B.300d')
+
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+task_embeddings = glove_embedder.encode(tasks.to_list())
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+k = 10
+task_cos_sim = cosine_similarity(task_embeddings, task_embeddings)
+np.fill_diagonal(task_cos_sim, 0)
+topk_closest_task_indices = (-task_cos_sim).argsort(axis=1)[:,k]
+
+top_similarity = task_cos_sim.max(axis=1)
+closest_tasks_df = pd.DataFrame([tasks[idxs].values for idxs in closest_task_indices], index=tasks).assign(top_similarity=top_similarity).sort_values("top_similarity", ascending=False)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session pwc_tasks.org  :exports both
+closest_tasks_df.to_csv("../output/task_denoising/closest_tasks.csv")
+#+END_SRC
+
+#+RESULTS:
+: None

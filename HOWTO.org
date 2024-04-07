@@ -1,0 +1,49 @@
+#+title: Howto
+
+* Preparing data
+
+ploomber
+
+
+* Librarian model (document expansion)
+
+Sampling:
+- micro (useful for debugging)
+- small
+- no_sampling
+
+Generation method:
+- best to use api_vllm
+
+Prompting method:
+- few_shot_markdown
+
+#+BEGIN_EXAMPLE
+poetry run poe generation_pipeline --sampling small --generation_method api_lmserver --prompting_method few_shot_markdown
+#+END_EXAMPLE
+
+* Generation evaluation
+
+
+#+BEGIN_EXAMPLE
+
+#+END_EXAMPLE
+
+
+* BEIR
+
+
+
+* Details
+
+** Ploomber et c
+
+*** READMEs
+Aside of Python ploomber also uses code from ghs_ex for downloading READMEs from github.
+
+**** Ploomber
+
+[[/home/kuba/Projects/github_search/pipeline.yaml::37][pipeline.yaml::37]]
+
+It runs download readmes, see
+[[/home/kuba/Projects/github_search/github_search/elixir_runner.py::7][elixir_runner.py::7 (in /github_search/elixir_runner.py)]]
