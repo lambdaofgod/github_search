@@ -75,11 +75,11 @@ class Code2Documentation(dspy.Module):
         return f"file {path}\n```\n{code}\n```"
 
     def _summarize_files(self, repo_name):
-        paths, code_file_contents = self.fetch_code(repo_name)
+        filenames, code_file_contents = self.fetch_code(repo_name)
         file_summarization_input = self._create_multi_file_input(
-            paths, code_file_contents
+            filenames, code_file_contents
         )
-        return self.summarize_files(
+        return filenames.to_list(), self.summarize_files(
             question=self.file_summary_question_template.format(repo_name),
             context=file_summarization_input,
         )
@@ -91,7 +91,8 @@ class Code2Documentation(dspy.Module):
         repo_summarizer_lm_kwargs={"num_ctx": 1024, "num_predict": 256},
     ):
         with override_lm_params(**file_summarizer_lm_kwargs):
-            summaries = self._summarize_files(repo_name)["answer"]
+            filenames, summary_result = self._summarize_files(repo_name)
+            summaries = summary_result["answer"]
 
         with override_lm_params(**repo_summarizer_lm_kwargs):
             repo_summary = self.summarize_repo(
@@ -99,7 +100,12 @@ class Code2Documentation(dspy.Module):
                 context=summaries,
             )
 
-        return dspy.Prediction(**repo_summary, context_history=summaries)
+        return dspy.Prediction(
+            **repo_summary,
+            context_history=summaries,
+            filenames=filenames,
+            n_files=len(filenames),
+        )
 
 
 def run_code2doc(
@@ -112,11 +118,11 @@ def run_code2doc(
         return selected_python_files["path"], selected_python_files[code_col]
 
     dspy.configure(lm=lm)
-    code2documentation = Code2Documentation(fetch_code_fn=fetch_code)
+    code2doc = Code2Documentation(fetch_code_fn=fetch_code)
     code2doc_answers = []
     if use_phoenix:
         enable_phoenix_tracing()
     for repo_name in tqdm.tqdm(python_files_df["repo_name"].unique()):
-        code2doc_answers.append(dict(code2documentation(repo_name)))
+        code2doc_answers.append(dict(code2doc(repo_name)))
 
     return pd.DataFrame.from_records(code2doc_answers)

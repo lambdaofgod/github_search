@@ -205,6 +205,9 @@ def generate_code2doc_readmes_pb(
     lm_base_url,
     files_per_repo,
 ):
+    logging.info(
+        f"Generating readmes with code2doc using {lm_model_name}, using maximum of {files_per_repo} files per repo"
+    )
     Code2DocSteps.generate_code2doc_readmes(
         str(upstream["code2doc.create_repo_sample"]["sampled_repos"]),
         str(upstream["code2doc.prepare_data"]["selected_python_code_path"]),
