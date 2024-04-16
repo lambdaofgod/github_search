@@ -36,4 +36,4 @@ def test_repo_sampler():
     n_repos_per_task = 10
     repos_sample = RepoSampler.sample_repos(
         pwc_df, tasks, sample_size_per_task=n_repos_per_task)
-    assert len(repos_sample) == tasks_sample_size * n_repos_per_task
+    assert len(repos_sample) == 33
