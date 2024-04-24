@@ -2,7 +2,10 @@ import ast
 import itertools
 from functools import wraps
 from operator import itemgetter
+import time
+from contextlib import contextmanager
 
+import scipy
 import numpy as np
 import pandas as pd
 import os
@@ -165,3 +168,27 @@ def return_result(f):
             return Failure(e)
 
     return wrapped
+
+
+# timing context manager
+#
+
+
+@contextmanager
+def timeit_cm(msg=None):
+    pre = time.monotonic()
+    try:
+        yield
+    finally:
+        if msg is not None:
+            print(msg)
+        print(f"it took {time.monotonic() - pre}s to run")
+
+
+def get_random_retrieval_baseline_rv(n_documents, n_task_documents, topk=10):
+    return scipy.stats.hypergeom(n_documents, n_task_documents, topk)
+
+
+def get_random_retrieval_baseline(n_documents, n_task_documents, topk=10):
+    rv = get_random_retrieval_baseline_rv(n_documents, n_task_documents, topk=topk)
+    return rv.cdf(topk) - rv.cdf(0)

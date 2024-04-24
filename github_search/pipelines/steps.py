@@ -16,7 +16,7 @@ try:
     from tgutil.prompting_runner import DocumentExpander
 except:
     logging.warning("tgutil not installed, using local imports")
-from github_search.samplers import TaskSampler, RepoSampler
+from github_search.samplers import TaskSizeRepoSampler
 import dspy
 from github_search.lms.code2documentation import run_code2doc
 
@@ -90,37 +90,25 @@ class Code2DocSteps:
         repos_df_path,
         selected_python_code_path,
         output_path,
-        sampled_tasks=100,
-        repos_per_task=20,
-        min_task_size=250,
-        max_task_size=2500,
-        min_repo_tasks=4,
+        n_repos_per_task=10,
+        min_task_size=5,
+        max_task_size=500,
+        max_random_baseline_score=0.5,
     ):
         logging.basicConfig(level=logging.INFO)
         repos_df = pd.read_json(repos_df_path, orient="records", lines=True)
         python_code_df = pd.read_feather(selected_python_code_path)
         python_code_df = python_code_df.dropna(subset=["selected_code"])
         repos_df = repos_df[repos_df["repo"].isin(python_code_df["repo_name"])]
-        if type(repos_df["tasks"].iloc[0]) is str:
-            repos_df["tasks"] = repos_df["tasks"].apply(ast.literal_eval)
-        repos_df = repos_df[repos_df["tasks"].apply(len) >= min_repo_tasks]
-        tasks_sample = TaskSampler.sample_tasks_from_lists(
-            repos_df["tasks"],
-            sample_size=sampled_tasks,
-            min_size=min_task_size,
-            max_size=max_task_size,
+        repos_df["tasks"] = repos_df["tasks"].apply(ast.literal_eval)
+        repo_sampler = TaskSizeRepoSampler(
+            min_task_count=min_task_size,
+            n_repos_per_task=n_repos_per_task,
+            max_repos_per_task=max_task_size,
         )
-        logging.info(f"Sampled {len(tasks_sample)} tasks.")
-        sampled_repos_df = RepoSampler.sample_repos(
-            repos_df,
-            tasks_sample,
-            sample_size_per_task=repos_per_task,
-            min_repo_tasks=min_repo_tasks,
-        ).copy()
-        sampled_repos_df["query_tasks"] = sampled_repos_df["tasks"].apply(
-            lambda ts: [t for t in ts if t in tasks_sample]
+        sampled_repos_df = repo_sampler.get_sampled_task_repos_df(
+            repos_df, max_baseline_score=max_random_baseline_score
         )
-        logging.info(f"Sampled {len(sampled_repos_df)} repos.")
         sampled_repos_df.to_json(output_path, orient="records", lines=True)
 
     @staticmethod
@@ -130,6 +118,7 @@ class Code2DocSteps:
         out_path,
         lm_model_name="codellama",
         lm_base_url="http://localhost:11430",
+        small_lm_base_url="http://localhost:11431",
         files_per_repo=10,
     ):
         python_code_df = pd.read_feather(python_code_df_path)
@@ -157,9 +146,19 @@ class Code2DocSteps:
             max_tokens=1024,
             top_k=100,
         )
+        small_ollama_lm = dspy.OllamaLocal(
+            model=lm_model_name,
+            base_url=small_lm_base_url,
+            num_ctx=1024,
+            max_tokens=256,
+            top_k=100,
+        )
 
         generated_readme_df = run_code2doc(
-            python_code_df, ollama_lm, files_per_repo, "selected_code"
+            python_code_df,
+            [small_ollama_lm, ollama_lm],
+            files_per_repo,
+            "selected_code",
         )
         generated_readme_df.to_json(out_path, orient="records", lines=True)
 
@@ -179,22 +178,19 @@ def code2doc_prepare_data_pb(repos_df_path, python_code_path, product):
 def create_repos_sample_pb(
     upstream,
     product,
-    sampled_tasks,
-    repos_per_task,
+    n_repos_per_task,
     min_task_size,
     max_task_size,
-    min_repo_tasks,
+    max_random_baseline_score,
 ):
-    print(upstream)
     Code2DocSteps.create_repos_sample(
         str(upstream["code2doc.prepare_data"]["repos_df_path"]),
         str(upstream["code2doc.prepare_data"]["selected_python_code_path"]),
         product["sampled_repos"],
-        sampled_tasks,
-        repos_per_task,
+        n_repos_per_task,
         min_task_size,
         max_task_size,
-        min_repo_tasks,
+        max_random_baseline_score,
     )
 
 
@@ -203,6 +199,7 @@ def generate_code2doc_readmes_pb(
     product,
     lm_model_name,
     lm_base_url,
+    small_lm_base_url,
     files_per_repo,
 ):
     logging.info(
@@ -214,5 +211,6 @@ def generate_code2doc_readmes_pb(
         str(product),
         lm_model_name,
         lm_base_url,
+        small_lm_base_url,
         files_per_repo=10,
     )

@@ -4,6 +4,7 @@ import dspy
 import re
 import tqdm
 from github_search.lms.utils import enable_phoenix_tracing
+import logging
 
 
 @contextmanager
@@ -84,21 +85,17 @@ class Code2Documentation(dspy.Module):
             context=file_summarization_input,
         )
 
-    def forward(
-        self,
-        repo_name,
-        file_summarizer_lm_kwargs={"num_predict": 1024},
-        repo_summarizer_lm_kwargs={"num_ctx": 1024, "num_predict": 256},
-    ):
-        with override_lm_params(**file_summarizer_lm_kwargs):
-            filenames, summary_result = self._summarize_files(repo_name)
-            summaries = summary_result["answer"]
+    def forward(self, repo_name, lms):
+        [small_lm, bigger_lm] = lms
+        dspy.configure(lm=small_lm)
+        filenames, summary_result = self._summarize_files(repo_name)
+        summaries = summary_result["answer"]
 
-        with override_lm_params(**repo_summarizer_lm_kwargs):
-            repo_summary = self.summarize_repo(
-                question=self.repo_summary_question_template.format(repo_name),
-                context=summaries,
-            )
+        dspy.configure(lm=bigger_lm)
+        repo_summary = self.summarize_repo(
+            question=self.repo_summary_question_template.format(repo_name),
+            context=summaries,
+        )
 
         return dspy.Prediction(
             **repo_summary,
@@ -109,7 +106,7 @@ class Code2Documentation(dspy.Module):
 
 
 def run_code2doc(
-    python_files_df, lm, files_per_repo, code_col="selected_code", use_phoenix=True
+    python_files_df, lms, files_per_repo, code_col="selected_code", use_phoenix=True
 ):
     def fetch_code(repo_name):
         selected_python_files = python_files_df[
@@ -117,12 +114,16 @@ def run_code2doc(
         ].iloc[:files_per_repo]
         return selected_python_files["path"], selected_python_files[code_col]
 
-    dspy.configure(lm=lm)
     code2doc = Code2Documentation(fetch_code_fn=fetch_code)
     code2doc_answers = []
     if use_phoenix:
         enable_phoenix_tracing()
     for repo_name in tqdm.tqdm(python_files_df["repo_name"].unique()):
-        code2doc_answers.append(dict(code2doc(repo_name)))
+        try:
+            code2doc_answers.append(dict(code2doc(repo_name, lms=lms)))
+        except KeyboardInterrupt:
+            raise KeyboardInterrupt
+        except Exception as e:
+            logging.error(f"Error processing {repo_name}: {e}")
 
     return pd.DataFrame.from_records(code2doc_answers)

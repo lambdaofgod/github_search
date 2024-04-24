@@ -78,13 +78,12 @@ tasks:
     upstream:
       - code2doc.prepare_data
     params:
-      sampled_tasks: 200
-      repos_per_task: 20
-      min_task_size: 10
-      max_task_size: 2500
-      min_repo_tasks: 4
+      min_task_size: 5
+      n_repos_per_task: 10
+      max_task_size: 500
+      max_random_baseline_score: 0.5
     product:
-      sampled_repos: "output/code2doc/sample_2k/sampled_repos.jsonl"
+      sampled_repos: "output/code2doc/sample_per_task_5_repos/sampled_repos5.jsonl"
 
   # to run this step serve ollama on the appropriate port
   - source: github_search.pipelines.steps.generate_code2doc_readmes_pb
@@ -95,9 +94,10 @@ tasks:
     params:
       lm_model_name: "codellama"
       lm_base_url: "http://localhost:11430"
+      small_lm_base_url: "http://localhost:11431"
       files_per_repo: 10
     product:
-      "output/code2doc/sample2k/generated_readmes.jsonl"
+      "output/code2doc/sample_per_task_5_repos/codellama_generated_readmes5.jsonl"
   # the stack
   - source: github_search.the_stack.prepare_the_stack_files
     name:
