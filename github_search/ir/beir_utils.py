@@ -61,7 +61,8 @@ class PerQueryMetrics:
             for k in k_values:
                 hits[f"Hits@{k}"] = 0.0
             query_relevant_docs = set(
-                [doc_id for doc_id in qrels[query_id] if qrels[query_id][doc_id] > 0]
+                [doc_id for doc_id in qrels[query_id]
+                    if qrels[query_id][doc_id] > 0]
             )
             for k in k_values:
                 for relevant_doc_id in query_relevant_docs:
@@ -94,12 +95,16 @@ class PerQueryIREvaluator(BaseModel):
         recall_string = "recall." + ",".join([str(k) for k in self.k_values])
         precision_string = "P." + ",".join([str(k) for k in self.k_values])
         evaluator = pytrec_eval.RelevanceEvaluator(
-            ir_data.qrels, {map_string, ndcg_string, recall_string, precision_string}
+            ir_data.qrels, {map_string, ndcg_string,
+                            recall_string, precision_string}
         )
         scores = evaluator.evaluate(results)
-        return PerQueryMetrics.get_per_query_metrics_df(
+        scores_df = PerQueryMetrics.get_per_query_metrics_df(
             ir_data.qrels, results, self.k_values
         )
+        queries_df = pd.DataFrame(
+            {"query": ir_data.queries.values()}, index=ir_data.queries.keys())
+        return scores_df.merge(queries_df, left_index=True, right_index=True, how="outer")
 
     def get_results(self, retriever: Union[Retriever, List[Retriever]], ir_data):
         if type(retriever) is list:
@@ -160,7 +165,8 @@ class MultiTextEvaluator(BaseModel):
 
     def get_ir_datas(self, df):
         for iter in df[self.iteration_col].unique():
-            ir_data = load_ir_data(df[df[self.iteration_col] == iter], self.text_cols)
+            ir_data = load_ir_data(
+                df[df[self.iteration_col] == iter], self.text_cols)
             yield (iter, ir_data)
 
     def evaluate(self, df, retriever):

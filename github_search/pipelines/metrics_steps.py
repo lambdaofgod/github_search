@@ -14,7 +14,7 @@ from tgutil.evaluation.preprocessing import EvalDFPreprocessor
 from zenml import step
 
 
-@step(enable_cache=False)
+@step(enable_cache=True)
 def evaluate_generation(
     generated_texts_df: pd.DataFrame,
     evaluation_config: EvaluationConfig,

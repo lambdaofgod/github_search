@@ -52,7 +52,8 @@ def evaluate_query_results_df(query, results_df, thresholds, topk=10):
     evaluates query results at thresholds
     """
     matched_tasks = results_df["tasks"].apply(
-        partial(get_tasks_at_ngram_overlap, reference_task=query, threshold=0.0)
+        partial(get_tasks_at_ngram_overlap,
+                reference_task=query, threshold=0.0)
     )
     partially_matched_tasks = {
         threshold: results_df["tasks"].apply(
@@ -81,17 +82,20 @@ def evaluate_query_results_df(query, results_df, thresholds, topk=10):
 
 class BEIRAdapter:
     @classmethod
-    def get_corpus_df(cls, generation_metrics_df, id_col, text_cols):
+    def get_corpus_df(cls, generation_metrics_df, id_col, text_cols, max_words):
         df = generation_metrics_df.copy()
         df = df.set_index(id_col)
         df["text"] = ""
         for col in text_cols:
+            df[col] = df[col].str.split().apply(
+                lambda x: x[:max_words]).str.join(" ")
             df["text"] = df["text"] + " " + df[col]
         return df
 
     @classmethod
-    def get_corpus(cls, generation_metrics_df, id_col, text_cols):
-        corpus_df = cls.get_corpus_df(generation_metrics_df, id_col, text_cols)
+    def get_corpus(cls, generation_metrics_df, id_col, text_cols, max_words):
+        corpus_df = cls.get_corpus_df(
+            generation_metrics_df, id_col, text_cols, max_words)
         rs = list(corpus_df.head().iterrows())
         return {
             id: {"text": row["text"], "true_tasks": row["true_tasks"]}
@@ -101,7 +105,8 @@ class BEIRAdapter:
     @classmethod
     def get_queries(cls, generation_metrics_df, query_col):
         queries_list = (
-            generation_metrics_df[query_col].explode().drop_duplicates().tolist()
+            generation_metrics_df[query_col].explode(
+            ).drop_duplicates().tolist()
         )
         return {q: q for q in queries_list}
 
@@ -111,7 +116,8 @@ class BEIRAdapter:
 
     @classmethod
     def get_qrels(cls, df, id_col, query_col):
-        query_gb = df[[id_col, query_col]].explode(query_col).groupby(query_col)
+        query_gb = df[[id_col, query_col]].explode(
+            query_col).groupby(query_col)
         return {
             name: cls._get_qrels_values(group[id_col]) for (name, group) in query_gb
         }
