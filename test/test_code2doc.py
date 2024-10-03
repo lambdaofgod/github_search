@@ -12,17 +12,17 @@ def mock_dspy_settings():
         yield mock_settings
 
 
-def test_code2doc_basic(mock_dspy_settings):
-    # Mock RepoFileSummaryProvider
-    class MockRepoFileSummaryProvider(RepoFileSummaryProvider):
-        def get_filenames(self, repo_name):
-            return ["f1.py"]
+from github_search.lms.repo_file_summary_provider import RepoMapProvider
 
-        def extract_summary(self, repo_name):
-            return "file f1.py\n```\nimport os\n```"
+def test_code2doc_basic(mock_dspy_settings):
+    # Mock RepoMapProvider
+    repo_maps = {
+        "test_repo": "f1.py\nf2.txt\nf3.py\n",
+    }
+    repo_map_provider = RepoMapProvider(repo_maps=repo_maps)
 
     # Initialize Code2Documentation
-    code2doc = Code2Documentation(repo_file_summary_provider=MockRepoFileSummaryProvider())
+    code2doc = Code2Documentation(repo_file_summary_provider=repo_map_provider)
 
     # Mock dspy.Predict and dspy.ChainOfThought
     code2doc.summarize_files = lambda **kwargs: {

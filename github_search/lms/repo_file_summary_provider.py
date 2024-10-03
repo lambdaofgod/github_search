@@ -37,11 +37,14 @@ class DataFrameRepoFileSummaryProvider(RepoFileSummaryProvider):
         )
 
 
+import re
+
 class RepoMapProvider(RepoFileSummaryProvider, BaseModel):
     repo_maps: Dict[str, str]
 
     def get_filenames(self, repo_name):
-        return self.repo_maps[repo_name]
+        content = self.repo_maps[repo_name]
+        return [line.strip() for line in content.split('\n') if re.match(r'.*\.py$', line.strip())]
 
     def extract_summary(self, repo_name):
         return self.repo_maps[repo_name]
