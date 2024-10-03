@@ -13,12 +13,16 @@ def mock_dspy_settings():
 
 
 def test_code2doc_basic(mock_dspy_settings):
-    # Mock fetch_code function
-    def fetch_code_fn(repo_name):
-        return (["f1.py"], ["import os"])
+    # Mock RepoFileSummaryProvider
+    class MockRepoFileSummaryProvider(RepoFileSummaryProvider):
+        def get_filenames(self, repo_name):
+            return ["f1.py"]
+
+        def extract_summary(self, repo_name):
+            return "file f1.py\n```\nimport os\n```"
 
     # Initialize Code2Documentation
-    code2doc = Code2Documentation(fetch_code_fn=fetch_code_fn)
+    code2doc = Code2Documentation(repo_file_summary_provider=MockRepoFileSummaryProvider())
 
     # Mock dspy.Predict and dspy.ChainOfThought
     code2doc.summarize_files = lambda **kwargs: {

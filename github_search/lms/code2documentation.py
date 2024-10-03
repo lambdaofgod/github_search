@@ -60,13 +60,13 @@ class RepoFileSummaryProvider(abc.ABC):
 class Code2Documentation(dspy.Module):
     def __init__(
         self,
-        fetch_code_fn,
+        repo_file_summary_provider: RepoFileSummaryProvider,
         repo_summary_question_template=Prompts.repo_summary_question_template,
         file_summary_question_template=Prompts.file_summary_question_template,
         verbose=True,
     ):
         super().__init__()
-        self.fetch_code = fetch_code_fn
+        self.repo_file_summary_provider = repo_file_summary_provider
         self.summarize_files = dspy.Predict(MultiFileSummary)
         self.summarize_repo = dspy.ChainOfThought(RepoSummary)
         self.file_summary_question_template = file_summary_question_template
@@ -84,15 +84,13 @@ class Code2Documentation(dspy.Module):
         return f"file {path}\n```\n{code}\n```"
 
     def _summarize_files(self, repo_name):
-        filenames, code_file_contents = self.fetch_code(repo_name)
-        file_summarization_input = self._create_multi_file_input(
-            filenames, code_file_contents
-        )
-        if type(filenames) is pd.Series:
+        filenames = self.repo_file_summary_provider.get_filenames(repo_name)
+        summary = self.repo_file_summary_provider.extract_summary(repo_name)
+        if isinstance(filenames, pd.Series):
             filenames = filenames.tolist()
         return filenames, self.summarize_files(
             question=self.file_summary_question_template.format(repo_name),
-            context=file_summarization_input,
+            context=summary,
         )
 
     def forward(
@@ -148,13 +146,24 @@ class Code2Documentation(dspy.Module):
 def run_code2doc(
     python_files_df, files_per_repo, code_col="selected_code", use_phoenix=True
 ):
-    def fetch_code(repo_name):
-        selected_python_files = python_files_df[
-            python_files_df["repo_name"] == repo_name
-        ].iloc[:files_per_repo]
-        return selected_python_files["path"], selected_python_files[code_col]
+    class DataFrameRepoFileSummaryProvider(RepoFileSummaryProvider):
+        def __init__(self, df, files_per_repo, code_col):
+            self.df = df
+            self.files_per_repo = files_per_repo
+            self.code_col = code_col
 
-    code2doc = Code2Documentation(fetch_code_fn=fetch_code)
+        def get_filenames(self, repo_name):
+            return self.df[self.df["repo_name"] == repo_name].iloc[:self.files_per_repo]["path"]
+
+        def extract_summary(self, repo_name):
+            selected_python_files = self.df[self.df["repo_name"] == repo_name].iloc[:self.files_per_repo]
+            return "\n\n".join([
+                f"file {path}\n```\n{code}\n```"
+                for path, code in zip(selected_python_files["path"], selected_python_files[self.code_col])
+            ])
+
+    repo_file_summary_provider = DataFrameRepoFileSummaryProvider(python_files_df, files_per_repo, code_col)
+    code2doc = Code2Documentation(repo_file_summary_provider=repo_file_summary_provider)
     code2doc_answers = []
     if use_phoenix:
         enable_phoenix_tracing()
