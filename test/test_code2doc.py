@@ -1,8 +1,16 @@
 import pytest
 from github_search.lms.code2documentation import Code2Documentation, Prompts
 import dspy
+from unittest.mock import patch, MagicMock
 
-def test_code2doc_basic():
+@pytest.fixture
+def mock_dspy_settings():
+    with patch('dspy.settings') as mock_settings:
+        mock_settings.lm = MagicMock()
+        mock_settings.lm.kwargs = {}
+        yield mock_settings
+
+def test_code2doc_basic(mock_dspy_settings):
     # Mock fetch_code function
     def fetch_code_fn(repo_name):
         return (["f1.py"], ["import os"])
@@ -36,3 +44,7 @@ def test_code2doc_basic():
 
     assert custom_code2doc.file_summary_question_template == custom_file_template
     assert custom_code2doc.repo_summary_question_template == custom_repo_template
+
+    # Test that kwargs are set correctly
+    result = code2doc("test_repo", file_summary_kwargs={"num_predict": 1024}, repo_summary_kwargs={"num_predict": 256})
+    assert mock_dspy_settings.lm.kwargs["num_predict"] == 256  # The last set value
