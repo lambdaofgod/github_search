@@ -1,5 +1,5 @@
 import pytest
-from github_search.lms.code2documentation import Code2Documentation, Prompts
+from github_search.lms.code2documentation import Code2Documentation, Prompts, RepoFileSummaryProvider
 import dspy
 from unittest.mock import patch, MagicMock
 
