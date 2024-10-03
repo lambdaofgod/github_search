@@ -21,8 +21,8 @@ def override_lm_params(**kwargs):
 
 
 class MultiFileSummary(dspy.Signature):
-    context = dspy.InputField(desc="Python code")
     question = dspy.InputField()
+    context = dspy.InputField(desc="Python code")
     answer = dspy.OutputField(desc="Summary of the code given guiding question")
 
 
@@ -47,6 +47,14 @@ class Prompts:
     - what kind of data does it use?
     Base your answer only on the information from context.
     """.strip()
+
+
+class RepoFileSummaryProvider(abc.ABC):
+    def extract_summary(self, repo_name) -> str:
+        pass
+
+    def get_filenames(self, repo_name) -> List[str]:
+        pass
 
 
 class Code2Documentation(dspy.Module):
@@ -80,12 +88,43 @@ class Code2Documentation(dspy.Module):
         file_summarization_input = self._create_multi_file_input(
             filenames, code_file_contents
         )
-        return filenames.to_list(), self.summarize_files(
+        if type(filenames) is pd.Series:
+            filenames = filenames.tolist()
+        return filenames, self.summarize_files(
             question=self.file_summary_question_template.format(repo_name),
             context=file_summarization_input,
         )
 
-    def forward(self, repo_name, lms):
+    def forward(
+        self,
+        repo_name,
+        file_summary_kwargs={"num_predict": 1024},
+        repo_summary_kwargs={"num_predict": 256},
+        lms=None,
+    ):
+        if lms is not None:
+            return self.forward_multilm(repo_name, lms)
+        else:
+            for key in file_summary_kwargs.keys():
+                dspy.settings.lm.kwargs[key] = file_summary_kwargs[key]
+            filenames, summary_result = self._summarize_files(repo_name)
+            summaries = summary_result["answer"]
+            for key in repo_summary_kwargs.keys():
+                dspy.settings.lm.kwargs[key] = repo_summary_kwargs[key]
+            repo_summary = self.summarize_repo(
+                question=self.repo_summary_question_template.format(repo_name),
+                context=summaries,
+            )
+
+            return dspy.Prediction(
+                **repo_summary,
+                repo_name=repo_name,
+                context_history=summaries,
+                filenames=filenames,
+                n_files=len(filenames),
+            )
+
+    def forward_multilm(self, repo_name, lms):
         [small_lm, bigger_lm] = lms
         dspy.configure(lm=small_lm)
         filenames, summary_result = self._summarize_files(repo_name)
@@ -99,6 +138,7 @@ class Code2Documentation(dspy.Module):
 
         return dspy.Prediction(
             **repo_summary,
+            repo_name=repo_name,
             context_history=summaries,
             filenames=filenames,
             n_files=len(filenames),
@@ -106,7 +146,7 @@ class Code2Documentation(dspy.Module):
 
 
 def run_code2doc(
-    python_files_df, lms, files_per_repo, code_col="selected_code", use_phoenix=True
+    python_files_df, files_per_repo, code_col="selected_code", use_phoenix=True
 ):
     def fetch_code(repo_name):
         selected_python_files = python_files_df[
@@ -120,7 +160,7 @@ def run_code2doc(
         enable_phoenix_tracing()
     for repo_name in tqdm.tqdm(python_files_df["repo_name"].unique()):
         try:
-            code2doc_answers.append(dict(code2doc(repo_name, lms=lms)))
+            code2doc_answers.append(dict(code2doc(repo_name)))
         except KeyboardInterrupt:
             raise KeyboardInterrupt
         except Exception as e:
