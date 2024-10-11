@@ -1,6 +1,8 @@
 import mlflow
 from mlflow.pipelines import Pipeline, PipelineStep
 import logging
+import yaml
+from pathlib import Path
 from github_search.pipelines.steps import Code2DocSteps
 
 class Code2DocPipeline(Pipeline):
@@ -67,20 +69,26 @@ class GenerateCode2DocReadmesStep(PipelineStep):
         
         mlflow.log_artifact(generated_readmes_path, "generated_readmes.json")
 
-if __name__ == "__main__":
-    mlflow.set_tracking_uri("http://localhost:5000")
-    mlflow.set_experiment("Code2Doc Pipeline")
+def load_config(config_path):
+    with open(config_path, 'r') as file:
+        return yaml.safe_load(file)
+
+def run_pipeline(config_path):
+    config = load_config(config_path)
+    
+    mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
+    mlflow.set_experiment(config['mlflow']['experiment_name'])
     
     with mlflow.start_run():
         pipeline = Code2DocPipeline()
-        pipeline.run({
-            "repos_df_path": "path/to/repos_df.json",
-            "python_code_path": "path/to/python_code.parquet",
-            "n_repos_per_task": 10,
-            "min_task_size": 5,
-            "max_task_size": 500,
-            "max_random_baseline_score": 0.5,
-            "lm_model_name": "codellama",
-            "lm_base_url": "http://localhost:11434",
-            "files_per_repo": 10
-        })
+        pipeline.run(config['pipeline'])
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Run Code2Doc MLFlow Pipeline")
+    parser.add_argument("--config", type=str, default="github_search/pipelines/configs/code2doc_default_config.yaml",
+                        help="Path to the YAML configuration file")
+    args = parser.parse_args()
+    
+    run_pipeline(args.config)
