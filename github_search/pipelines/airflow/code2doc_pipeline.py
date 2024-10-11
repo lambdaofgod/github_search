@@ -86,7 +86,10 @@ def main(config_path=None):
         config_path = Path(__file__).parent.parent / "configs" / "code2doc_default_config.yaml"
     config = load_config(config_path)
     dag = create_dag(config)
-    return dag
+    
+    # Run the DAG
+    dag.clear()
+    dag.run()
 
 if __name__ == "__main__":
     fire.Fire(main)
