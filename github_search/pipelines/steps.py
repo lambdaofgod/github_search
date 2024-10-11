@@ -96,6 +96,27 @@ class Code2DocSteps:
         selected_python_code_df.to_feather(selected_python_code_path)
 
     @staticmethod
+    def create_repos_sample_df(
+        repos_df,
+        python_code_df,
+        n_repos_per_task=10,
+        min_task_size=5,
+        max_task_size=500,
+        max_random_baseline_score=0.5,
+    ):
+        python_code_df = python_code_df.dropna(subset=["selected_code"])
+        repos_df = repos_df[repos_df["repo"].isin(python_code_df["repo_name"])]
+        repos_df["tasks"] = repos_df["tasks"].apply(ast.literal_eval)
+        repo_sampler = TaskSizeRepoSampler(
+            min_task_count=min_task_size,
+            n_repos_per_task=n_repos_per_task,
+            max_repos_per_task=max_task_size,
+        )
+        return repo_sampler.get_sampled_task_repos_df(
+            repos_df, max_baseline_score=max_random_baseline_score
+        )
+
+    @staticmethod
     def create_repos_sample(
         repos_df_path,
         selected_python_code_path,
@@ -108,33 +129,22 @@ class Code2DocSteps:
         logging.basicConfig(level=logging.INFO)
         repos_df = pd.read_json(repos_df_path, orient="records", lines=True)
         python_code_df = pd.read_feather(selected_python_code_path)
-        python_code_df = python_code_df.dropna(subset=["selected_code"])
-        repos_df = repos_df[repos_df["repo"].isin(python_code_df["repo_name"])]
-        repos_df["tasks"] = repos_df["tasks"].apply(ast.literal_eval)
-        repo_sampler = TaskSizeRepoSampler(
-            min_task_count=min_task_size,
-            n_repos_per_task=n_repos_per_task,
-            max_repos_per_task=max_task_size,
-        )
-        sampled_repos_df = repo_sampler.get_sampled_task_repos_df(
-            repos_df, max_baseline_score=max_random_baseline_score
+        sampled_repos_df = Code2DocSteps.create_repos_sample_df(
+            repos_df,
+            python_code_df,
+            n_repos_per_task,
+            min_task_size,
+            max_task_size,
+            max_random_baseline_score,
         )
         sampled_repos_df.to_json(output_path, orient="records", lines=True)
 
     @staticmethod
-    def generate_code2doc_readmes(
-        sampled_repos_df_path,
-        python_code_df_path,
-        out_path,
-        lm_model_name="codellama",
-        lm_base_url="http://localhost:11434",
-        small_lm_base_url="http://localhost:11431",
+    def generate_code2doc_readmes_df(
+        python_code_df,
+        sampled_repos_df,
         files_per_repo=10,
     ):
-        python_code_df = pd.read_feather(python_code_df_path)
-        sampled_repos_df = pd.read_json(
-            sampled_repos_df_path, orient="records", lines=True
-        )
         python_code_df = python_code_df[
             python_code_df["repo_name"].isin(sampled_repos_df["repo"])
         ]
@@ -151,10 +161,30 @@ class Code2DocSteps:
         logging.info(f"Using {files_per_repo} files per repo")
         lm = dspy.HFClientVLLM(model="", port=8000, url="http://localhost")
         dspy.configure(lm=lm)
-        generated_readme_df = run_code2doc(
+        return run_code2doc(
             python_code_df,
             files_per_repo,
             "selected_code",
+        )
+
+    @staticmethod
+    def generate_code2doc_readmes(
+        sampled_repos_df_path,
+        python_code_df_path,
+        out_path,
+        lm_model_name="codellama",
+        lm_base_url="http://localhost:11434",
+        small_lm_base_url="http://localhost:11431",
+        files_per_repo=10,
+    ):
+        python_code_df = pd.read_feather(python_code_df_path)
+        sampled_repos_df = pd.read_json(
+            sampled_repos_df_path, orient="records", lines=True
+        )
+        generated_readme_df = Code2DocSteps.generate_code2doc_readmes_df(
+            python_code_df,
+            sampled_repos_df,
+            files_per_repo,
         )
         generated_readme_df.to_json(out_path, orient="records", lines=True)
 
