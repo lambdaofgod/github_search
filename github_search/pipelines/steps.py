@@ -1,4 +1,5 @@
-from typing import Annotated, List, Tuple
+from typing import List, Tuple
+from typing_extensions import Annotated
 
 import pandas as pd
 from github_search.ir.evaluator import (
