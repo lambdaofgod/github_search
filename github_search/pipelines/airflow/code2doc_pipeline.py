@@ -5,17 +5,13 @@ import yaml
 from pathlib import Path
 import logging
 from github_search.pipelines.steps import Code2DocSteps
-import fire
-
 
 def load_config(config_path):
     with open(config_path, "r") as file:
         return yaml.safe_load(file)
 
-
 config_path = Path(__file__).parent.parent / "configs" / "code2doc_default_config.yaml"
 config = load_config(config_path)
-
 
 def prepare_data(**kwargs):
     Code2DocSteps.prepare_data(
@@ -24,7 +20,6 @@ def prepare_data(**kwargs):
         "/tmp/repos_output.json",
         "/tmp/selected_python_code.feather",
     )
-
 
 def create_repos_sample(**kwargs):
     Code2DocSteps.create_repos_sample(
@@ -37,7 +32,6 @@ def create_repos_sample(**kwargs):
         config["pipeline"]["max_random_baseline_score"],
     )
 
-
 def generate_code2doc_readmes(**kwargs):
     Code2DocSteps.generate_code2doc_readmes(
         "/tmp/sampled_repos.json",
@@ -48,36 +42,40 @@ def generate_code2doc_readmes(**kwargs):
         files_per_repo=config["pipeline"]["files_per_repo"],
     )
 
-
 default_args = {
+    "owner": "airflow",
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
     "retries": 1,
-    "schedule": timedelta(days=1),
-    "start_date": datetime(2021, 1, 1),
     "retry_delay": timedelta(minutes=5),
+    "start_date": datetime(2021, 1, 1),
 }
 
-with DAG(
+dag = DAG(
     "code2doc",
     default_args=default_args,
     description="Code2Doc Pipeline",
+    schedule_interval=timedelta(days=1),
     catchup=False,
-) as dag:
-    prepare_data_task = PythonOperator(
-        task_id="prepare_data",
-        python_callable=prepare_data,
-    )
+)
 
-    create_repos_sample_task = PythonOperator(
-        task_id="create_repos_sample",
-        python_callable=create_repos_sample,
-    )
+prepare_data_task = PythonOperator(
+    task_id="prepare_data",
+    python_callable=prepare_data,
+    dag=dag,
+)
 
-    generate_code2doc_readmes_task = PythonOperator(
-        task_id="generate_code2doc_readmes",
-        python_callable=generate_code2doc_readmes,
-    )
+create_repos_sample_task = PythonOperator(
+    task_id="create_repos_sample",
+    python_callable=create_repos_sample,
+    dag=dag,
+)
 
-    prepare_data_task >> create_repos_sample_task >> generate_code2doc_readmes_task
+generate_code2doc_readmes_task = PythonOperator(
+    task_id="generate_code2doc_readmes",
+    python_callable=generate_code2doc_readmes,
+    dag=dag,
+)
+
+prepare_data_task >> create_repos_sample_task >> generate_code2doc_readmes_task
