@@ -1,0 +1,11 @@
+name: code2doc_recipe
+steps:
+  prepare_data:
+    class: github_search.pipelines.mlflow_pipelines.Code2DocRecipe
+    method: prepare_data
+  create_repos_sample:
+    class: github_search.pipelines.mlflow_pipelines.Code2DocRecipe
+    method: create_repos_sample
+  generate_code2doc_readmes:
+    class: github_search.pipelines.mlflow_pipelines.Code2DocRecipe
+    method: generate_code2doc_readmes

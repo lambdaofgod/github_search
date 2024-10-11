@@ -6,9 +6,8 @@ from pathlib import Path
 import fire
 from github_search.pipelines.steps import Code2DocSteps
 
-class Code2DocRecipe(Recipe):
+class Code2DocRecipe:
     def __init__(self, config):
-        super().__init__("Code2Doc Recipe")
         self.config = config
 
     def prepare_data(self):
@@ -58,13 +57,6 @@ class Code2DocRecipe(Recipe):
         
         mlflow.log_artifact(generated_readmes_path)
 
-    def steps(self):
-        return [
-            self.prepare_data,
-            self.create_repos_sample,
-            self.generate_code2doc_readmes
-        ]
-
 def load_config(config_path):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
@@ -76,8 +68,8 @@ def run_recipe(config_path):
     mlflow.set_experiment(config['mlflow']['experiment_name'])
     
     with mlflow.start_run():
-        recipe = Code2DocRecipe(config['pipeline'])
-        recipe.run()
+        recipe = Recipe(recipe_path="github_search/pipelines/configs/recipe.yaml")
+        recipe.run(config['pipeline'])
 
 def main(config_path="github_search/pipelines/configs/code2doc_default_config.yaml"):
     """
