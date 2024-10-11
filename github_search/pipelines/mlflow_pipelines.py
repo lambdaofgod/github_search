@@ -3,6 +3,7 @@ from mlflow.pipelines import Pipeline, PipelineStep
 import logging
 import yaml
 from pathlib import Path
+import fire
 from github_search.pipelines.steps import Code2DocSteps
 
 class Code2DocPipeline(Pipeline):
@@ -83,12 +84,16 @@ def run_pipeline(config_path):
         pipeline = Code2DocPipeline()
         pipeline.run(config['pipeline'])
 
+import fire
+
+def main(config_path="github_search/pipelines/configs/code2doc_default_config.yaml"):
+    """
+    Run Code2Doc MLFlow Pipeline
+    
+    Args:
+        config_path (str): Path to the YAML configuration file
+    """
+    run_pipeline(config_path)
+
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Run Code2Doc MLFlow Pipeline")
-    parser.add_argument("--config", type=str, default="github_search/pipelines/configs/code2doc_default_config.yaml",
-                        help="Path to the YAML configuration file")
-    args = parser.parse_args()
-    
-    run_pipeline(args.config)
+    fire.Fire(main)
