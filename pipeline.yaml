@@ -81,7 +81,7 @@ tasks:
       min_task_size: 5
       n_repos_per_task: 10
       max_task_size: 500
-      max_random_baseline_score: 0.5
+      max_random_baseline_score: 0.3
     product:
       sampled_repos: "output/code2doc/sample_per_task_5_repos/sampled_repos5.jsonl"
 
@@ -92,12 +92,10 @@ tasks:
       - code2doc.create_repo_sample
       - code2doc.prepare_data
     params:
-      lm_model_name: "codellama"
+      lm_model_name: "llama3:latest"
       lm_base_url: "http://localhost:11430"
-      small_lm_base_url: "http://localhost:11431"
       files_per_repo: 10
-    product:
-      "output/code2doc/sample_per_task_5_repos/codellama_generated_readmes5.jsonl"
+    product: "output/code2doc/sample_per_task_5_repos/llama3_generated_readmes5.jsonl"
   # the stack
   - source: github_search.the_stack.prepare_the_stack_files
     name:

@@ -4,6 +4,10 @@ import dspy
 import re
 import tqdm
 from github_search.lms.utils import enable_phoenix_tracing
+from github_search.lms.repo_file_summary_provider import (
+    DataFrameRepoFileSummaryProvider,
+    RepoFileSummaryProvider,
+)
 import logging
 
 
@@ -47,14 +51,6 @@ class Prompts:
     - what kind of data does it use?
     Base your answer only on the information from context.
     """.strip()
-
-
-class RepoFileSummaryProvider(abc.ABC):
-    def extract_summary(self, repo_name) -> str:
-        pass
-
-    def get_filenames(self, repo_name) -> List[str]:
-        pass
 
 
 class Code2Documentation(dspy.Module):
@@ -146,23 +142,10 @@ class Code2Documentation(dspy.Module):
 def run_code2doc(
     python_files_df, files_per_repo, code_col="selected_code", use_phoenix=True
 ):
-    class DataFrameRepoFileSummaryProvider(RepoFileSummaryProvider):
-        def __init__(self, df, files_per_repo, code_col):
-            self.df = df
-            self.files_per_repo = files_per_repo
-            self.code_col = code_col
+    repo_file_summary_provider = DataFrameRepoFileSummaryProvider(
+        python_files_df, files_per_repo, code_col
+    )
 
-        def get_filenames(self, repo_name):
-            return self.df[self.df["repo_name"] == repo_name].iloc[:self.files_per_repo]["path"]
-
-        def extract_summary(self, repo_name):
-            selected_python_files = self.df[self.df["repo_name"] == repo_name].iloc[:self.files_per_repo]
-            return "\n\n".join([
-                f"file {path}\n```\n{code}\n```"
-                for path, code in zip(selected_python_files["path"], selected_python_files[self.code_col])
-            ])
-
-    repo_file_summary_provider = DataFrameRepoFileSummaryProvider(python_files_df, files_per_repo, code_col)
     code2doc = Code2Documentation(repo_file_summary_provider=repo_file_summary_provider)
     code2doc_answers = []
     if use_phoenix:

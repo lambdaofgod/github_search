@@ -3,6 +3,7 @@ import yaml
 import logging
 import pandas as pd
 from github_search.pipelines.steps import Code2DocSteps
+from tqdm.contrib.logging import tqdm_logging_redirect
 
 
 class Code2DocFlow(FlowSpec):
@@ -19,10 +20,11 @@ class Code2DocFlow(FlowSpec):
 
     @step
     def prepare_data(self):
-        self.repos_df, self.python_code_df = Code2DocSteps.prepare_data_df(
-            self.config["repos_df_path"],
-            self.config["python_code_path"]
-        )
+        with tqdm_logging_redirect():
+            self.repos_df, self.python_code_df = Code2DocSteps.prepare_data_df(
+                self.config["repos_df_path"],
+                self.config["python_code_path"],
+            )
         self.next(self.create_repos_sample)
 
     @step
@@ -33,7 +35,7 @@ class Code2DocFlow(FlowSpec):
             self.config["n_repos_per_task"],
             self.config["min_task_size"],
             self.config["max_task_size"],
-            self.config["max_random_baseline_score"]
+            self.config["max_random_baseline_score"],
         )
         self.next(self.generate_code2doc_readmes)
 
@@ -43,17 +45,21 @@ class Code2DocFlow(FlowSpec):
             f"Generating readmes with code2doc using {self.config['lm_model_name']}, "
             f"using maximum of {self.config['files_per_repo']} files per repo"
         )
-        self.generated_readme_df = Code2DocSteps.generate_code2doc_readmes_df(
-            self.python_code_df,
-            self.sampled_repos_df,
-            files_per_repo=self.config["files_per_repo"]
-        )
+
+        with tqdm_logging_redirect():
+            self.generated_readme_df = Code2DocSteps.generate_code2doc_readmes_df(
+                self.python_code_df,
+                self.sampled_repos_df,
+                files_per_repo=self.config["files_per_repo"],
+            )
         self.next(self.end)
 
     @step
     def end(self):
         # Save the final results
-        self.generated_readme_df.to_json("/tmp/generated_readmes.json", orient="records", lines=True)
+        self.generated_readme_df.to_json(
+            "/tmp/generated_readmes.json", orient="records", lines=True
+        )
         print("Code2Doc pipeline completed successfully!")
         print(f"Generated readmes saved to /tmp/generated_readmes.json")
 

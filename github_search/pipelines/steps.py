@@ -80,6 +80,9 @@ class Code2DocSteps:
         repos_with_all_data_df = repos_df[
             repos_df["repo"].isin(python_code_df["repo_name"])
         ]
+        logging.info("sampling Python files per repo")
+        # TODO: CORRECT THIS
+        python_code_df = python_code_df.iloc[:1000]
         selected_python_code_df = code_selection.get_python_files_with_selected_code_df(
             python_code_df
         )
@@ -146,6 +149,8 @@ class Code2DocSteps:
         python_code_df,
         sampled_repos_df,
         files_per_repo=10,
+        lm_model_name="codellama",
+        lm_base_url="http://localhost:11434",
     ):
         python_code_df = python_code_df[
             python_code_df["repo_name"].isin(sampled_repos_df["repo"])
@@ -161,7 +166,7 @@ class Code2DocSteps:
         avg_files_per_repo = len(python_code_df) / len(sampled_repos_df)
         logging.info(f"{round(avg_files_per_repo, 2)} files per repo on average")
         logging.info(f"Using {files_per_repo} files per repo")
-        lm = dspy.HFClientVLLM(model="", port=8000, url="http://localhost")
+        lm = dspy.OllamaLocal(model=lm_model_name, base_url=lm_base_url)
         dspy.configure(lm=lm)
         return run_code2doc(
             python_code_df,

@@ -5,3 +5,7 @@ metrics/*
 .dvc/*
 .mypy_cache/*
 /github_search/.mypy_cache/*
+.aider*
+/data/*
+/output/*
+*.csv

@@ -1,14 +1,14 @@
 mlflow:
-  tracking_uri: "http://localhost:5000"
+  tracking_uri: "http://localhost:8080"
   experiment_name: "Code2Doc Pipeline"
 
 pipeline:
-  repos_df_path: "path/to/repos_df.json"
-  python_code_path: "path/to/python_code.parquet"
+  repos_df_path: "output/paperswithcode_with_readmes.json.gz"
+  python_code_path: "output/repo_selected_files.parquet"
   n_repos_per_task: 10
-  min_task_size: 5
-  max_task_size: 500
-  max_random_baseline_score: 0.5
+  min_task_size: 1
+  max_task_size: 10
+  max_random_baseline_score: 0.3
   lm_model_name: "codellama"
   lm_base_url: "http://localhost:11434"
   files_per_repo: 10

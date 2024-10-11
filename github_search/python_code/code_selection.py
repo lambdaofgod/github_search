@@ -4,6 +4,8 @@ from typing import List
 from comment_parser import comment_parser
 import re
 import tqdm
+from tqdm.contrib.logging import tqdm_logging_redirect
+from contextlib import contextmanager
 
 
 class PythonCodeSelector(abc.ABC):
@@ -89,6 +91,11 @@ class SignatureSelector(PythonCodeSelector, BaseModel):
                 }
             )
         return matches
+
+
+@contextmanager
+def nullcontext(enter_result=None):
+    yield enter_result
 
 
 def get_python_files_with_selected_code_df(python_files_df):
