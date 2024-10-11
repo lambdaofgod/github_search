@@ -126,7 +126,7 @@ class Code2DocSteps:
         max_task_size=500,
         max_random_baseline_score=0.5,
     ):
-        logging.basicConfig(level=logging.INFO)
+        logging.info("Creating repos sample")
         repos_df = pd.read_json(repos_df_path, orient="records", lines=True)
         python_code_df = pd.read_feather(selected_python_code_path)
         sampled_repos_df = Code2DocSteps.create_repos_sample_df(
@@ -138,6 +138,7 @@ class Code2DocSteps:
             max_random_baseline_score,
         )
         sampled_repos_df.to_json(output_path, orient="records", lines=True)
+        logging.info(f"Sampled repos saved to {output_path}")
 
     @staticmethod
     def generate_code2doc_readmes_df(
@@ -174,9 +175,9 @@ class Code2DocSteps:
         out_path,
         lm_model_name="codellama",
         lm_base_url="http://localhost:11434",
-        small_lm_base_url="http://localhost:11431",
         files_per_repo=10,
     ):
+        logging.info(f"Generating code2doc readmes using {lm_model_name}")
         python_code_df = pd.read_feather(python_code_df_path)
         sampled_repos_df = pd.read_json(
             sampled_repos_df_path, orient="records", lines=True
@@ -187,6 +188,7 @@ class Code2DocSteps:
             files_per_repo,
         )
         generated_readme_df.to_json(out_path, orient="records", lines=True)
+        logging.info(f"Generated readmes saved to {out_path}")
 
 
 # ploomber
