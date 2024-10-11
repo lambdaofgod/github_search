@@ -1,99 +1,92 @@
 import mlflow
-from mlflow.pipelines import Pipeline, PipelineStep
+from mlflow.recipes import Recipe
 import logging
 import yaml
 from pathlib import Path
 import fire
 from github_search.pipelines.steps import Code2DocSteps
 
-class Code2DocPipeline(Pipeline):
-    def __init__(self):
-        super().__init__("Code2Doc Pipeline")
+class Code2DocRecipe(Recipe):
+    def __init__(self, config):
+        super().__init__("Code2Doc Recipe")
+        self.config = config
 
-    def steps(self):
-        return [
-            PrepareDataStep(),
-            CreateReposSampleStep(),
-            GenerateCode2DocReadmesStep()
-        ]
-
-class PrepareDataStep(PipelineStep):
-    def run(self, repos_df_path, python_code_path):
-        repos_output_path = mlflow.artifacts.download_artifacts("repos_output.json")
-        selected_python_code_path = mlflow.artifacts.download_artifacts("selected_python_code.feather")
+    def prepare_data(self):
+        repos_output_path = "repos_output.json"
+        selected_python_code_path = "selected_python_code.feather"
         
         Code2DocSteps.prepare_data(
-            repos_df_path,
-            python_code_path,
+            self.config['repos_df_path'],
+            self.config['python_code_path'],
             repos_output_path,
             selected_python_code_path
         )
         
-        mlflow.log_artifact(repos_output_path, "repos_output.json")
-        mlflow.log_artifact(selected_python_code_path, "selected_python_code.feather")
+        mlflow.log_artifact(repos_output_path)
+        mlflow.log_artifact(selected_python_code_path)
 
-class CreateReposSampleStep(PipelineStep):
-    def run(self, n_repos_per_task, min_task_size, max_task_size, max_random_baseline_score):
-        repos_df_path = mlflow.artifacts.download_artifacts("repos_output.json")
-        selected_python_code_path = mlflow.artifacts.download_artifacts("selected_python_code.feather")
-        sampled_repos_path = mlflow.artifacts.download_artifacts("sampled_repos.json")
+    def create_repos_sample(self):
+        sampled_repos_path = "sampled_repos.json"
         
         Code2DocSteps.create_repos_sample(
-            repos_df_path,
-            selected_python_code_path,
+            "repos_output.json",
+            "selected_python_code.feather",
             sampled_repos_path,
-            n_repos_per_task,
-            min_task_size,
-            max_task_size,
-            max_random_baseline_score
+            self.config['n_repos_per_task'],
+            self.config['min_task_size'],
+            self.config['max_task_size'],
+            self.config['max_random_baseline_score']
         )
         
-        mlflow.log_artifact(sampled_repos_path, "sampled_repos.json")
+        mlflow.log_artifact(sampled_repos_path)
 
-class GenerateCode2DocReadmesStep(PipelineStep):
-    def run(self, lm_model_name, lm_base_url, files_per_repo):
-        sampled_repos_df_path = mlflow.artifacts.download_artifacts("sampled_repos.json")
-        selected_python_code_path = mlflow.artifacts.download_artifacts("selected_python_code.feather")
-        generated_readmes_path = mlflow.artifacts.download_artifacts("generated_readmes.json")
+    def generate_code2doc_readmes(self):
+        generated_readmes_path = "generated_readmes.json"
         
         logging.info(
-            f"Generating readmes with code2doc using {lm_model_name}, using maximum of {files_per_repo} files per repo"
+            f"Generating readmes with code2doc using {self.config['lm_model_name']}, "
+            f"using maximum of {self.config['files_per_repo']} files per repo"
         )
         Code2DocSteps.generate_code2doc_readmes(
-            sampled_repos_df_path,
-            selected_python_code_path,
+            "sampled_repos.json",
+            "selected_python_code.feather",
             generated_readmes_path,
-            lm_model_name,
-            lm_base_url,
-            files_per_repo=files_per_repo
+            self.config['lm_model_name'],
+            self.config['lm_base_url'],
+            files_per_repo=self.config['files_per_repo']
         )
         
-        mlflow.log_artifact(generated_readmes_path, "generated_readmes.json")
+        mlflow.log_artifact(generated_readmes_path)
+
+    def steps(self):
+        return [
+            self.prepare_data,
+            self.create_repos_sample,
+            self.generate_code2doc_readmes
+        ]
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
 
-def run_pipeline(config_path):
+def run_recipe(config_path):
     config = load_config(config_path)
     
     mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
     mlflow.set_experiment(config['mlflow']['experiment_name'])
     
     with mlflow.start_run():
-        pipeline = Code2DocPipeline()
-        pipeline.run(config['pipeline'])
-
-import fire
+        recipe = Code2DocRecipe(config['pipeline'])
+        recipe.run()
 
 def main(config_path="github_search/pipelines/configs/code2doc_default_config.yaml"):
     """
-    Run Code2Doc MLFlow Pipeline
+    Run Code2Doc MLFlow Recipe
     
     Args:
         config_path (str): Path to the YAML configuration file
     """
-    run_pipeline(config_path)
+    run_recipe(config_path)
 
 if __name__ == "__main__":
     fire.Fire(main)
