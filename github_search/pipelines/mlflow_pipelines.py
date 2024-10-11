@@ -68,8 +68,10 @@ def run_recipe(config_path):
     mlflow.set_experiment(config['mlflow']['experiment_name'])
     
     with mlflow.start_run():
-        recipe = Recipe(recipe_path="github_search/pipelines/configs/recipe.yaml")
-        recipe.run(config['pipeline'])
+        recipe = Code2DocRecipe(config['pipeline'])
+        recipe.prepare_data()
+        recipe.create_repos_sample()
+        recipe.generate_code2doc_readmes()
 
 def main(config_path="github_search/pipelines/configs/code2doc_default_config.yaml"):
     """
