@@ -70,9 +70,7 @@ class ZenMLSteps:
 
 class Code2DocSteps:
     @staticmethod
-    def prepare_data(
-        repos_df_path, python_code_path, repos_output_path, selected_python_code_path
-    ):
+    def prepare_data_df(repos_df_path, python_code_path):
         logging.info("loading repo data from %s", repos_df_path)
         repos_df = pd.read_json(repos_df_path)
         repos_df = repos_df[~repos_df["readme"].isna()]
@@ -81,11 +79,21 @@ class Code2DocSteps:
         repos_with_all_data_df = repos_df[
             repos_df["repo"].isin(python_code_df["repo_name"])
         ]
+        selected_python_code_df = code_selection.get_python_files_with_selected_code_df(
+            python_code_df
+        )
+        return repos_with_all_data_df, selected_python_code_df
+
+    @staticmethod
+    def prepare_data(
+        repos_df_path, python_code_path, repos_output_path, selected_python_code_path
+    ):
+        repos_with_all_data_df, selected_python_code_df = Code2DocSteps.prepare_data_df(
+            repos_df_path, python_code_path
+        )
         repos_with_all_data_df.to_json(repos_output_path, orient="records", lines=True)
         # for some reason there are errors in parquet so we'll save it to feather
-        code_selection.get_python_files_with_selected_code_df(
-            python_code_df
-        ).to_feather(selected_python_code_path)
+        selected_python_code_df.to_feather(selected_python_code_path)
 
     @staticmethod
     def create_repos_sample(
