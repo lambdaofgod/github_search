@@ -34,8 +34,7 @@ class ZenMLSteps:
         logging.info(f"using prompt config: {prompt_config}")
         text_generation_config = load_config_from_dict(text_generation_config)
         prompt_config = PromptConfig(**prompt_config)
-        parsed_prompt_infos = [
-            ContextPromptInfo.parse_obj(pi) for pi in prompt_infos]
+        parsed_prompt_infos = [ContextPromptInfo.parse_obj(pi) for pi in prompt_infos]
         raw_generated_texts_df, failures = DocumentExpander(
             text_generation_config=text_generation_config, prompts_config=prompt_config
         ).expand_documents(parsed_prompt_infos)
@@ -74,14 +73,15 @@ class Code2DocSteps:
     def prepare_data(
         repos_df_path, python_code_path, repos_output_path, selected_python_code_path
     ):
+        logging.info("loading repo data from %s", repos_df_path)
         repos_df = pd.read_json(repos_df_path)
         repos_df = repos_df[~repos_df["readme"].isna()]
+        logging.info("loading python code data from %s", python_code_path)
         python_code_df = pd.read_parquet(python_code_path)
         repos_with_all_data_df = repos_df[
             repos_df["repo"].isin(python_code_df["repo_name"])
         ]
-        repos_with_all_data_df.to_json(
-            repos_output_path, orient="records", lines=True)
+        repos_with_all_data_df.to_json(repos_output_path, orient="records", lines=True)
         # for some reason there are errors in parquet so we'll save it to feather
         code_selection.get_python_files_with_selected_code_df(
             python_code_df
@@ -133,15 +133,13 @@ class Code2DocSteps:
         n_code_files = len(python_code_df)
         python_code_df = python_code_df.dropna(subset=["selected_code"])
         logging.info(f"Generating readmes for {len(sampled_repos_df)} repos.")
-        logging.info(
-            f"Dropped {n_code_files - len(python_code_df)} empty code files.")
+        logging.info(f"Dropped {n_code_files - len(python_code_df)} empty code files.")
         assert len(python_code_df["repo_name"].unique()) == len(
             sampled_repos_df["repo"]
         ), "Some repos are missing code files"
         logging.info(f"Using {len(python_code_df)} code files")
         avg_files_per_repo = len(python_code_df) / len(sampled_repos_df)
-        logging.info(
-            f"{round(avg_files_per_repo, 2)} files per repo on average")
+        logging.info(f"{round(avg_files_per_repo, 2)} files per repo on average")
         logging.info(f"Using {files_per_repo} files per repo")
         lm = dspy.HFClientVLLM(model="", port=8000, url="http://localhost")
         dspy.configure(lm=lm)
