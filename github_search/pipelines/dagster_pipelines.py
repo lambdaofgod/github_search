@@ -27,14 +27,9 @@ def load_config(config_path):
 
 
 @asset
-def code2doc_config(context: AssetExecutionContext) -> dict:
-    config_path = (
-        context.op_config.config_path
-        if hasattr(context.op_config, "config_path")
-        else Code2DocConfig.config_path
-    )
-    logging.info(f"Loading config from {config_path}")
-    return load_config(config_path)
+def code2doc_config(config: Code2DocConfig) -> dict:
+    logging.info(f"Loading config from {config.config_path}")
+    return load_config(config.config_path)
 
 
 @multi_asset(outs={"repos_df": AssetOut(), "python_code_df": AssetOut()})
@@ -98,4 +93,5 @@ defs = Definitions(
         generated_readmes,
         save_results,
     ],
+    config=Code2DocConfig,
 )
