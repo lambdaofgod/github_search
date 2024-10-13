@@ -1,4 +1,4 @@
-from dagster import asset, AssetExecutionContext, Config, Definitions
+from dagster import asset, multi_asset, AssetExecutionContext, Config, Definitions, Output
 import yaml
 import logging
 import pandas as pd
@@ -25,19 +25,19 @@ def code2doc_config(context: AssetExecutionContext) -> dict:
     return load_config(config_path)
 
 
-@asset
-def prepared_data(code2doc_config: dict) -> tuple:
+@multi_asset(outs={"repos_df": AssetOut(), "python_code_df": AssetOut()})
+def prepared_data(code2doc_config: dict):
     with tqdm_logging_redirect():
         repos_df, python_code_df = Code2DocSteps.prepare_data_df(
             code2doc_config["repos_df_path"],
             code2doc_config["python_code_path"],
         )
-    return repos_df, python_code_df
+    yield Output(repos_df, output_name="repos_df")
+    yield Output(python_code_df, output_name="python_code_df")
 
 
 @asset
-def sampled_repos(code2doc_config: dict, prepared_data: tuple) -> pd.DataFrame:
-    repos_df, python_code_df = prepared_data
+def sampled_repos(code2doc_config: dict, repos_df: pd.DataFrame, python_code_df: pd.DataFrame) -> pd.DataFrame:
     sampled_repos_df = Code2DocSteps.create_repos_sample_df(
         repos_df,
         python_code_df,
@@ -51,9 +51,8 @@ def sampled_repos(code2doc_config: dict, prepared_data: tuple) -> pd.DataFrame:
 
 @asset
 def generated_readmes(
-    config: dict, prepared_data: tuple, sampled_repos: pd.DataFrame
+    config: dict, python_code_df: pd.DataFrame, sampled_repos: pd.DataFrame
 ) -> pd.DataFrame:
-    _, python_code_df = prepared_data
     logging.info(
         f"Generating readmes with code2doc using {config['lm_model_name']}, "
         f"using maximum of {config['files_per_repo']} files per repo"
