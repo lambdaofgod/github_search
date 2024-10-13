@@ -9,6 +9,7 @@ from dagster import (
 )
 from github_search.evaluation.beir_evaluation import (
     EvaluateRetrievalCustom as EvaluateRetrieval,
+    CorpusDataLoader,
 )
 from github_search.evaluation.corpus_utils import (
     filter_dfs_by_cols_in,
