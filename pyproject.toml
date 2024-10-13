@@ -5,9 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "aider>=0.2.6",
     "apache-airflow==2.8.4",
     "beir>=2.0.0",
     "comment-parser>=1.2.4",
+    "dagster>=1.6.5",
     "dspy-ai==2.4.5",
     "fire>=0.7.0",
     "ipykernel>=6.29.5",
@@ -26,7 +28,14 @@ dependencies = [
 
 [tool.uv]
 prerelease = "allow"
+dev-dependencies = [
+    "dagster-webserver>=1.6.5",
+]
 
 [tool.uv.sources]
 mlutil = { git = "https://github.com/lambdaofgod/mlutil" }
 visutils = { path = "../visualization" }
+
+[tool.dagster]
+module_name = "github_search.pipelines.dagster.definitions"
+code_location_name = "github_search"
