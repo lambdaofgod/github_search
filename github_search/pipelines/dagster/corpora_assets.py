@@ -94,6 +94,10 @@ def ir_data(context: AssetExecutionContext):
         "corpora_keys": AssetOut(),
     },
     required_resource_keys={"corpus_config"},
+    ins={
+        "sampled_repos": AssetIn(key_prefix=["code2doc"]),
+        "generated_readmes": AssetIn(key_prefix=["code2doc"]),
+    },
 )
 def corpus_information(
     context: AssetExecutionContext,
