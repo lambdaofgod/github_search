@@ -5,6 +5,7 @@ from dagster import (
     Output,
     AssetOut,
     ConfigurableResource,
+    AssetExecutionContext,
 )
 import yaml
 import logging
@@ -28,7 +29,8 @@ class Code2DocConfig(ConfigurableResource):
 
 
 @multi_asset(outs={"repos_df": AssetOut(), "python_code_df": AssetOut()})
-def prepared_data(code2doc_config: Code2DocConfig):
+def prepared_data(context: AssetExecutionContext):
+    code2doc_config = context.resources.code2doc_config
     with tqdm_logging_redirect():
         repos_df, python_code_df = Code2DocSteps.prepare_data_df(
             code2doc_config.repos_df_path,
@@ -40,8 +42,9 @@ def prepared_data(code2doc_config: Code2DocConfig):
 
 @asset
 def sampled_repos(
-    code2doc_config: Code2DocConfig, repos_df: pd.DataFrame, python_code_df: pd.DataFrame
+    context: AssetExecutionContext, repos_df: pd.DataFrame, python_code_df: pd.DataFrame
 ) -> pd.DataFrame:
+    code2doc_config = context.resources.code2doc_config
     sampled_repos_df = Code2DocSteps.create_repos_sample_df(
         repos_df,
         python_code_df,
@@ -55,8 +58,9 @@ def sampled_repos(
 
 @asset
 def generated_readmes(
-    code2doc_config: Code2DocConfig, python_code_df: pd.DataFrame, sampled_repos: pd.DataFrame
+    context: AssetExecutionContext, python_code_df: pd.DataFrame, sampled_repos: pd.DataFrame
 ) -> pd.DataFrame:
+    code2doc_config = context.resources.code2doc_config
     logging.info(
         f"Generating readmes with code2doc using {code2doc_config.lm_model_name}, "
         f"using maximum of {code2doc_config.files_per_repo} files per repo"
