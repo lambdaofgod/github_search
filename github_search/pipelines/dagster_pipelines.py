@@ -1,9 +1,20 @@
-from dagster import asset, multi_asset, AssetExecutionContext, Config, Definitions, Output
+from dagster import (
+    asset,
+    multi_asset,
+    AssetExecutionContext,
+    Config,
+    Definitions,
+    Output,
+    AssetOut,
+)
 import yaml
 import logging
 import pandas as pd
 from github_search.pipelines.steps import Code2DocSteps
 from tqdm.contrib.logging import tqdm_logging_redirect
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
 class Code2DocConfig(Config):
@@ -22,6 +33,7 @@ def code2doc_config(context: AssetExecutionContext) -> dict:
         if hasattr(context.op_config, "config_path")
         else Code2DocConfig.config_path
     )
+    logging.info(f"Loading config from {config_path}")
     return load_config(config_path)
 
 
@@ -37,7 +49,9 @@ def prepared_data(code2doc_config: dict):
 
 
 @asset
-def sampled_repos(code2doc_config: dict, repos_df: pd.DataFrame, python_code_df: pd.DataFrame) -> pd.DataFrame:
+def sampled_repos(
+    code2doc_config: dict, repos_df: pd.DataFrame, python_code_df: pd.DataFrame
+) -> pd.DataFrame:
     sampled_repos_df = Code2DocSteps.create_repos_sample_df(
         repos_df,
         python_code_df,
