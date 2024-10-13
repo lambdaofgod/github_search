@@ -1,35 +1,32 @@
 from dagster import (
     asset,
     multi_asset,
-    AssetExecutionContext,
-    Config,
     Definitions,
     Output,
     AssetOut,
+    ConfigurableResource,
 )
 import yaml
 import logging
 import pandas as pd
 from github_search.pipelines.steps import Code2DocSteps
 from tqdm.contrib.logging import tqdm_logging_redirect
-import logging
 
 logging.basicConfig(level=logging.INFO)
 
 
-class Code2DocConfig(Config):
+class Code2DocResource(ConfigurableResource):
     config_path: str = "github_search/pipelines/configs/code2doc_default_config.yaml"
 
-
-def load_config(config_path):
-    with open(config_path, "r") as file:
-        return yaml.safe_load(file)["pipeline"]
+    def load_config(self):
+        with open(self.config_path, "r") as file:
+            return yaml.safe_load(file)["pipeline"]
 
 
 @asset
-def code2doc_config(config: Code2DocConfig) -> dict:
-    logging.info(f"Loading config from {config.config_path}")
-    return load_config(config.config_path)
+def code2doc_config(code2doc: Code2DocResource) -> dict:
+    logging.info(f"Loading config from {code2doc.config_path}")
+    return code2doc.load_config()
 
 
 @multi_asset(outs={"repos_df": AssetOut(), "python_code_df": AssetOut()})
@@ -93,5 +90,7 @@ defs = Definitions(
         generated_readmes,
         save_results,
     ],
-    config=Code2DocConfig,
+    resources={
+        "code2doc": Code2DocResource(),
+    }
 )
