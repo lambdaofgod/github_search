@@ -5,9 +5,11 @@ from dagster import (
     AssetOut,
     ConfigurableResource,
     AssetExecutionContext,
+    Output,
 )
 from github_search.evaluation.beir_evaluation import (
-    EvaluateRetrievalCustom as CorpusDataLoader,
+    EvaluateRetrievalCustom as EvaluateRetrieval,
+    CorpusDataLoader,
 )
 from github_search.evaluation.corpus_utils import (
     filter_dfs_by_cols_in,
@@ -19,9 +21,11 @@ from github_search.evaluation.corpus_utils import (
 
 
 class CorpusConfig(ConfigurableResource):
-    data_path: str = "../output"
-    librarian_signatures_path: str = "/home/kuba/Projects/uhackathons/fastrag_util/data/librarian_signatures.parquet"
-    model_name: str = "codellama_repomaps"
+    data_path: str = "output"
+    librarian_signatures_path: str = (
+        "/home/kuba/Projects/uhackathons/fastrag_util/data/librarian_signatures.parquet"
+    )
+    ir_model_name: str = "codellama_repomaps"
     sample_prefix: str = "sample_per_task_5_repos"
     sampled_repos_per_task: int = 20
     min_repos_per_task: int = 10
@@ -41,13 +45,20 @@ def ir_data(context: AssetExecutionContext):
 
     librarian_signatures_df = pd.read_parquet(config.librarian_signatures_path)
 
-    sample_path = data_path / f"code2doc/{config.sample_prefix}/sampled_repos{config.sampled_repos_per_task}.jsonl"
+    sample_path = (
+        data_path
+        / f"code2doc/{config.sample_prefix}/sampled_repos{config.sampled_repos_per_task}.jsonl"
+    )
     sampled_repos_df = pd.read_json(sample_path, orient="records", lines=True)
-    sample_python_code_df = pd.read_feather(data_path / "code" / config.python_code_file)
+    sample_python_code_df = pd.read_feather(
+        data_path / "code" / config.python_code_file
+    )
 
     sample_loader = CorpusDataLoader(
-        repos_df_path=data_path / f"code2doc/{config.sample_prefix}/sampled_repos5.jsonl",
-        generated_readmes_df_path=data_path / f"code2doc/{config.sample_prefix}/{config.model_name}_generated_readmes5.jsonl",
+        repos_df_path=data_path
+        / f"code2doc/{config.sample_prefix}/sampled_repos5.jsonl",
+        generated_readmes_df_path=data_path
+        / f"code2doc/{config.sample_prefix}/{config.ir_model_name}_generated_readmes5.jsonl",
         code_df_path=data_path / "code" / config.python_code_file,
     )
 
@@ -73,7 +84,8 @@ def ir_data(context: AssetExecutionContext):
         sampled_repos_df, min_query_count=config.min_repos_per_task
     )
 
-    return {"task_queries": task_queries, "task_qrels": task_qrels}
+    yield Output(task_queries, "task_queries")
+    yield Output(task_qrels, "task_qrels")
 
 
 @multi_asset(
@@ -83,19 +95,26 @@ def ir_data(context: AssetExecutionContext):
     },
     required_resource_keys={"corpus_config"},
 )
-def corpus_information(context: AssetExecutionContext, ir_data):
+def corpus_information(context: AssetExecutionContext):
     config = context.resources.corpus_config
     data_path = Path(config.data_path).expanduser()
 
     librarian_signatures_df = pd.read_parquet(config.librarian_signatures_path)
 
-    sample_path = data_path / f"code2doc/{config.sample_prefix}/sampled_repos{config.sampled_repos_per_task}.jsonl"
+    sample_path = (
+        data_path
+        / f"code2doc/{config.sample_prefix}/sampled_repos{config.sampled_repos_per_task}.jsonl"
+    )
     sampled_repos_df = pd.read_json(sample_path, orient="records", lines=True)
-    sample_python_code_df = pd.read_feather(data_path / "code" / config.python_code_file)
+    sample_python_code_df = pd.read_feather(
+        data_path / "code" / config.python_code_file
+    )
 
     sample_loader = CorpusDataLoader(
-        repos_df_path=data_path / f"code2doc/{config.sample_prefix}/sampled_repos5.jsonl",
-        generated_readmes_df_path=data_path / f"code2doc/{config.sample_prefix}/{config.model_name}_generated_readmes5.jsonl",
+        repos_df_path=data_path
+        / f"code2doc/{config.sample_prefix}/sampled_repos5.jsonl",
+        generated_readmes_df_path=data_path
+        / f"code2doc/{config.sample_prefix}/{config.ir_model_name}_generated_readmes5.jsonl",
         code_df_path=data_path / "code" / config.python_code_file,
     )
 
@@ -123,4 +142,5 @@ def corpus_information(context: AssetExecutionContext, ir_data):
 
     corpora_keys = list(corpora.keys())
 
-    return {"corpora": corpora, "corpora_keys": corpora_keys}
+    yield Output(corpora, output_name="corpora")
+    yield Output(corpora_keys, output_name="corpora_keys")
