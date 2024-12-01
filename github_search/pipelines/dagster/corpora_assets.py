@@ -6,6 +6,7 @@ from dagster import (
     ConfigurableResource,
     AssetExecutionContext,
     Output,
+    AssetIn,
 )
 from github_search.evaluation.beir_evaluation import (
     EvaluateRetrievalCustom as EvaluateRetrieval,
@@ -18,18 +19,9 @@ from github_search.evaluation.corpus_utils import (
     prepare_corpora,
     prepare_librarian_corpora,
 )
-
-
-class CorpusConfig(ConfigurableResource):
-    data_path: str = "output"
-    librarian_signatures_path: str = (
-        "/home/kuba/Projects/uhackathons/fastrag_util/data/librarian_signatures.parquet"
-    )
-    ir_model_name: str = "codellama_repomaps"
-    sample_prefix: str = "sample_per_task_5_repos"
-    sampled_repos_per_task: int = 20
-    min_repos_per_task: int = 10
-    python_code_file: str = "python_files_with_selected_code.feather"
+from github_search.pipelines.dagster.resources import (
+    CorpusConfig
+)
 
 
 @multi_asset(
@@ -40,6 +32,9 @@ class CorpusConfig(ConfigurableResource):
     required_resource_keys={"corpus_config"},
 )
 def ir_data(context: AssetExecutionContext):
+    """
+    information retrieval data: queries and query relevances
+    """
     config = context.resources.corpus_config
     data_path = Path(config.data_path).expanduser()
 
@@ -95,8 +90,8 @@ def ir_data(context: AssetExecutionContext):
     },
     required_resource_keys={"corpus_config"},
     ins={
-        "sampled_repos": AssetIn(key_prefix=["code2doc"]),
-        "generated_readmes": AssetIn(key_prefix=["code2doc"]),
+        "sampled_repos": AssetIn(key="sampled_repos"),
+        "generated_readmes": AssetIn(key="generated_readmes"),
     },
 )
 def corpus_information(
@@ -104,6 +99,13 @@ def corpus_information(
     sampled_repos: pd.DataFrame,
     generated_readmes: pd.DataFrame,
 ):
+    """
+    texts:
+    - READMEs
+    - corpora extracted with dependency graph
+    - librarian corpora
+    - code2doc corpora
+    """
     config = context.resources.corpus_config
     data_path = Path(config.data_path).expanduser()
 

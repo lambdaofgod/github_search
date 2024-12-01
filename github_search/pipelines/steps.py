@@ -1,15 +1,11 @@
 from typing import List, Tuple
-from typing_extensions import Annotated
 
 import pandas as pd
-from github_search.ir.evaluator import (
-    InformationRetrievalEvaluator,
-    SearchDataFrameExtractor,
-)
-from github_search.pipelines.metrics_comparison import *
 from github_search.pipelines.postprocessing import GenerationPostprocessor
-
 from github_search.python_code import code_selection
+from typing_extensions import Annotated
+import logging
+import ast
 
 try:
     from tgutil.configs import PromptConfig, load_config_from_dict
@@ -17,9 +13,9 @@ try:
     from tgutil.prompting_runner import DocumentExpander
 except:
     logging.warning("tgutil not installed, using local imports")
-from github_search.samplers import TaskSizeRepoSampler
 import dspy
 from github_search.lms.code2documentation import run_code2doc
+from github_search.samplers import TaskSizeRepoSampler
 
 
 class ZenMLSteps:
@@ -81,8 +77,6 @@ class Code2DocSteps:
             repos_df["repo"].isin(python_code_df["repo_name"])
         ]
         logging.info("sampling Python files per repo")
-        # TODO: CORRECT THIS
-        python_code_df = python_code_df.iloc[:1000]
         selected_python_code_df = code_selection.get_python_files_with_selected_code_df(
             python_code_df
         )

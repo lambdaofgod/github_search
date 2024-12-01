@@ -1,7 +1,6 @@
 from operator import itemgetter
 
 import pandas as pd
-from github_search.pipelines.metrics_comparison import *
 import re
 
 
