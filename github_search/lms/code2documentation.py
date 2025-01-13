@@ -7,8 +7,16 @@ from github_search.lms.utils import enable_phoenix_tracing
 from github_search.lms.repo_file_summary_provider import (
     DataFrameRepoFileSummaryProvider,
     RepoFileSummaryProvider,
+    DataFrameTextProvider,
 )
 import logging
+
+
+class Code2DocGenerationException(Exception):
+
+    def __init__(self, message):
+        self.message = message
+        super().__init__(message)
 
 
 @contextmanager
@@ -96,27 +104,30 @@ class Code2Documentation(dspy.Module):
         repo_summary_kwargs={"num_predict": 256},
         lms=None,
     ):
-        if lms is not None:
-            return self.forward_multilm(repo_name, lms)
-        else:
-            for key in file_summary_kwargs.keys():
-                dspy.settings.lm.kwargs[key] = file_summary_kwargs[key]
-            filenames, summary_result = self._summarize_files(repo_name)
-            summaries = summary_result["answer"]
-            for key in repo_summary_kwargs.keys():
-                dspy.settings.lm.kwargs[key] = repo_summary_kwargs[key]
-            repo_summary = self.summarize_repo(
-                question=self.repo_summary_question_template.format(repo_name),
-                context=summaries,
-            )
+        try:
+            if lms is not None:
+                return self.forward_multilm(repo_name, lms)
+            else:
+                for key in file_summary_kwargs.keys():
+                    dspy.settings.lm.kwargs[key] = file_summary_kwargs[key]
+                filenames, summary_result = self._summarize_files(repo_name)
+                summaries = summary_result["answer"]
+                for key in repo_summary_kwargs.keys():
+                    dspy.settings.lm.kwargs[key] = repo_summary_kwargs[key]
+                repo_summary = self.summarize_repo(
+                    question=self.repo_summary_question_template.format(repo_name),
+                    context=summaries,
+                )
 
-            return dspy.Prediction(
-                **repo_summary,
-                repo_name=repo_name,
-                context_history=summaries,
-                filenames=filenames,
-                n_files=len(filenames),
-            )
+                return dspy.Prediction(
+                    **repo_summary,
+                    repo_name=repo_name,
+                    context_history=summaries,
+                    filenames=filenames,
+                    n_files=len(filenames),
+                )
+        except Exception as e:
+            raise Code2DocGenerationException(f"Error processing {repo_name}: {e}")
 
     def forward_multilm(self, repo_name, lms):
         [small_lm, bigger_lm] = lms
@@ -139,7 +150,7 @@ class Code2Documentation(dspy.Module):
         )
 
 
-def run_code2doc(
+def run_code2doc_on_files_df(
     python_files_df, files_per_repo, code_col="selected_code", use_phoenix=True
 ):
     repo_file_summary_provider = DataFrameRepoFileSummaryProvider(
@@ -157,5 +168,28 @@ def run_code2doc(
             raise KeyboardInterrupt
         except Exception as e:
             logging.error(f"Error processing {repo_name}: {e}")
+
+    return pd.DataFrame.from_records(code2doc_answers)
+
+
+def run_code2doc_on_df(repo_df, code_col, name_col, use_phoenix=True):
+    repo_file_summary_provider = DataFrameTextProvider(
+        df=repo_df,
+        text_col=code_col,
+        name_col=name_col,
+    )
+
+    code2doc = Code2Documentation(repo_file_summary_provider=repo_file_summary_provider)
+    code2doc_answers = []
+    if use_phoenix:
+        enable_phoenix_tracing()
+    for repo_name in tqdm.tqdm(repo_df[name_col].unique()):
+        try:
+            code2doc_answers.append(dict(code2doc(repo_name)))
+        except KeyboardInterrupt:
+            raise KeyboardInterrupt
+        except Code2DocGenerationException as e:
+            logging.error(e.message)
+            pass
 
     return pd.DataFrame.from_records(code2doc_answers)

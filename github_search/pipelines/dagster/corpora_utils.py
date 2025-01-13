@@ -1,8 +1,11 @@
 from pathlib import Path
 
+from typing import Dict, Any
 import pandas as pd
 from beir.retrieval.search.lexical import BM25Search as BM25
-from github_search.evaluation.beir_evaluation import EvaluateRetrievalCustom as CorpusDataLoader
+from github_search.evaluation.beir_evaluation import (
+    EvaluateRetrievalCustom as CorpusDataLoader,
+)
 
 
 class ExperimentParams:
@@ -95,16 +98,16 @@ def prepare_librarian_corpora(repos_df, sampled_librarian_signatures_df):
         .reset_index()
     )
     return {
-        (column, g): {
+        # (column, g): {
+        column: {
             str(i): {"text": row[column], "title": row["repo"]}
-            for (i, row) in sampled_librarian_signatures_df[
-                sampled_librarian_signatures_df["generation"] == g
-            ]
-            .reset_index(drop=True)[["repo", column]]
-            .iterrows()
+            for (i, row) in sampled_librarian_signatures_df  # [
+            #    sampled_librarian_signatures_df["generation"] == g
+            # ]
+            .reset_index(drop=True)[["repo", column]].iterrows()
         }
         for column in columns
-        for g in sampled_librarian_signatures_df["generation"].unique()
+        # for g in sampled_librarian_signatures_df["generation"].unique()
     }
 
 
@@ -114,7 +117,9 @@ def prepare_basic_corpora(repos_df, selected_python_code_df):
     return {"readme": readme_corpus, "selected_code": selected_python_code_corpus}
 
 
-def prepare_corpora(repos_df, generated_readmes_df, selected_python_code_df):
+def prepare_corpora(
+    repos_df, generated_readmes_df, selected_python_code_df
+) -> Dict[str, Any]:
     basic_corpora = prepare_basic_corpora(repos_df, selected_python_code_df)
     readme_corpus = basic_corpora["readme"]
     selected_python_code_corpus = basic_corpora["selected_code"]

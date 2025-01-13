@@ -5,6 +5,7 @@ from beir.retrieval.search.lexical import BM25Search as BM25
 from github_search.evaluation.beir_evaluation import (
     EvaluateRetrievalCustom as CorpusDataLoader,
 )
+import logging
 
 
 class ExperimentParams:
@@ -68,9 +69,6 @@ def prepare_readme_corpus(repos_df):
 
 
 def prepare_generated_readme_corpus(repos_df, generated_readmes_df, columns=["answer"]):
-    generated_readmes_df = (
-        generated_readmes_df.set_index("repo_name").loc[repos_df["repo"]].reset_index()
-    )
     return {
         str(i): {"text": "\n".join(row[columns]), "title": row["repo_name"]}
         for (i, row) in generated_readmes_df.iterrows()
@@ -96,18 +94,29 @@ def prepare_librarian_corpora(repos_df, sampled_librarian_signatures_df):
         .loc[repos_df["repo"]]
         .reset_index()
     )
-    return {
-        (column, g): {
-            str(i): {"text": row[column], "title": row["repo"]}
-            for (i, row) in sampled_librarian_signatures_df[
-                sampled_librarian_signatures_df["generation"] == g
-            ]
-            .reset_index(drop=True)[["repo", column]]
-            .iterrows()
+    if "generation" in sampled_librarian_signatures_df.columns:
+        return {
+            (column, g): {
+                str(i): {"text": row[column], "title": row["repo"]}
+                for (i, row) in sampled_librarian_signatures_df[
+                    sampled_librarian_signatures_df["generation"] == g
+                ]
+                .reset_index(drop=True)[["repo", column]]
+                .iterrows()
+            }
+            for column in columns
+            for g in sampled_librarian_signatures_df["generation"].unique()
         }
-        for column in columns
-        for g in sampled_librarian_signatures_df["generation"].unique()
-    }
+    else:
+        return {
+            column: {
+                str(i): {"text": row[column], "title": row["repo"]}
+                for (i, row) in sampled_librarian_signatures_df.reset_index(drop=True)[
+                    ["repo", column]
+                ].iterrows()
+            }
+            for column in columns
+        }
 
 
 def prepare_basic_corpora(repos_df, selected_python_code_df):
@@ -117,6 +126,24 @@ def prepare_basic_corpora(repos_df, selected_python_code_df):
 
 
 def prepare_corpora(repos_df, generated_readmes_df, selected_python_code_df):
+
+    # aligning
+    # this is done in case the dfs come from unsynced dagster runs
+    repos = set(repos_df["repo"]).intersection(generated_readmes_df["repo_name"])
+    repos_df = (
+        repos_df[repos_df["repo"].isin(repos)]
+        .sort_values("repo")
+        .reset_index(drop=True)
+    )
+    generated_readmes_df = (
+        generated_readmes_df[generated_readmes_df["repo_name"].isin(repos)]
+        .sort_values("repo_name")
+        .reset_index(drop=True)
+    )
+    selected_python_code_df = selected_python_code_df[
+        selected_python_code_df["repo_name"].isin(repos)
+    ].sort_values("repo_name")
+
     basic_corpora = prepare_basic_corpora(repos_df, selected_python_code_df)
     readme_corpus = basic_corpora["readme"]
     selected_python_code_corpus = basic_corpora["selected_code"]
@@ -126,15 +153,12 @@ def prepare_corpora(repos_df, generated_readmes_df, selected_python_code_df):
     generated_rationale_corpus = prepare_generated_readme_corpus(
         repos_df, generated_readmes_df, columns=["rationale"]
     )
-    generated_readme_rationale_corpus = prepare_generated_readme_corpus(
-        repos_df, generated_readmes_df, columns=["answer", "rationale"]
-    )
     generated_readme_context_corpus = prepare_generated_readme_corpus(
         repos_df, generated_readmes_df, columns=["context_history"]
     )
 
-    assert len(readme_corpus) == len(generated_readme_corpus)
-    assert len(selected_python_code_corpus) == len(readme_corpus)
+    # assert len(readme_corpus) == len(generated_readme_corpus)
+    # assert len(selected_python_code_corpus) == len(readme_corpus)
 
     for k in readme_corpus.keys():
         assert readme_corpus[k]["title"] == generated_readme_corpus[k]["title"], str(

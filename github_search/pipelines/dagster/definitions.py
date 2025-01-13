@@ -19,8 +19,6 @@ def get_assets():
 defs = Definitions(
     assets=get_assets(),
     resources={
-        "code2doc_config": code2doc_assets.Code2DocConfig(),
-        "corpus_config": corpora_assets.CorpusConfig(),
         "phoenix": code2doc_assets.PhoenixTracker(),
     },
 )

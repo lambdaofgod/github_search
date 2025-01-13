@@ -14,8 +14,11 @@ try:
 except:
     logging.warning("tgutil not installed, using local imports")
 import dspy
-from github_search.lms.code2documentation import run_code2doc
 from github_search.samplers import TaskSizeRepoSampler
+from github_search.lms.code2documentation import (
+    run_code2doc_on_df,
+    run_code2doc_on_files_df,
+)
 
 
 class ZenMLSteps:
@@ -101,10 +104,12 @@ class Code2DocSteps:
         min_task_size=5,
         max_task_size=500,
         max_random_baseline_score=0.5,
+        max_tasks_per_repo=10,
     ):
         python_code_df = python_code_df.dropna(subset=["selected_code"])
         repos_df = repos_df[repos_df["repo"].isin(python_code_df["repo_name"])]
         repos_df["tasks"] = repos_df["tasks"].apply(ast.literal_eval)
+        repos_df = repos_df[repos_df["tasks"].apply(len) <= max_tasks_per_repo]
         repo_sampler = TaskSizeRepoSampler(
             min_task_count=min_task_size,
             n_repos_per_task=n_repos_per_task,
@@ -143,6 +148,7 @@ class Code2DocSteps:
         python_code_df,
         sampled_repos_df,
         files_per_repo=10,
+        text_column="selected_code",
         lm_model_name="codellama",
         lm_base_url="http://localhost:11434",
     ):
@@ -162,10 +168,10 @@ class Code2DocSteps:
         logging.info(f"Using {files_per_repo} files per repo")
         lm = dspy.OllamaLocal(model=lm_model_name, base_url=lm_base_url)
         dspy.configure(lm=lm)
-        return run_code2doc(
+        return run_code2doc_on_files_df(
             python_code_df,
             files_per_repo,
-            "selected_code",
+            text_column,
         )
 
     @staticmethod

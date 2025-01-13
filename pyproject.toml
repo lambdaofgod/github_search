@@ -10,8 +10,11 @@ dependencies = [
     "beir>=2.0.0",
     "comment-parser>=1.2.4",
     "dagster>=1.6.5",
-    "dspy-ai==2.4.5",
+    "dspy-ai>=2.4.5",
+    "einops>=0.8.0",
+    "fastparquet>=2024.11.0",
     "fire>=0.7.0",
+    "flash-attention>=1.0.0",
     "ipykernel==6.26.0",
     "metaflow>=2.12.25",
     "mlflow==2.16.2",
@@ -23,8 +26,9 @@ dependencies = [
     "polars>=1.15.0",
     "pytrec-eval>=0.5",
     "rank-bm25>=0.2.2",
-    "tgutil",
+    "sentence-transformers==3.3.1",
     "toolz>=1.0.0",
+    "transformers>=4.46.2",
     "typing-extensions>=4.12.2",
 ]
 
@@ -34,7 +38,7 @@ dev-dependencies = ["dagster-webserver>=1.6.5"]
 
 [tool.uv.sources]
 mlutil = { git = "https://github.com/lambdaofgod/mlutil" }
-tgutil = { path = "../tgutil" }
+transformers = { git = "https://github.com/huggingface/transformers.git", rev = "b5a557e5fe2d015bd36214a95878370eaed51571" }
 #visutils = { path = "../visualization" }
 
 [tool.dagster]

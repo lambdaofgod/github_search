@@ -60,7 +60,6 @@ class TrainValConfig:
 
 @dataclass
 class QueryDocumentCollator:
-
     query_tokenize_fn: Callable[[List[str]], Dict[str, torch.Tensor]]
     document_tokenize_fn: Callable[[List[str]], Dict[str, torch.Tensor]]
 
@@ -78,7 +77,6 @@ class QueryDocumentCollator:
 
 @dataclass
 class NBOWTrainValData:
-
     train_dset: QueryDocumentDataset
     val_dset: QueryDocumentDataset
     _train_df: pd.DataFrame

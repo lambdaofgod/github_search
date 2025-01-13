@@ -1,7 +1,16 @@
 {"text_cols": [
     ["tasks"],
-	["tasks", "dependencies"],
+	[
+  "tasks",
+  "dependencies"
+],
     ["dependencies"],
     ["readme"],
     ["tasks", "readme"]
-]}
+],
+ "retriever_models": [
+     "bm25",
+     "msmarco-distilbert-base-tas-b",
+     "sentence-transformers/all-mpnet-base-v2"
+ ]
+}

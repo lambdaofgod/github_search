@@ -9,3 +9,4 @@ metrics/*
 /data/*
 /output/*
 *.csv
+.env
