@@ -5,7 +5,7 @@ using ProgressBars
 
 dependency_records_path = "../output/dependency_records.feather"
 df = Feather.read(dependency_records_path)
-df = filter(row -> row[:edge_type] == "root-repo", df)
+df = filter(row -> row[:edge_type] != "root-repo", df)
 
 
 # Create a mapping of nodes to their repositories
