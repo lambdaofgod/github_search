@@ -2,6 +2,7 @@ using Graphs
 using CSV
 using DataFrames
 using ProgressBars
+using SortingAlgorithms
 
 # Load the nodes and edges data
 nodes_df = CSV.read("../output/dependency_records/nodes.csv", DataFrame)
@@ -69,3 +70,28 @@ if !isnothing(repo_subgraph)
     println("Number of nodes: ", nv(repo_subgraph.graph))
     println("Number of edges: ", ne(repo_subgraph.graph))
 end
+
+# Function to calculate centrality scores for nodes in a subgraph
+function calculate_node_centrality(subgraph_data, centrality_function)
+    # Extract the graph from the subgraph data
+    g = subgraph_data.graph
+    
+    # Calculate centrality scores using the provided function
+    centrality_scores = centrality_function(g)
+    
+    # Create a DataFrame with node names and their centrality scores
+    df = DataFrame(
+        node_index = 1:length(centrality_scores),
+        node_name = subgraph_data.node_names,
+        centrality_score = centrality_scores
+    )
+    
+    # Sort the DataFrame by centrality score in descending order
+    sort!(df, :centrality_score, rev=true)
+    
+    return df
+end
+
+# Example usage:
+# using Graphs.Centrality
+# centrality_df = calculate_node_centrality(repo_subgraph, closeness_centrality)
