@@ -36,5 +36,21 @@ using CSV
 
 
 #+BEGIN_SRC julia :session graphs.org  :exports both
+# Load the nodes and edges data
+nodes_df = CSV.read("../output/dependency_records/nodes.csv", DataFrame)
+edges_df = CSV.read("../output/dependency_records/edges.csv", DataFrame)
 
+# Create a graph
+g = SimpleGraph(nrow(nodes_df))
+
+# Add edges to the graph
+for row in eachrow(edges_df)
+    # Add edge between source and destination
+    # Note: Julia's Graphs.jl uses 1-based indexing
+    add_edge!(g, row.src, row.dst)
+end
+
+# Basic graph information
+println("Number of nodes: ", nv(g))
+println("Number of edges: ", ne(g))
 #+END_SRC
