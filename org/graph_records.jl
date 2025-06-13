@@ -1,0 +1,27 @@
+using Feather
+using CSV
+using DataFrames
+using ProgressBars
+
+dependency_records_path = "../output/dependency_records.feather"
+df = Feather.read(dependency_records_path)
+
+
+source_nodes = (df[!,:source] |> unique)
+nodes = vcat(source_nodes, df[!,:destination] |> unique) |> unique
+
+length(nodes)
+nodes_dict = Dict([(nodes[i], i) for i in 1:length(nodes)])
+
+# invert the direction
+src_idxs = [nodes_dict[df[i,:source]] for i in tqdm(1:size(df)[1])]
+dst_idxs = [nodes_dict[df[i,:destination]] for i in tqdm(1:size(df)[1])]
+
+nodes_df = DataFrame([(i, nodes[i]) for i in 1:length(nodes)])
+nodes_df = rename!(nodes_df, [:index, :name])
+
+edges_df = DataFrame(index=df[!,:index], src=src_idxs, dst=dst_idxs, edge_type=df[!, :edge_type], repo=df[!, :repo])
+CSV.write("../output/dependency_records/nodes.csv", nodes)
+
+CSV.write("../output/dependency_records/edges.csv", edges_df)
+names(df)
