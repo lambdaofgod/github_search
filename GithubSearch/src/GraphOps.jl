@@ -105,23 +105,29 @@ function calculate_node_centrality(subgraph_data, centrality_function)
     return df
 end
 
+selected_nodes = filter(row -> row[:edge_type] == "repo-file", edges_df)[!,:src]
+
 # Example usage:
 # using Graphs.Centrality
 println("\nCalculating centrality for top 10 repositories:")
-repos = nodes_df[!,:repo] |> unique
+repos = ["ai4bharat-indicnlp/indicnlp_corpus"]# "000Justin000/torchdiffeq", "facebookresearch/online_dialog_eval"] #nodes_df[!,:repo] |> unique
 cs = []
-for repo in repos[1:10]
-    println("\nProcessing repository: ", repo)
-    repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
-    if !isnothing(repo_subgraph)
-        centrality_df = calculate_node_centrality(repo_subgraph, pagerank)
-        println("Top 5 central nodes:")
-        if nrow(centrality_df) > 0
-            display(first(centrality_df, 5))
-        else
-            println("No nodes found with centrality scores.")
+for centrality_measure in [degree_centrality, pagerank]
+    for repo in repos#[1:10]
+        println("\nProcessing repository: ", repo)
+        repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
+        if !isnothing(repo_subgraph)
+            centrality_df = calculate_node_centrality(repo_subgraph, eigenvector_centrality)
+            centrality_df = filter(row -> row.node_name in selected_nodes, centrality_df)
+            if nrow(centrality_df) > 0
+                println("Top central nodes:")
+                display(first(centrality_df, 10))
+                println("Least central nodes:")
+                display(last(centrality_df, 10))
+            else
+                println("No nodes found with centrality scores.")
+            end
+            push!(cs, centrality_df)
         end
-        push!(cs, centrality_df)
     end
 end
-
