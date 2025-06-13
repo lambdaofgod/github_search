@@ -44,16 +44,16 @@ dst_idxs = [nodes_dict[df[i,:destination]] for i in tqdm(1:size(df)[1])]
 
 # Count total number of rows needed for nodes_df
 println("counting total node-repo pairs")
-total_rows = 0
+row_count = 0
 for i in 1:length(nodes)
     node_name = nodes[i]
-    total_rows += length(node_to_repos[node_name])
+    row_count += length(node_to_repos[node_name])
 end
 
 # Pre-allocate the dataframe
 println("creating nodes dataframe")
 nodes_df = DataFrame(index = Int[], name = String[], repo = String[])
-sizehint!(nodes_df, total_rows)
+sizehint!(nodes_df, row_count)
 
 # Fill the dataframe
 println("filling nodes dataframe")
