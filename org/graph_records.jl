@@ -22,9 +22,15 @@ nodes_df = DataFrame([(i, nodes[i]) for i in 1:length(nodes)])
 nodes_df = rename!(nodes_df, [:index, :name])
 
 # Get repo information for each node by joining with original dataframe
-# First create a mapping of node names to their repos from the source column
-node_repos = select(df, [:source, :repo]) |> unique
-node_repos = rename!(node_repos, :source => :name)
+# Create mappings of node names to their repos from both source and destination columns
+source_repos = select(df, [:source, :repo]) |> unique
+source_repos = rename!(source_repos, :source => :name)
+
+dest_repos = select(df, [:destination, :repo]) |> unique
+dest_repos = rename!(dest_repos, :destination => :name)
+
+# Combine both source and destination mappings
+node_repos = vcat(source_repos, dest_repos) |> unique
 
 # Add repo information to nodes_df by joining
 nodes_df = leftjoin(nodes_df, node_repos, on = :name)
