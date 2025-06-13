@@ -1,18 +1,18 @@
 using Graphs
-using CSV
+using Feather
 using DataFrames
 using ProgressBars
 using SortingAlgorithms
 
 # Load the nodes and edges data
-nodes_df = CSV.read("../output/dependency_records/nodes.csv", DataFrame)
-edges_df = CSV.read("../output/dependency_records/edges.csv", DataFrame)
+nodes_df = Feather.read("../output/dependency_records/nodes.feather")
+edges_df = Feather.read("../output/dependency_records/edges.feather")
 
 # Create a graph
 g = SimpleGraph(nrow(nodes_df))
 
 # Add edges to the graph
-for row in eachrow(edges_df)
+for row in ProgressBar(eachrow(edges_df))
     # Add edge between source and destination
     # Note: Julia's Graphs.jl uses 1-based indexing
     add_edge!(g, row.src, row.dst)
@@ -61,6 +61,8 @@ function load_repo_subgraph(nodes_df, edges_df, repo_name)
     )
 end
 
+all_graph = (graph = g, node_names = nodes_df[!,:name], edges_df = edges_df)
+
 # Example usage:
 repo_name = "000Justin000/torchdiffeq"
 repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo_name)
@@ -87,11 +89,18 @@ function calculate_node_centrality(subgraph_data, centrality_function)
     )
     
     # Sort the DataFrame by centrality score in descending order
-    sort!(df, :centrality_score, rev=true)
+    #sort!(df, :centrality_score, rev=true)
     
     return df
 end
 
 # Example usage:
 # using Graphs.Centrality
-# centrality_df = calculate_node_centrality(repo_subgraph, closeness_centrality)
+repos = nodes_df[!,:repo] |> unique
+cs = []
+for repo in repos[1:10]
+    repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
+    centrality_df = calculate_node_centrality(repo_subgraph, pagerank)
+    push!(cs, centrality_df)
+end
+
