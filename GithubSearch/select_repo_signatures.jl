@@ -1,5 +1,4 @@
 using Graphs
-using Graphs.Centrality
 using DataFrames
 using Feather
 using ArgParse
@@ -12,10 +11,10 @@ function parse_commandline()
     @add_arg_table s begin
         "--nodes-path"
             help = "Path to the nodes feather file"
-            default = "output/dependency_records/nodes.feather"
+            default = "../output/dependency_records/nodes.feather"
         "--edges-path"
             help = "Path to the edges feather file"
-            default = "output/dependency_records/edges.feather"
+            default = "../output/dependency_records/edges.feather"
         "--output-path"
             help = "Path to save the centrality results"
             default = "output/centrality_results.feather"
