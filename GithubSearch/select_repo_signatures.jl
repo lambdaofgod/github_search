@@ -69,31 +69,40 @@ function main()
         selected_nodes=data.selected_nodes
     )
     
-    # Combine results into a single DataFrame
+    # Write results incrementally to a CSV file
     if !isempty(results)
-        # Create a new DataFrame with all results
-        all_centrality = DataFrame()
+        # Change output path to CSV if it's a feather file
+        output_path = args["output-path"]
+        if endswith(output_path, ".feather")
+            output_path = replace(output_path, ".feather" => ".csv")
+        end
         
+        println("\nSaving results to: ", output_path)
+        
+        # Create directory if it doesn't exist
+        mkpath(dirname(output_path))
+        
+        # Write header to CSV file
+        open(output_path, "w") do io
+            println(io, "node_index,node_name,centrality_score,repository,measure")
+        end
+        
+        # Process each result and write directly to file
+        count = 0
         for result in results
-            if nrow(result.centrality_df) > 0
-                # Make a copy of the centrality dataframe
-                df_copy = result.centrality_df
-                # Add repository and measure columns
-                df_copy.repository = fill(result.repo, nrow(df_copy))
-                df_copy.measure = fill(result.measure, nrow(df_copy))
-                # Append to the combined dataframe
-                if isempty(all_centrality)
-                    all_centrality = df_copy
-                else
-                    append!(all_centrality, df_copy)
+            if !isnothing(result) && nrow(result.centrality_df) > 0
+                # Write each row to the CSV file
+                open(output_path, "a") do io
+                    for row in eachrow(result.centrality_df)
+                        println(io, "$(row.node_index),\"$(row.node_name)\",$(row.centrality_score),\"$(result.repo)\",\"$(result.measure)\"")
+                        count += 1
+                    end
                 end
             end
         end
         
-        # Save results
-        if !isempty(all_centrality)
-            println("\nSaving results to: ", args["output-path"])
-            Feather.write(args["output-path"], all_centrality)
+        if count > 0
+            println("Successfully wrote $count rows to $output_path")
             println("Done!")
         else
             println("No results to save.")
