@@ -88,43 +88,25 @@ function main()
         # Create a flag to track if this is the first write (to include headers)
         first_write = true
         
-        # Process results in batches
-        batch_size = 100  # Number of results to process at once
-        for batch_start in 1:batch_size:length(results)
-            # Get the current batch of results
-            batch_end = min(batch_start + batch_size - 1, length(results))
-            current_batch = results[batch_start:batch_end]
-            
-            # Create a DataFrame to hold this batch of data
-            batch_df = DataFrame()
-            
-            # Process each result in the batch
-            for result in current_batch
-                if !isnothing(result) && nrow(result.centrality_df) > 0
-                    # Make a copy of the centrality dataframe
-                    df_copy = result.centrality_df
-                    # Add repository and measure columns
-                    df_copy.repository = fill(result.repo, nrow(df_copy))
-                    df_copy.measure = fill(result.measure, nrow(df_copy))
-                    # Append to the batch dataframe
-                    if isempty(batch_df)
-                        batch_df = df_copy
-                    else
-                        append!(batch_df, df_copy)
-                    end
-                    total_rows += nrow(df_copy)
-                end
-            end
-            
-            # Write the batch to CSV if it's not empty
-            if !isempty(batch_df)
+        # Process each result directly
+        for result in results
+            if !isnothing(result) && nrow(result.centrality_df) > 0
+                # Add repository and measure columns to the centrality dataframe
+                df = copy(result.centrality_df)
+                df.repository = fill(result.repo, nrow(df))
+                df.measure = fill(result.measure, nrow(df))
+                
+                # Write directly to CSV
                 CSV.write(
                     output_path, 
-                    batch_df, 
+                    df, 
                     append = !first_write, 
                     header = first_write
                 )
+                
+                # Update counters
                 first_write = false
+                total_rows += nrow(df)
             end
         end
         
