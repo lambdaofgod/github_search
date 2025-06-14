@@ -56,7 +56,7 @@ for (node_name, repos) in ProgressBar(node_to_repos)
 end
 
 edges_df = DataFrame(index=df[!,:index], src=src_idxs, dst=dst_idxs, edge_type=df[!, :edge_type], repo=df[!, :repo])
-CSV.write("../output/dependency_records/nodes.csv", nodes_df)
+Feather.write("../output/dependency_records/nodes.feather", nodes_df)
 
-CSV.write("../output/dependency_records/edges.csv", edges_df)
+Feather.write("../output/dependency_records/edges.feather", edges_df)
 names(df)
