@@ -143,39 +143,3 @@ for (measure_name, centrality_measure) in zip(["degree", "pagerank"], [degree_ce
     end
 end
 
-# Print repository statistics
-println("\n\n=== Repository Statistics ===")
-println("Calculating statistics for all repositories...")
-
-# Count edges per repository
-edge_counts = combine(groupby(edges_df, :repo), nrow => :edge_count)
-
-# Count nodes per repository - safely
-node_counts = DataFrame(repo = String[], node_count = Int[])
-for repo_name in unique(edges_df.repo)
-    repo_edges = filter(row -> row.repo == repo_name, edges_df)
-    unique_nodes = unique(vcat(repo_edges.src, repo_edges.dst))
-    push!(node_counts, (repo_name, length(unique_nodes)))
-end
-
-# Join the counts
-stats_df = innerjoin(edge_counts, node_counts, on = :repo)
-sort!(stats_df, :node_count, rev=true)
-
-# Display top repositories by node count
-println("\nTop 20 repositories by node count:")
-display(first(stats_df, 20))
-
-# Calculate and display overall statistics
-total_repos = nrow(stats_df)
-total_nodes = length(unique(vcat(edges_df.src, edges_df.dst)))
-total_edges = nrow(edges_df)
-avg_nodes_per_repo = mean(stats_df.node_count)
-avg_edges_per_repo = mean(stats_df.edge_count)
-
-println("\nOverall Statistics:")
-println("Total repositories: ", total_repos)
-println("Total nodes across all repositories: ", total_nodes)
-println("Total edges across all repositories: ", total_edges)
-println("Average nodes per repository: ", round(avg_nodes_per_repo, digits=2))
-println("Average edges per repository: ", round(avg_edges_per_repo, digits=2))
