@@ -3,6 +3,7 @@ using Feather
 using DataFrames
 using ProgressBars
 using SortingAlgorithms
+using Statistics
 
 # Load the nodes and edges data
 nodes_df = Feather.read("../output/dependency_records/nodes.feather")
@@ -106,7 +107,7 @@ function calculate_node_centrality(subgraph_data, centrality_function)
 end
 
 # Get node names for repo-file edges - optimized with indexing
-selected_node_indices = filter(row -> row[:edge_type] == "repo-file", edges_df)[!,:dst]
+selected_node_indices = filter(row -> row[:edge_type] in ["repo-file", "file-function"], edges_df)[!,:dst]
 # Create a lookup dictionary for faster access
 node_index_to_name = Dict(nodes_df.index .=> nodes_df.name)
 selected_nodes = [node_index_to_name[idx] for idx in selected_node_indices] |> unique
@@ -114,7 +115,7 @@ selected_nodes = [node_index_to_name[idx] for idx in selected_node_indices] |> u
 # Example usage:
 # using Graphs.Centrality
 println("\nCalculating centrality for top 10 repositories:")
-repos = ["ai4bharat-indicnlp/indicnlp_corpus", "000Justin000/torchdiffeq", "facebookresearch/online_dialog_eval"] #nodes_df[!,:repo] |> unique
+repos = ["ai4bharat-indicnlp/indicnlp_corpus", "000Justin000/torchdiffeq", "facebookresearch/online_dialog_eval", "0492wzl/tensorflow_slim_densenet", "huggingface/transformers"] #nodes_df[!,:repo] |> unique
 cs = []
 for (measure_name, centrality_measure) in zip(["degree", "pagerank"], [degree_centrality, pagerank])
     println("#############")
@@ -139,38 +140,3 @@ for (measure_name, centrality_measure) in zip(["degree", "pagerank"], [degree_ce
         end
     end
 end
-
-# Print repository statistics
-println("\n\n=== Repository Statistics ===")
-println("Calculating statistics for all repositories...")
-
-# Count edges per repository
-edge_counts = combine(groupby(edges_df, :repo), nrow => :edge_count)
-
-# Count nodes per repository
-node_counts = combine(groupby(edges_df, :repo)) do repo_df
-    unique_nodes = unique(vcat(repo_df.src, repo_df.dst))
-    return (node_count = length(unique_nodes),)
-end
-
-# Join the counts
-stats_df = innerjoin(edge_counts, node_counts, on = :repo)
-sort!(stats_df, :node_count, rev=true)
-
-# Display top repositories by node count
-println("\nTop 20 repositories by node count:")
-display(first(stats_df, 20))
-
-# Calculate and display overall statistics
-total_repos = nrow(stats_df)
-total_nodes = length(unique(vcat(edges_df.src, edges_df.dst)))
-total_edges = nrow(edges_df)
-avg_nodes_per_repo = mean(stats_df.node_count)
-avg_edges_per_repo = mean(stats_df.edge_count)
-
-println("\nOverall Statistics:")
-println("Total repositories: ", total_repos)
-println("Total nodes across all repositories: ", total_nodes)
-println("Total edges across all repositories: ", total_edges)
-println("Average nodes per repository: ", round(avg_nodes_per_repo, digits=2))
-println("Average edges per repository: ", round(avg_edges_per_repo, digits=2))
