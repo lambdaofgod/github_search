@@ -173,7 +173,7 @@ function calculate_centrality_for_repos(
         println("#############")
         println(measure_name)
         println("#############")
-        Threads.@threads for repo in ProgressBar(repos)
+        for repo in ProgressBar(repos)
             result = calculate_repo_centrality(
                 nodes_df, 
                 edges_df, 
