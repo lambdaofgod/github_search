@@ -146,6 +146,11 @@ function calculate_repo_centrality(
         centrality_df = filter(row -> row.node_name in selected_nodes, centrality_df)
     end
     
+    # Limit to top_k nodes by centrality score
+    if nrow(centrality_df) > top_k
+        centrality_df = centrality_df[1:top_k, :]
+    end
+    
     return (
         repo = repo,
         measure = measure_name,
