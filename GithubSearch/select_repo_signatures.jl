@@ -82,27 +82,54 @@ function main()
         # Create directory if it doesn't exist
         mkpath(dirname(output_path))
         
-        # Write header to CSV file
-        open(output_path, "w") do io
-            println(io, "node_index,node_name,centrality_score,repository,measure")
-        end
+        # Initialize a counter for total rows
+        total_rows = 0
         
-        # Process each result and write directly to file
-        count = 0
-        for result in results
-            if !isnothing(result) && nrow(result.centrality_df) > 0
-                # Write each row to the CSV file
-                open(output_path, "a") do io
-                    for row in eachrow(result.centrality_df)
-                        println(io, "$(row.node_index),\"$(row.node_name)\",$(row.centrality_score),\"$(result.repo)\",\"$(result.measure)\"")
-                        count += 1
+        # Create a flag to track if this is the first write (to include headers)
+        first_write = true
+        
+        # Process results in batches
+        batch_size = 100  # Number of results to process at once
+        for batch_start in 1:batch_size:length(results)
+            # Get the current batch of results
+            batch_end = min(batch_start + batch_size - 1, length(results))
+            current_batch = results[batch_start:batch_end]
+            
+            # Create a DataFrame to hold this batch of data
+            batch_df = DataFrame()
+            
+            # Process each result in the batch
+            for result in current_batch
+                if !isnothing(result) && nrow(result.centrality_df) > 0
+                    # Make a copy of the centrality dataframe
+                    df_copy = copy(result.centrality_df)
+                    # Add repository and measure columns
+                    df_copy.repository = fill(result.repo, nrow(df_copy))
+                    df_copy.measure = fill(result.measure, nrow(df_copy))
+                    # Append to the batch dataframe
+                    if isempty(batch_df)
+                        batch_df = df_copy
+                    else
+                        append!(batch_df, df_copy)
                     end
+                    total_rows += nrow(df_copy)
                 end
+            end
+            
+            # Write the batch to CSV if it's not empty
+            if !isempty(batch_df)
+                CSV.write(
+                    output_path, 
+                    batch_df, 
+                    append = !first_write, 
+                    header = first_write
+                )
+                first_write = false
             end
         end
         
-        if count > 0
-            println("Successfully wrote $count rows to $output_path")
+        if total_rows > 0
+            println("Successfully wrote $total_rows rows to $output_path")
             println("Done!")
         else
             println("No results to save.")
