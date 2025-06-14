@@ -54,7 +54,7 @@ function main()
     # Load repositories from CSV file
     println("Loading repositories from: ", args["repos-file"])
     repos_df = CSV.read(args["repos-file"], DataFrame)
-    repos = repos_df.repo
+    repos = Vector{String}(repos_df.repo)
     
     # Define centrality measures
     measures = [("degree", Graphs.degree_centrality), ("pagerank", Graphs.pagerank)]
@@ -77,7 +77,7 @@ function main()
         for result in results
             if nrow(result.centrality_df) > 0
                 # Make a copy of the centrality dataframe
-                df_copy = copy(result.centrality_df)
+                df_copy = result.centrality_df
                 # Add repository and measure columns
                 df_copy.repository = fill(result.repo, nrow(df_copy))
                 df_copy.measure = fill(result.measure, nrow(df_copy))
