@@ -1,4 +1,6 @@
 from typing import List, Tuple
+import os
+from pathlib import Path
 
 import pandas as pd
 from github_search.pipelines.postprocessing import GenerationPostprocessor
@@ -6,6 +8,7 @@ from github_search.python_code import code_selection
 from typing_extensions import Annotated
 import logging
 import ast
+from jinja2 import Environment, FileSystemLoader
 
 try:
     from tgutil.configs import PromptConfig, load_config_from_dict
@@ -32,19 +35,64 @@ class ZenMLSteps:
         logging.info("expanding documents")
         logging.info(f"using text generation config: {text_generation_config}")
         logging.info(f"using prompt config: {prompt_config}")
-        text_generation_config = load_config_from_dict(text_generation_config)
-        prompt_config = PromptConfig(**prompt_config)
-        parsed_prompt_infos = [ContextPromptInfo.parse_obj(pi) for pi in prompt_infos]
-        raw_generated_texts_df, failures = DocumentExpander(
-            text_generation_config=text_generation_config, prompts_config=prompt_config
-        ).expand_documents(parsed_prompt_infos)
-        assert (
-            len(raw_generated_texts_df)
-            == len(parsed_prompt_infos) * text_generation_config.n_generations
-        ), "generating failed"
-        raw_generated_texts_df = GenerationPostprocessor.convert_cols_to_dict(
-            raw_generated_texts_df, ["prompt_info", "context_prompt_infos"]
+        
+        # Load prompt template
+        templates_path = prompt_config["templates_path"]
+        template_name = prompt_config["prompt_template_name"]
+        
+        env = Environment(loader=FileSystemLoader(templates_path))
+        template = env.get_template(template_name)
+        
+        # Initialize ollama
+        lm = dspy.OllamaLocal(
+            model=text_generation_config.get("model", "llama2"),
+            base_url=text_generation_config.get("base_url", "http://localhost:11434")
         )
+        dspy.configure(lm=lm)
+        
+        generated_texts = []
+        failures = []
+        
+        # Iterate over records and generate text
+        for i, record in enumerate(prompt_infos):
+            try:
+                # Fill the prompt template with the record data
+                filled_prompt = template.render(**record)
+                
+                # Generate text using ollama
+                for gen_idx in range(text_generation_config.get("n_generations", 1)):
+                    try:
+                        response = lm(filled_prompt)
+                        generated_texts.append({
+                            "prompt_info": record,
+                            "generated_text": response,
+                            "prompt": filled_prompt,
+                            "generation_index": gen_idx,
+                            "record_index": i
+                        })
+                    except Exception as e:
+                        logging.error(f"Failed to generate text for record {i}, generation {gen_idx}: {e}")
+                        failures.append({
+                            "record_index": i,
+                            "generation_index": gen_idx,
+                            "error": str(e),
+                            "record": record
+                        })
+            except Exception as e:
+                logging.error(f"Failed to process record {i}: {e}")
+                failures.append({
+                    "record_index": i,
+                    "error": str(e),
+                    "record": record
+                })
+        
+        raw_generated_texts_df = pd.DataFrame(generated_texts)
+        
+        if len(raw_generated_texts_df) > 0:
+            raw_generated_texts_df = GenerationPostprocessor.convert_cols_to_dict(
+                raw_generated_texts_df, ["prompt_info"]
+            )
+        
         return raw_generated_texts_df, failures
 
     @staticmethod
