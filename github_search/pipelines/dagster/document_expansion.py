@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
 import pandas as pd
+import yaml
 from dagster import (
     asset,
     AssetExecutionContext,
@@ -7,30 +8,28 @@ from dagster import (
     AssetIn,
 )
 from github_search.pipelines.steps import ZenMLSteps
-from github_search.utils import load_config_yaml_key
-from tgutil.configs import (
-    PipelineConfig,
-    ConfigPaths,
-    APIConfig,
-    TextGenerationConfig,
-    SamplingConfig,
-    PromptConfig,
-)
 import logging
+
+
+def load_yaml_key(config_path: str, key: str) -> Dict[str, Any]:
+    """Load a specific key from a YAML file"""
+    with open(config_path) as f:
+        conf = yaml.safe_load(f)[key]
+    return conf
 
 
 class DocumentExpansionConfig(Config):
     """Configuration for document expansion pipeline"""
 
-    sampling_config: Dict = load_config_yaml_key(
-        SamplingConfig, "conf/pipeline/sampling.yaml", "no_sampling"
-    ).model_dump()
-    generation_config: Dict = load_config_yaml_key(
-        APIConfig, "conf/pipeline/generation.yaml", "api_vllm"
-    ).model_dump()
-    prompt_config: Dict = load_config_yaml_key(
-        PromptConfig, "conf/pipeline/prompts.yaml", "few_shot_markdown"
-    ).model_dump()
+    sampling_config: Dict[str, Any] = load_yaml_key(
+        "conf/pipeline/sampling.yaml", "no_sampling"
+    )
+    generation_config: Dict[str, Any] = load_yaml_key(
+        "conf/pipeline/generation.yaml", "api_vllm"
+    )
+    prompt_config: Dict[str, Any] = load_yaml_key(
+        "conf/pipeline/prompts.yaml", "few_shot_markdown"
+    )
 
 
 @asset
