@@ -53,7 +53,7 @@ end
 # Pre-allocate the dataframe
 println("creating nodes dataframe")
 nodes_df = DataFrame(index = Int[], name = String[], repo = String[])
-sizehint!(nodes_df, row_count)
+# DataFrames don't support sizehint! directly
 
 # Fill the dataframe
 println("filling nodes dataframe")
