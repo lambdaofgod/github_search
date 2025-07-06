@@ -102,7 +102,7 @@ function main()
             for result in current_batch
                 if !isnothing(result) && nrow(result.centrality_df) > 0
                     # Make a copy of the centrality dataframe
-                    df_copy = copy(result.centrality_df)
+                    df_copy = result.centrality_df
                     # Add repository and measure columns
                     df_copy.repository = fill(result.repo, nrow(df_copy))
                     df_copy.measure = fill(result.measure, nrow(df_copy))
