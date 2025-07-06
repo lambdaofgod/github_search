@@ -105,9 +105,11 @@ function calculate_node_centrality(subgraph_data, centrality_function)
     return df
 end
 
-# Get node names for repo-file edges
+# Get node names for repo-file edges - optimized with indexing
 selected_node_indices = filter(row -> row[:edge_type] == "repo-file", edges_df)[!,:src]
-selected_nodes = [nodes_df[nodes_df.index .== idx, :name][1] for idx in selected_node_indices]
+# Create a lookup dictionary for faster access
+node_index_to_name = Dict(nodes_df.index .=> nodes_df.name)
+selected_nodes = [node_index_to_name[idx] for idx in selected_node_indices]
 
 # Example usage:
 # using Graphs.Centrality
