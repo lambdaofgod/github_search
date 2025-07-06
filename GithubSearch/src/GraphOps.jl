@@ -116,9 +116,6 @@ function calculate_node_centrality(subgraph_data, centrality_function)
         centrality_score = centrality_scores
     )
     
-    # Sort the DataFrame by centrality score in descending order
-    sort!(df, :centrality_score, rev=true, alg=QuickSort)
-    
     return df
 end
 
@@ -146,9 +143,11 @@ function calculate_repo_centrality(
         centrality_df = filter(row -> row.node_name in selected_nodes, centrality_df)
     end
     
-    # Limit to top_k nodes by centrality score
+    # Efficiently get top_k nodes by centrality score without sorting the entire DataFrame
     if nrow(centrality_df) > top_k
-        centrality_df = centrality_df[1:top_k, :]
+        # Get indices of top_k elements by centrality score (in descending order)
+        top_indices = partialsortperm(centrality_df.centrality_score, 1:top_k, rev=true)
+        centrality_df = centrality_df[top_indices, :]
     end
     
     return (
