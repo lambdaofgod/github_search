@@ -38,9 +38,10 @@ nodes = vcat(source_nodes, df[!,:destination] |> unique) |> unique
 length(nodes)
 nodes_dict = Dict([(nodes[i], i) for i in 1:length(nodes)])
 
-# invert the direction
-src_idxs = [nodes_dict[df[i,:source]] for i in tqdm(1:size(df)[1])]
-dst_idxs = [nodes_dict[df[i,:destination]] for i in tqdm(1:size(df)[1])]
+# invert the direction - vectorized approach
+println("creating source and destination indices")
+src_idxs = [nodes_dict[src] for src in df.source]
+dst_idxs = [nodes_dict[dst] for dst in df.destination]
 
 # Create a nodes dataframe directly from the node_to_repos dictionary
 println("creating nodes dataframe")
