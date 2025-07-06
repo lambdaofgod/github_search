@@ -1,3 +1,5 @@
+module GraphOps
+
 using Graphs
 using Feather
 using DataFrames
@@ -5,23 +7,42 @@ using ProgressBars
 using SortingAlgorithms
 using Statistics
 
-# Load the nodes and edges data
-nodes_df = Feather.read("../output/dependency_records/nodes.feather")
-edges_df = Feather.read("../output/dependency_records/edges.feather")
+export load_graph_data, load_repo_subgraph, calculate_node_centrality, calculate_repo_centrality, calculate_centrality_for_repos
 
-# Create a graph
-g = SimpleGraph(nrow(nodes_df))
+function load_graph_data(nodes_path, edges_path)
+    # Load the nodes and edges data
+    nodes_df = Feather.read(nodes_path)
+    edges_df = Feather.read(edges_path)
 
-# Add edges to the graph
-for row in ProgressBar(eachrow(edges_df))
-    # Add edge between source and destination
-    # Note: Julia's Graphs.jl uses 1-based indexing
-    add_edge!(g, row.src, row.dst)
+    # Create a graph
+    g = SimpleGraph(nrow(nodes_df))
+
+    # Add edges to the graph
+    for row in ProgressBar(eachrow(edges_df))
+        # Add edge between source and destination
+        # Note: Julia's Graphs.jl uses 1-based indexing
+        add_edge!(g, row.src, row.dst)
+    end
+
+    # Basic graph information
+    println("Number of nodes: ", nv(g))
+    println("Number of edges: ", ne(g))
+    
+    # Get node names for repo-file edges - optimized with indexing
+    selected_node_indices = filter(row -> row[:edge_type] in ["repo-file", "file-function"], edges_df)[!,:dst]
+    # Create a lookup dictionary for faster access
+    node_index_to_name = Dict(nodes_df.index .=> nodes_df.name)
+    # Filter out indices that don't exist in the dictionary
+    valid_indices = filter(idx -> haskey(node_index_to_name, idx), selected_node_indices)
+    selected_nodes = [node_index_to_name[idx] for idx in valid_indices] |> unique
+    
+    return (
+        nodes_df = nodes_df,
+        edges_df = edges_df,
+        graph = g,
+        selected_nodes = selected_nodes
+    )
 end
-
-# Basic graph information
-println("Number of nodes: ", nv(g))
-println("Number of edges: ", ne(g))
 
 # Function to create a subgraph for a specific repository
 function load_repo_subgraph(nodes_df, edges_df, repo_name)
@@ -106,13 +127,6 @@ function calculate_node_centrality(subgraph_data, centrality_function)
     return df
 end
 
-# Get node names for repo-file edges - optimized with indexing
-selected_node_indices = filter(row -> row[:edge_type] in ["repo-file", "file-function"], edges_df)[!,:dst]
-# Create a lookup dictionary for faster access
-node_index_to_name = Dict(nodes_df.index .=> nodes_df.name)
-# Filter out indices that don't exist in the dictionary
-valid_indices = filter(idx -> haskey(node_index_to_name, idx), selected_node_indices)
-selected_nodes = [node_index_to_name[idx] for idx in valid_indices] |> unique
 
 # Function to calculate centrality for a single repository with a specific measure
 function calculate_repo_centrality(
@@ -190,11 +204,5 @@ function calculate_centrality_for_repos(
     return results
 end
 
-# Example usage:
-println("\nCalculating centrality for repositories:")
-repos = ["ai4bharat-indicnlp/indicnlp_corpus", "000Justin000/torchdiffeq", "facebookresearch/online_dialog_eval", "0492wzl/tensorflow_slim_densenet", "huggingface/transformers"]
-measures = [("degree", degree_centrality), ("pagerank", pagerank)]
-
-# Call the function with selected nodes
-cs = calculate_centrality_for_repos(nodes_df, edges_df, repos, measures, selected_nodes=selected_nodes)
+end # module
 
