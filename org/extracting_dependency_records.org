@@ -1,0 +1,289 @@
+#+title: Extracting Dependency Records
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+import polars as pl
+import pandas as pd
+import pickle
+
+raw_files_pldf = pl.scan_parquet("../data/python_files.parquet")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+def download_repos_batch(repo_names: List[str], output_dir: str = "downloaded_repos", token: str = None) -> Dict[str, str]:
+    """
+    Download multiple GitHub repositories as archives.
+    
+    Args:
+        repo_names: List of repository names in format "owner/repo_name"
+        output_dir: Directory to save downloaded archives
+        token: GitHub token (if None, will try to read from GITHUB_TOKEN env var)
+    
+    Returns:
+        Dictionary mapping repo names to download status/path
+    """
+    from pathlib import Path
+    
+    results = {}
+    output_path = Path(output_dir)
+    
+    for repo_name in tqdm(repo_names, desc="Downloading repos"):
+        try:
+            # Check if file already exists
+            safe_repo_name = repo_name.replace("/", "_")
+            expected_file = output_path / f"{safe_repo_name}.zip"
+            
+            if expected_file.exists():
+                print(f"Skipping {repo_name} - already downloaded")
+                results[repo_name] = str(expected_file)
+                continue
+            
+            # Download the repo
+            file_path = download_repo_archive(repo_name, output_dir, token)
+            results[repo_name] = file_path
+            
+        except Exception as e:
+            print(f"Failed to download {repo_name}: {str(e)}")
+            results[repo_name] = f"ERROR: {str(e)}"
+    
+    return results
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+# Download a small batch first for testing
+test_repo_names = repo_names[:3]
+print(f"Testing download with {len(test_repo_names)} repos:")
+for repo in test_repo_names:
+    print(f"  - {repo}")
+
+download_results = download_repos_batch(test_repo_names, "test_downloads")
+
+# Show results
+for repo, result in download_results.items():
+    status = "SUCCESS" if not result.startswith("ERROR") else "FAILED"
+    print(f"{repo}: {status}")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+# Uncomment to download all repos (be careful with rate limits!)
+# print(f"Downloading all {len(repo_names)} repos...")
+# all_download_results = download_repos_batch(repo_names, "all_repos_downloads")
+# 
+# # Summary statistics
+# successful_downloads = [k for k, v in all_download_results.items() if not v.startswith("ERROR")]
+# failed_downloads = [k for k, v in all_download_results.items() if v.startswith("ERROR")]
+# 
+# print(f"Successfully downloaded: {len(successful_downloads)}")
+# print(f"Failed downloads: {len(failed_downloads)}")
+# 
+# if failed_downloads:
+#     print("Failed repos:")
+#     for repo in failed_downloads[:10]:  # Show first 10 failures
+#         print(f"  - {repo}: {all_download_results[repo]}")
+#+END_SRC
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+with open("/home/kuba/Projects/github_search/.dagster/storage/sampled_repos", "rb") as f:
+    sampled_repos_df = pickle.load(f)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+sampled_repos_pldf = pl.DataFrame(sampled_repos_df)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+sampled_repos_pldf.columns
+#+END_SRC
+
+#+RESULTS:
+| repo | paper_urls | paper_titles | titles | arxiv_ids | authors | tasks | readme | query_tasks | repomap |
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+raw_files_pldf.head().columns
+#+END_SRC
+
+#+RESULTS:
+| content | path | repo_name |
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+# Join the dataframes on repo columns
+joined_df = raw_files_pldf.join(
+    sampled_repos_pldf.lazy(),
+    left_on="repo_name",
+    right_on="repo",
+    how="inner"
+).head()
+#+END_SRC
+
+#+RESULTS:
+
+* Checking repo existence
+
+The files dataframe is bugged... We'll just have to recheck the sampled repos using Github API
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+from pathlib import Path
+import os
+
+
+with open(Path("~/.keys/gh_token.txt").expanduser()) as f:
+    github_token = f.read().strip()
+    os.environ["GITHUB_TOKEN"] = github_token
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+from github import Github
+from github.GithubException import UnknownObjectException
+import os
+from typing import List, Dict
+from tqdm import tqdm
+
+
+def check_repo_exists(g: Github, repo_name: str) -> bool:
+    """Check if a GitHub repository exists using PyGithub"""
+    try:
+        repo = g.get_repo(repo_name)
+        return True
+    except UnknownObjectException:
+        return False
+    except Exception:
+        return False
+
+
+def check_repos_batch(repo_names: List[str], github_token: str = None) -> Dict[str, bool]:
+    """Check multiple repositories using PyGithub with better rate limiting"""
+    # Initialize GitHub client
+    if github_token:
+        g = Github(github_token)
+    else:
+        # Try to get token from environment
+        token = os.getenv('GITHUB_TOKEN')
+        if token:
+            g = Github(token)
+        else:
+            g = Github()  # Unauthenticated (lower rate limits)
+
+    results = {}
+    for repo in tqdm(repo_names, desc="Checking repos"):
+        results[repo] = check_repo_exists(g, repo)
+
+    return results
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+# Get list of repo names from sampled repos
+repo_names = sampled_repos_pldf["repo"].to_list()
+print(f"Total repos to check: {len(repo_names)}")
+print(f"First 5 repos: {repo_names[:5]}")
+#+END_SRC
+
+#+RESULTS:
+: None
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both :async
+# Check if repos exist (using a small batch first for testing)
+test_repos = repo_names[:10]  # Test with first 5 repos
+repo_existence = check_repos_batch(test_repos)
+
+pd.Series(repo_existence).describe()
+#+END_SRC
+
+#+RESULTS:
+: count       10
+: unique       1
+: top       True
+: freq        10
+: dtype: object
+
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+# Check all repos (uncomment when ready to run full check)
+# print("Checking all repos...")
+# all_repo_existence = check_repos_batch(repo_names)
+# 
+# # Create a dataframe with existence status
+# existence_df = pl.DataFrame({
+#     "repo": list(all_repo_existence.keys()),
+#     "exists": list(all_repo_existence.values())
+# })
+# 
+# print(f"Total repos checked: {len(existence_df)}")
+# print(f"Existing repos: {existence_df.filter(pl.col('exists')).height}")
+# print(f"Non-existing repos: {existence_df.filter(~pl.col('exists')).height}")
+#+END_SRC
+
+#+RESULTS:
+
+** Downloading repos
+
+#+BEGIN_SRC python :session extracting_dependency_records.org  :exports both
+def download_repo_archive(repo_full_name: str, output_dir: str, token: str = None, archive_format: str = "zipball") -> str:
+    """
+    Download a GitHub repository archive using PyGithub.
+    
+    Args:
+        repo_full_name: Repository name in format "owner/repo_name"
+        output_dir: Directory to save the downloaded archive
+        token: GitHub token (if None, will try to read from GITHUB_TOKEN env var)
+        archive_format: Either "zipball" or "tarball"
+    
+    Returns:
+        Path to the downloaded file
+    """
+    import os
+    from pathlib import Path
+    import requests
+    from github import Github
+    
+    # Get GitHub token
+    if token is None:
+        token = os.getenv('GITHUB_TOKEN')
+        if not token:
+            raise ValueError("No GitHub token provided and GITHUB_TOKEN environment variable not set")
+    
+    # Initialize GitHub client
+    g = Github(token)
+    
+    # Get repository
+    repo = g.get_repo(repo_full_name)
+    
+    # Get archive download URL
+    download_url = repo.get_archive_link(archive_format)
+    
+    # Create output directory if it doesn't exist
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Determine file extension
+    ext = ".zip" if archive_format == "zipball" else ".tar.gz"
+    
+    # Create filename from repo name
+    safe_repo_name = repo_full_name.replace("/", "_")
+    filename = f"{safe_repo_name}{ext}"
+    file_path = output_path / filename
+    
+    # Download the archive
+    response = requests.get(download_url)
+    response.raise_for_status()
+    
+    with open(file_path, "wb") as f:
+        f.write(response.content)
+    
+    print(f"Downloaded {repo_full_name} to {file_path}")
+    return str(file_path)
+#+END_SRC
+
+#+RESULTS:
