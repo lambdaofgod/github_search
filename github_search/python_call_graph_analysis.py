@@ -4,6 +4,7 @@ import networkx as nx
 import pandas as pd
 from pandera.typing import DataFrame
 from github_search.python_call_graph import DependencyGraphSchema
+import tqdm
 
 
 class GraphCentralityAnalyzer(BaseModel):
@@ -33,7 +34,7 @@ class GraphCentralityAnalyzer(BaseModel):
         centrality_results = []
 
         # Group by repository and calculate centralities for each repo
-        for repo_name in edge_df["repo_name"].unique():
+        for repo_name in tqdm.tqdm(edge_df["repo_name"].unique()):
             # Calculate centrality based on method using full graph
             centralities = self._calculate_centralities(repo_name, edge_df)
 
@@ -49,7 +50,9 @@ class GraphCentralityAnalyzer(BaseModel):
 
         return pd.DataFrame(centrality_results)
 
-    def _calculate_centralities(self, repo_name: str, edge_df: DataFrame[DependencyGraphSchema]) -> Dict[str, float]:
+    def _calculate_centralities(
+        self, repo_name: str, edge_df: DataFrame[DependencyGraphSchema]
+    ) -> Dict[str, float]:
         """
         Calculate centrality measures for a given repository.
 
@@ -126,13 +129,13 @@ class GraphCentralityAnalyzer(BaseModel):
             List of dictionaries with repo_name, node, centrality_score, and edge_type
         """
         results = []
-        
+
         for edge_type, edge_type_topk in edge_types_with_topk.items():
             edge_type_results = self._get_topk_for_edge_type(
                 repo_name, repo_edges, centralities, edge_type, edge_type_topk
             )
             results.extend(edge_type_results)
-        
+
         return results
 
     def _process_unified_topk(
@@ -178,11 +181,9 @@ class GraphCentralityAnalyzer(BaseModel):
         # Convert to list of records (without edge_type for backward compatibility)
         results = []
         for node, score in sorted_centralities:
-            results.append({
-                "repo_name": repo_name,
-                "node": node,
-                "centrality_score": score
-            })
+            results.append(
+                {"repo_name": repo_name, "node": node, "centrality_score": score}
+            )
 
         return results
 
@@ -230,12 +231,14 @@ class GraphCentralityAnalyzer(BaseModel):
         # Add results with edge type information
         results = []
         for node, score in sorted_centralities:
-            results.append({
-                "repo_name": repo_name,
-                "node": node,
-                "centrality_score": score,
-                "edge_type": edge_type
-            })
+            results.append(
+                {
+                    "repo_name": repo_name,
+                    "node": node,
+                    "centrality_score": score,
+                    "edge_type": edge_type,
+                }
+            )
 
         return results
 

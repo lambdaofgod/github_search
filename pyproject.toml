@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aider>=0.2.6",
-    "arize-phoenix>=3.25.0",
+    "arize-phoenix-otel>=0.6.1",
+    "astunparse>=1.6.3",
     "beir>=2.0.0",
     "comment-parser>=1.2.4",
     "dagster>=1.6.5",
@@ -20,16 +21,21 @@ dependencies = [
     "mlflow==2.16.2",
     "mlutil",
     "numba>=0.60.0",
+    "ollama>=0.5.1",
     "openinference-instrumentation-dspy==0.1.6",
+    "openinference-instrumentation-litellm>=0.1.22",
     "pandera>=0.20.4",
     "ploomber>=0.23.3",
     "polars>=1.15.0",
+    "pygithub>=2.6.1",
     "pytrec-eval>=0.5",
     "rank-bm25>=0.2.2",
     "sentence-transformers==3.3.1",
+    "tgutil",
     "toolz>=1.0.0",
     "transformers>=4.46.2",
     "typing-extensions>=4.12.2",
+    "weaviate-client>=4.10.4",
 ]
 
 [tool.uv]
@@ -39,6 +45,7 @@ dev-dependencies = ["dagster-webserver>=1.6.5"]
 [tool.uv.sources]
 mlutil = { git = "https://github.com/lambdaofgod/mlutil" }
 transformers = { git = "https://github.com/huggingface/transformers.git", rev = "b5a557e5fe2d015bd36214a95878370eaed51571" }
+tgutil = { path = "../tgutil" }
 #visutils = { path = "../visualization" }
 
 [tool.dagster]

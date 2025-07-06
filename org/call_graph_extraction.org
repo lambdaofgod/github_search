@@ -70,13 +70,19 @@ python_files_dfs = [get_python_files_df(p) for p in tqdm.tqdm(repo_paths)]
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
 python_files_df = pd.concat(python_files_dfs).sort_values("repo_name")
 python_files_df.shape
 #+END_SRC
 
 #+RESULTS:
 | 228871 | 3 |
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+python_files_df.columns
+#+END_SRC
+
+#+RESULTS:
+: Index(['path', 'content', 'repo_name'], dtype='object')
 
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both
 python_files_df["repo_name"].value_counts().describe()
@@ -154,8 +160,8 @@ type(expr)
 import json
 from github_search.python_code_analysis import get_ast_analysis_result
 
-extracted_data = analyze_code(example_contents, True)
-print(json.dumps(extracted_data.model_dump(), indent=2))
+#extracted_data = get_ast_analysis_result(example_contents, True)
+#print(json.dumps(extracted_data.model_dump(), indent=2))
 #+END_SRC
 
 #+RESULTS:
@@ -173,36 +179,49 @@ dependency_records = [analyze_code(contents, True) for contents in tqdm.tqdm(pyt
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
-import pickle
-
-with open("dependency_records.pkl", "wb") as f:
-    pickle.dump(dependency_records, f)
-#+END_SRC
-
-#+RESULTS:
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
-import pickle
-from github_search.python_code_analysis import ASTAnalysisResult
-
-with open("dependency_records.pkl", "rb") as f:
-    dependency_records = pickle.load(f)
-#+END_SRC
-
-#+RESULTS:
-: /tmp/babel-rOv9H4/python-tUYHof
-
 * Defining the call graph
 
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+import pandas as pd
 from github_search.python_call_graph import GraphExtractor
 #+END_SRC
 
 #+RESULTS:
 
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+# graph_dependencies_df = GraphExtractor.extract_repo_dependencies_to_parquet(python_files_df, "../output/dependency_records.parquet")
+
+graph_dependencies_df = pd.read_parquet("../output/dependency_records.parquet")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+#graph_dependencies_df.to_parquet("/tmp/deps.parquet")
+#+END_SRC
+
+#+RESULTS:
+: /tmp/babel-rOv9H4/python-6UBx1T
+
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-graph_dependencies_df = pd.concat([GraphExtractor.extract_edges_df(p, res) for (p, res) in zip(python_files_df["path"], sample_dependency_records)])
+import pandas as pd
+from github_search.python_call_graph_analysis import GraphCentralityAnalyzer
+
+#graph_dependencies_df = pd.read_csv("/tmp/deps.csv")
+graph_dependencies_df = pd.read_parquet("../output/dependency_records.parquet")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+centralities_df = GraphCentralityAnalyzer(centrality_method="pagerank").analyze_centralities(graph_dependencies_df, ["repo-file", "file-class", "file-function"], 10)
+#+END_SRC
+
+#+RESULTS:
+: /tmp/babel-rOv9H4/python-YUj5JW
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+centralities_df = GraphCentralityAnalyzer(centrality_method="pagerank").analyze_centralities(graph_dependencies_df, {edge_type: 10 for edge_type in ["repo-file", "file-class", "file-function", "file-import"]})
 #+END_SRC
 
 #+RESULTS:
