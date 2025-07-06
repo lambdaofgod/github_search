@@ -1,63 +1,94 @@
 #+title: Bm25_ir
 
 #+BEGIN_SRC python :session bm25_ir.org  :exports both
-import rank_bm25
 import pandas as pd
-import nltk
 import json
-
-repo_text_df = pd.read_json("../output/dependency_records/graph_dependencies_test.json", lines=True, orient="records")
-
-repo_text_df = repo_text_df[~repo_text_df["readme"].isna()]
+import glob
 #+END_SRC
 
 #+RESULTS:
-
-
-#+BEGIN_SRC python :session bm25_ir.org  :exports both
-queries = repo_text_df["tasks"].explode().drop_duplicates()
-#+END_SRC
-
-#+RESULTS:
-
-
-#+BEGIN_SRC python :session bm25_ir.org  :exports both
-repo_text_df["tokenized_readme"] = repo_text_df["readme"].apply(nltk.tokenize.wordpunct_tokenize)
-
-
-#+END_SRC
-
-#+RESULTS:
-
-
-#+BEGIN_SRC python :session bm25_ir.org  :exports both
-bm25_retriever = rank_bm25.BM25Okapi(repo_text_df["tokenized_readme"])
-#+END_SRC
-
-#+RESULTS:
-
 
 * BEIR results
 
 [[/home/kuba/Projects/github_search/github_search/ir/evaluate_bm25.py::31][evaluate_bm25.py::31 (in /home/kuba/Projects/github_search/github_search/ir/evaluate_bm25.py)]]
 
 
-#+BEGIN_SRC python :session pipeline_docs.org  :exports both
-metrics_df = pd.read_json("/tmp/ir_metrics.json")
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+dfs_paths = glob.glob("../output/beir/*json")
+
+metrics_df = pd.concat([pd.read_json(p) for p in dfs_paths])
+
+metrics_df["text_columns"] = metrics_df["text_columns"].apply(tuple)
 #+END_SRC
 
 #+RESULTS:
 
-#+BEGIN_SRC python :session pipeline_docs.org  :exports both
-metrics_df.sort_values("NDCG@1")
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+metrics_df.columns
 #+END_SRC
 
 #+RESULTS:
-:     NDCG@1   NDCG@3  ...   P@1000           text_columns
-: 2  0.09173  0.07490  ...  0.00143         [dependencies]
-: 0  0.13171  0.11741  ...  0.01332                [tasks]
-: 1  0.15721  0.13490  ...  0.01353  [tasks, dependencies]
-: 4  0.57882  0.54449  ...  0.04030        [tasks, readme]
-: 3  0.58205  0.54744  ...  0.04052               [readme]
-:
-: [5 rows x 25 columns]
+: Index(['Accuracy@1', 'Accuracy@5', 'Accuracy@10', 'Accuracy@25', 'NDCG@1',
+:        'NDCG@5', 'NDCG@10', 'NDCG@25', 'MAP@1', 'MAP@5', 'MAP@10', 'MAP@25',
+:        'Recall@1', 'Recall@5', 'Recall@10', 'Recall@25', 'P@1', 'P@5', 'P@10',
+:        'P@25', 'text_columns', 'retriever_model', 'generation'],
+:       dtype='object')
+
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+agg_df = metrics_df.groupby(["retriever_model", "text_columns"]).apply(lambda df: df.select_dtypes("float64").mean())
+#.apply(lambda df: df.select_dtypes().mean())
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+viewed_metrics_df = agg_df
+viewed_metrics_df.reset_index().round(4).sort_values("Accuracy@10").to_csv("/tmp/ir_metrics.csv")
+#+END_SRC
+
+#+RESULTS:
+: None
+
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+viewed_metrics_df.columns
+#+END_SRC
+
+#+RESULTS:
+: Index(['Accuracy@10', 'NDCG@10', 'MAP@10', 'Recall@10', 'P@10'], dtype='object')
+
+#+BEGIN_SRC python :session bm25_ir.org  :exports both
+viewed_metrics_df.sort_values("Accuracy@10")
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+                                                               Accuracy@10  ...      P@10
+retriever_model                         text_columns                        ...
+bm25                                    (dependencies,)           0.228053  ...  0.049000
+msmarco-distilbert-base-tas-b           (tasks,)                  0.358373  ...  0.073993
+                                        (dependencies,)           0.397420  ...  0.092000
+bm25                                    (tasks,)                  0.425150  ...  0.093493
+                                        (tasks, dependencies)     0.430263  ...  0.097163
+sentence-transformers/all-mpnet-base-v2 (tasks,)                  0.431073  ...  0.092217
+                                        (dependencies,)           0.442650  ...  0.105090
+msmarco-distilbert-base-tas-b           (tasks, dependencies)     0.445073  ...  0.100940
+sentence-transformers/all-mpnet-base-v2 (tasks, dependencies)     0.497310  ...  0.115807
+msmarco-distilbert-base-tas-b           (tasks, readme)           0.805603  ...  0.314000
+sentence-transformers/all-mpnet-base-v2 (tasks, readme)           0.811523  ...  0.317553
+msmarco-distilbert-base-tas-b           (readme,)                 0.818260  ...  0.333680
+sentence-transformers/all-mpnet-base-v2 (readme,)                 0.849760  ...  0.384090
+bm25                                    (readme,)                 0.895533  ...  0.421747
+                                        (tasks, readme)           0.896070  ...  0.419563
+
+[15 rows x 5 columns]
+#+end_example
+
+** Comments
+<2023-12-15 Fri>
+
+*** Readme + BM25 are essentially a topline
+These results are so strong that adding generated tasks doesn't help
+
+*** The worst results are for dependencies in BM25
+
+*** Using semantic search or document expansion improves results for dependencies dramatically

@@ -29,10 +29,12 @@ index,src,dst,edge_type,repo
 ** Centrality measures
 
 Data loading
-#+BEGIN_SRC julia :session graphs.org  :exports both
+#+BEGIN_SRC julia
 using Graphs
 using CSV
 #+END_SRC
+
+#+RESULTS:
 
 
 #+BEGIN_SRC julia :session graphs.org  :exports both

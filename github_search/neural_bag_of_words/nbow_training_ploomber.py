@@ -16,7 +16,7 @@ from github_search.neural_bag_of_words.checkpointers import EncoderCheckpointer
 from github_search.neural_bag_of_words.data import *
 from github_search.neural_bag_of_words.pairwise_models import PairwiseEmbedderModule
 from github_search.neural_bag_of_words.training_utils import (
-    TrainValConfig,
+    NBOWModelConfig,
     NBOWTrainValData,
     QueryDocumentCollator,
 )
@@ -52,7 +52,7 @@ config_name = None
 # %% [markdown]
 # ## Load config
 # %%
-train_val_config = TrainValConfig.load(config_name)
+train_val_config = NBOWModelConfig.load(config_name)
 max_seq_length = train_val_config.max_seq_length
 
 # %% [markdown]

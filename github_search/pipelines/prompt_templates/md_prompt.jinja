@@ -1,3 +1,6 @@
+Based on the examples above generate tags for the last repository.
+Respond only with at least 3 tags following the format of examples (the tags should be separated with newlines).
+You should return the tags only, do not generate any comments or further examples.
 {% for repo_record in context_prompt_infos %}
 ## repository
 {{repo_record["name"]}}

@@ -9,6 +9,7 @@ from typing_extensions import Annotated
 import logging
 import ast
 from jinja2 import Environment, FileSystemLoader
+import tqdm
 
 try:
     from tgutil.configs import PromptConfig, load_config_from_dict
@@ -22,6 +23,8 @@ from github_search.lms.code2documentation import (
     run_code2doc_on_df,
     run_code2doc_on_files_df,
 )
+from phoenix.otel import register
+from opentelemetry import trace
 
 
 class ZenMLSteps:
@@ -35,64 +38,74 @@ class ZenMLSteps:
         logging.info("expanding documents")
         logging.info(f"using text generation config: {text_generation_config}")
         logging.info(f"using prompt config: {prompt_config}")
-        
+
         # Load prompt template
         templates_path = prompt_config["templates_path"]
         template_name = prompt_config["prompt_template_name"]
-        
+
         env = Environment(loader=FileSystemLoader(templates_path))
         template = env.get_template(template_name)
-        
+        # configure the Phoenix tracer
+        tracer_provider = register(project_name="librarian")
         # Initialize ollama
         lm = dspy.OllamaLocal(
-            model=text_generation_config.get("model", "llama2"),
-            base_url=text_generation_config.get("base_url", "http://localhost:11434")
+            model=text_generation_config.get("model_name", "llama2"),
+            base_url=text_generation_config.get("base_url", "http://localhost:11434"),
         )
         dspy.configure(lm=lm)
-        
+
         generated_texts = []
         failures = []
-        
+
+        tracer = trace.get_tracer("librarian")
+
         # Iterate over records and generate text
-        for i, record in enumerate(prompt_infos):
+        for i, record in tqdm.tqdm(enumerate(prompt_infos), total=len(prompt_infos)):
             try:
                 # Fill the prompt template with the record data
                 filled_prompt = template.render(**record)
-                
+                if i == 0:
+                    logging.info(f"Filled prompt for record {i}")
+                    logging.info(filled_prompt)
+
                 # Generate text using ollama
                 for gen_idx in range(text_generation_config.get("n_generations", 1)):
                     try:
                         response = lm(filled_prompt)
-                        generated_texts.append({
-                            "prompt_info": record,
-                            "generated_text": response,
-                            "prompt": filled_prompt,
-                            "generation_index": gen_idx,
-                            "record_index": i
-                        })
+                        if type(response) is list:
+                            response = response[0]
+                        generated_texts.append(
+                            {
+                                "prompt_info": record,
+                                "generated_text": response,
+                                "prompt": filled_prompt,
+                                "generation_index": gen_idx,
+                                "record_index": i,
+                            }
+                        )
+                        with tracer.start_as_current_span(
+                            f"llm_call_to_model_{i}_{gen_idx}"
+                        ) as llm_span:
+                            llm_span.set_attribute("prompt", filled_prompt)
+                            llm_span.set_attribute("response", response)
+
                     except Exception as e:
-                        logging.error(f"Failed to generate text for record {i}, generation {gen_idx}: {e}")
-                        failures.append({
-                            "record_index": i,
-                            "generation_index": gen_idx,
-                            "error": str(e),
-                            "record": record
-                        })
+                        logging.error(
+                            f"Failed to generate text for record {i}, generation {gen_idx}: {e}"
+                        )
+                        failures.append(
+                            {
+                                "record_index": i,
+                                "generation_index": gen_idx,
+                                "error": str(e),
+                                "record": record,
+                            }
+                        )
             except Exception as e:
                 logging.error(f"Failed to process record {i}: {e}")
-                failures.append({
-                    "record_index": i,
-                    "error": str(e),
-                    "record": record
-                })
-        
+                failures.append({"record_index": i, "error": str(e), "record": record})
+
         raw_generated_texts_df = pd.DataFrame(generated_texts)
-        
-        if len(raw_generated_texts_df) > 0:
-            raw_generated_texts_df = GenerationPostprocessor.convert_cols_to_dict(
-                raw_generated_texts_df, ["prompt_info"]
-            )
-        
         return raw_generated_texts_df, failures
 
     @staticmethod

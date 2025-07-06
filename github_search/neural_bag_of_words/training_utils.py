@@ -104,7 +104,6 @@ class NBOWTrainValData:
         val_df,
         config,
     ):
-
         query_num = NBOWNumericalizer.build_from_texts(
             query_corpus.dropna(), tokenizer=tokenize.wordpunct_tokenize
         )

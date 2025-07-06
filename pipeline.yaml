@@ -3,17 +3,16 @@ executor:
   build_in_subprocess: False
 
 meta:
-  extract_upstream: False 
+  extract_upstream: False
   extract_product: False
   jupyter_hot_reload: True
   jupyter_functions_as_notebooks: True
 
 tasks:
-
   # download area grouped tasks
   - source: github_search.papers_with_code.paperswithcode_task_areas.prepare_area_grouped_tasks
     product: "data/paperswithcode_tasks.csv"
-  
+
   - source: github_search.papers_with_code.ploomber.prepare_paperswithcode_df
     name: pwc_data.prepare_raw_paperswithcode_df
     params:
@@ -54,11 +53,10 @@ tasks:
       - prepare_area_grouped_tasks
       - pwc_data.prepare_final_paperswithcode_df
     params:
-     test_size: 1
+      test_size: 1
     product:
       train: "output/tasks_train.csv"
       test: "output/tasks_test.csv"
-
 
   #######################
   # code2doc
@@ -98,16 +96,14 @@ tasks:
     product: "output/code2doc/sample_per_task_5_repos/llama3_generated_readmes5.jsonl"
   # the stack
   - source: github_search.the_stack.prepare_the_stack_files
-    name:
-      the_stack.prepare_files
+    name: the_stack.prepare_files
     params:
       paperswithcode_path: "data/paperswithcode_with_tasks.csv"
       delete_temporary_files: True
     product: "data/the_stack_paperswithcode_repos"
 
   - source: github_search.the_stack.prepare_the_stack_df
-    name:
-      the_stack.prepare_df
+    name: the_stack.prepare_df
     upstream:
       - the_stack.prepare_files
     product: "output/the_stack_paperswithcode_files.parquet"
@@ -119,10 +115,10 @@ tasks:
       datasets: "data/datasets.json.gz"
       methods: "data/methods.json.gz"
 
-  # prepare data for similarity learning from dbpedia 
+  # prepare data for similarity learning from dbpedia
   - source: github_search.sentence_embeddings.datasets.prepare_dbpedia_machine_learning_data
     name: sentence_embeddings.prepare_dbpedia_data
-    product: "data/dbpedia_ml_records.csv" 
+    product: "data/dbpedia_ml_records.csv"
 
   - source: github_search.sentence_embeddings.datasets.prepare_data
     name: sentence_embeddings.prepare_data
@@ -139,28 +135,28 @@ tasks:
     product:
       train: "output/repos_train.json"
       test: "output/repos_test.json"
-
-  # extract python tokens for BoW baseline
-  - source: github_search.bow_baseline.extract_python_tokens
-    product: "output/python_files_with_tokens_df.feather"
-
-  # 
-  - source: github_search.bow_baseline.prepare_bow_retrieval_evaluation_results
-    name: prepare_bow_retrieval_evaluation_results_readme
-    upstream:
-      - prepare_task_train_test_split
-    params:
-      index: python_tokenized_files 
-    product: "output/python_files_retrieval_results.csv"
-  # 
-  - source: github_search.bow_baseline.prepare_bow_retrieval_evaluation_results
-    name: prepare_bow_retrieval_evaluation_results_python_files
-    upstream:
-      - prepare_task_train_test_split
-    params:
-      index: project_readmes 
-    product: "output/readme_retrieval_results.csv"
-
+  #
+  #  # extract python tokens for BoW baseline
+  #  - source: github_search.bow_baseline.extract_python_tokens
+  #    product: "output/python_files_with_tokens_df.feather"
+  #
+  #  #
+  #  - source: github_search.bow_baseline.prepare_bow_retrieval_evaluation_results
+  #    name: prepare_bow_retrieval_evaluation_results_readme
+  #    upstream:
+  #      - prepare_task_train_test_split
+  #    params:
+  #      index: python_tokenized_files
+  #    product: "output/python_files_retrieval_results.csv"
+  #  #
+  #  - source: github_search.bow_baseline.prepare_bow_retrieval_evaluation_results
+  #    name: prepare_bow_retrieval_evaluation_results_python_files
+  #    upstream:
+  #      - prepare_task_train_test_split
+  #    params:
+  #      index: project_readmes
+  #    product: "output/readme_retrieval_results.csv"
+  #
   # run word2vec on natural language data
   - source: github_search.word2vec.train_abstract_readme_w2v
     upstream:
@@ -172,7 +168,7 @@ tasks:
       binary: "output/abstract_readme_w2v{{word2vec.dimension}}.bin"
       txt: "output/abstract_readme_w2v{{word2vec.dimension}}.txt"
 
-  # run word2vec on code 
+  # run word2vec on code
   - source: github_search.word2vec.train_python_code_w2v
     params:
       python_file_path: "{{python_files_path}}"
@@ -208,7 +204,7 @@ tasks:
       - imports.train_w2v
     params:
       epochs: 2
-      batch_size: 256 
+      batch_size: 256
       rnn_config: "{{rnn_config}}"
     product: "output/models/import_lstm"
 
@@ -221,8 +217,7 @@ tasks:
     name: sentence_embeddings.prepare_w2v_model
     upstream:
       - train_abstract_readme_w2v
-    product:
-      "output/abstract_readme_embedder"
+    product: "output/abstract_readme_embedder"
 
   # prepare data for token2vec (modified import2vec)
   - source: github_search.data_engineering.prepare_module_corpus
@@ -237,7 +232,7 @@ tasks:
     params:
       n_iterations: 10000
       n_positive_imports: 32
-      embedding_dim: "{{word2vec.dimension}}" 
+      embedding_dim: "{{word2vec.dimension}}"
     product:
       model_path: "output/import2vec_module_vectors{{word2vec.dimension}}.bin"
 
@@ -251,8 +246,7 @@ tasks:
 
   # prepare python dependency graph records
   - source: github_search.data_engineering.prepare_dependency_records
-    name:
-      dependency_graph.prepare_records
+    name: dependency_graph.prepare_records
     params:
       sample_files_per_repo: 1000
       add_repo_col: True
@@ -263,8 +257,7 @@ tasks:
 
   # additional information for dependency records
   - source: github_search.data_engineering.postprocess_dependency_records
-    name:
-      dependency_graph.postprocess_records
+    name: dependency_graph.postprocess_records
     upstream:
       - dependency_graph.prepare_records
       - prepare_paperswithcode_with_imports_df
@@ -299,35 +292,29 @@ tasks:
       python_file_path: "{{python_files_path}}"
       max_depth: 10
       n_cores: 4
-    product:
-      "output/python_functions.feather"
+    product: "output/python_functions.feather"
 
   - source: github_search.data_engineering.prepare_function_signatures_df
     params:
       python_file_path: "{{python_files_path}}"
       n_cores: 4
-    product:
-      "output/python_signatures.parquet"
-
+    product: "output/python_signatures.parquet"
 
   # train FastText model on Python files
   - source: github_search.data_engineering.train_python_token_fasttext
     params:
       python_file_path: "{{python_files_path}}"
-      dim: "{{fasttext.dimension}}" 
+      dim: "{{fasttext.dimension}}"
       epoch: "{{fasttext.epochs}}"
-      n_cores: 16 
-    product:
-      "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
+      n_cores: 16
+    product: "output/python_files_fasttext_dim{{fasttext.dimension}}.bin"
 
   #
   - source: github_search.summarization.prepare_function_df_with_summarized_code
     params:
       transformer_model_name: "{{summarization.transformer_model_name}}"
     upstream: prepare_function_code_df
-    product:
-      "output/python_files_descriptions_{{summarization.transformer_model_name}}.feather"
-
+    product: "output/python_files_descriptions_{{summarization.transformer_model_name}}.feather"
 
   - source: github_search.graphs.prepare_graph.prepare_from_dependency_records
     name: graph.prepare_from_dependency_records
@@ -344,7 +331,7 @@ tasks:
       - prepare_function_code_df
     product: "output/function_code_igraph.pkl"
 
-  # prepare graph list 
+  # prepare graph list
   - source: github_search.graphs.data_preparation.prepare_dataset_with_transformer
     name: gnn.prepare_dataset_with_transformer
     params:
@@ -355,4 +342,3 @@ tasks:
       - prepare_area_grouped_tasks
       - graph.prepare_from_function_code
     product: "output/graph_list.pkl"
-

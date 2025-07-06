@@ -87,8 +87,11 @@ def prepare_code_corpus(repos_df, selected_python_code_df):
 
 
 # THIS IS FOR ONE GENERATION ONLY NOW
-def prepare_librarian_corpora(repos_df, sampled_librarian_signatures_df):
-    columns = ["dependency_signature", "repository_signature", "generated_tasks"]
+def prepare_librarian_corpora(
+    repos_df,
+    sampled_librarian_signatures_df,
+    columns=["dependency_signature", "repository_signature", "generated_tasks"],
+):
     sampled_librarian_signatures_df = (
         sampled_librarian_signatures_df.set_index("repo")
         .loc[repos_df["repo"]]
@@ -111,7 +114,7 @@ def prepare_librarian_corpora(repos_df, sampled_librarian_signatures_df):
         return {
             column: {
                 str(i): {"text": row[column], "title": row["repo"]}
-                for (i, row) in sampled_librarian_signatures_df.reset_index(drop=True)[
+                for (i, row) in sampled_librarian_signatures_df[
                     ["repo", column]
                 ].iterrows()
             }

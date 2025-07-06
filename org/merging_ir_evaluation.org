@@ -7,3 +7,18 @@
 [[/home/kuba/Projects/github_search/github_search/ir/evaluate_bm25.py::29][evaluate_bm25.py::29 (in /home/kuba/Projects/github_search/github_search/ir/evaluate_bm25.py)]]
 
 ** Move code from notebook to the evaluation script mentioned above
+
+*** TODO BEIR_Evaluation notebook
+
+extract this to a separate step
+
+Run
+```
+poetry run python github_search/ir/evaluate_bm25.py --out_dir output/beir
+```
+** Merging evaluations
+
+A step like get_ir_experiments_results is needed
+to merge BEIR evaluation with generation metrics
+
+** Results (like in Results notebook)

@@ -9,13 +9,14 @@ import polars as pl
 files_lazy_pldf = pl.scan_parquet("data/all_crawled_python_files.parquet")
 
 # lines of code
-file_loc_expr = pl.col("content").str.split("\n").arr.lengths()
-file_loc_expr
+file_loc_expr = pl.col("content").str.split("\n").list.len()
+file_loc_expr.head().collect()
 #+END_SRC
 
 #+RESULTS:
 :results:
-col("content").str.split().arr.len()
+col("content").str.split([String(
+)]).list.length().slice(offset=dyn int: 0, length=dyn int: 10)
 :end:
 
 #+BEGIN_SRC python :session datasets.org  :results both drawer :exports both

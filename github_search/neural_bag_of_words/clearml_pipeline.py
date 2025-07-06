@@ -65,7 +65,7 @@ def prepare_rarest_signatures_corpus(signatures_path, n_rarest):
     return signatures_corpus
 
 
-def prepare_nbow_dataset(
+def prepare_nbow_corpus_split(
     df_dependency_corpus,
     df_signatures_corpus,
     train_test_split_paths,
@@ -75,7 +75,7 @@ def prepare_nbow_dataset(
     from github_search.neural_bag_of_words.prepare_data import get_nbow_dataset
     import pandas as pd
 
-    df_corpus_splits = {}
+    df_corpus_split = {}
     for split_name in ["train", "test"]:
         df_paperswithcode = pd.read_csv(train_test_split_paths[split_name])
         df_corpus = get_nbow_dataset(
@@ -85,13 +85,13 @@ def prepare_nbow_dataset(
             additional_columns,
             n_readme_lines,
         )
-        df_corpus_splits[split_name] = df_corpus
-    return df_corpus_splits
+        df_corpus_split[split_name] = df_corpus
+    return df_corpus_split
 
 
-def prepare_tokenizers(upstream, product, document_col, min_freq, max_seq_length):
+def prepare_tokenizers(df_corpus_split, document_col, min_freq, max_seq_length):
     logging.basicConfig(level="INFO")
-    df_corpus = pd.read_parquet(str(upstream["nbow.prepare_dataset"]["train"]))
+    df_corpus = df_corpus_split["train"]
     titles = df_corpus["titles"].apply(lambda ts: " ".join(ast.literal_eval(ts)))
     tasks = df_corpus["tasks"].apply(lambda ts: " ".join(ast.literal_eval(ts)))
     query_corpus = pd.concat([titles, tasks])
@@ -110,12 +110,12 @@ def prepare_tokenizers(upstream, product, document_col, min_freq, max_seq_length
         max_seq_length=max_seq_length,
         data=document_corpus,
     )
-    query_tokenizer.save(str(product["query_tokenizer"]))
-    document_tokenizer.save(str(product["document_tokenizer"]))
+    return {"query_tokenizer": query_tokenizer, "document_tokenizer": document_tokenizer}
 
 
 @dataclass
 class NBOWPreprocessingConfig:
+    pass
 
 def setup_nbow_pipeline(
     dependency_records_path,
@@ -158,7 +158,7 @@ def setup_nbow_pipeline(
     )
     pipe.add_function_step(
         "prepare_nbow_dataset",
-        function=prepare_nbow_dataset,
+        function=prepare_nbow_corpus_split,
         function_kwargs=dict(
             df_dependency_corpus="${prepare_dependency_data_corpus.dependency_data_corpus}",
             df_signatures_corpus="${prepare_rarest_signature_corpus.signatures_corpus}",
@@ -166,8 +166,16 @@ def setup_nbow_pipeline(
             additional_columns=additional_columns,
             n_readme_lines=n_readme_lines,
         ),
-        function_return=["nbow_dataset"],
+        function_return=["df_corpus_splits"],
         cache_executed_step=True,
+    )
+    pipe.add_function_step(
+        "prepare_tokenizers",
+        prepare_tokenizers,
+        function_kwargs=dict(
+            df_corpus_splits="${prepare_nbow_dataset.df_corpus_splits}",
+            **tokenizer_config
+        )
     )
     return pipe
 

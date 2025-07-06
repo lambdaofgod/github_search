@@ -76,7 +76,7 @@ def get_python_files_df(owner, repo_name):
 
 
 # Cell
-DST_PREFIX = "/media/kuba/167A50387A5016B9/repos/repos"
+DST_PREFIX = "/home/kuba/Projects/github_search/data/raw_repos"
 
 
 def clone_repo(destination_prefix, repo_name):

@@ -6,7 +6,7 @@
 (import hyrule)
 (import yaml)
 (require hyrule [->])
-
+(import json)
 
 
 (defn car [l] (get l 0))
@@ -60,7 +60,10 @@
 
 (setv model-configs (get-configs param-grid))
 
+(setv model-configs-whole-dump ((. json dumps) model-configs))
 
+
+(model-configs)
 
 (defn get-tokenizer-config [feature]
   (dfor tpe ["document" "query"] tpe f"output/{feature}_{tpe}_tokenizer-0.pkl"))
@@ -104,7 +107,6 @@
 
 (defn get-global-var [path]
   (get* global-env path))
-
 (defn get-var [env var]
   (get* env var))
 
