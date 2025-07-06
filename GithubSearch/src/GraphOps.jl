@@ -114,32 +114,60 @@ node_index_to_name = Dict(nodes_df.index .=> nodes_df.name)
 valid_indices = filter(idx -> haskey(node_index_to_name, idx), selected_node_indices)
 selected_nodes = [node_index_to_name[idx] for idx in valid_indices] |> unique
 
-# Example usage:
-# using Graphs.Centrality
-println("\nCalculating centrality for top 10 repositories:")
-repos = ["ai4bharat-indicnlp/indicnlp_corpus", "000Justin000/torchdiffeq", "facebookresearch/online_dialog_eval", "0492wzl/tensorflow_slim_densenet", "huggingface/transformers"] #nodes_df[!,:repo] |> unique
-cs = []
-for (measure_name, centrality_measure) in zip(["degree", "pagerank"], [degree_centrality, pagerank])
-    println("#############")
-    println(measure_name)
-    println("#############")
-    for repo in repos#[1:10]
-        println("\nProcessing repository: ", repo)
-        repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
-        if !isnothing(repo_subgraph)
-            centrality_df = calculate_node_centrality(repo_subgraph, centrality_measure)
-            # Filter centrality dataframe to only include selected nodes
-            centrality_df = filter(row -> row.node_name in selected_nodes, centrality_df)
-            if nrow(centrality_df) > 0
-                println("Top central nodes:")
-                display(first(centrality_df, 10))
-                println("Least central nodes:")
-                display(last(centrality_df, 10))
-            else
-                println("No nodes found with centrality scores.")
+# Function to calculate centrality for multiple repositories using different measures
+function calculate_centrality_for_repos(
+    nodes_df::DataFrame, 
+    edges_df::DataFrame, 
+    repos::Vector{String}, 
+    measures::Vector{Tuple{String, Function}};
+    selected_nodes::Union{Vector{String}, Nothing}=nothing,
+    top_k::Int=10
+)
+    results = []
+    
+    for (measure_name, centrality_measure) in measures
+        println("#############")
+        println(measure_name)
+        println("#############")
+        
+        for repo in repos
+            println("\nProcessing repository: ", repo)
+            repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
+            
+            if !isnothing(repo_subgraph)
+                centrality_df = calculate_node_centrality(repo_subgraph, centrality_measure)
+                
+                # Filter by selected nodes if provided
+                if !isnothing(selected_nodes)
+                    centrality_df = filter(row -> row.node_name in selected_nodes, centrality_df)
+                end
+                
+                if nrow(centrality_df) > 0
+                    println("Top central nodes:")
+                    display(first(centrality_df, top_k))
+                    println("Least central nodes:")
+                    display(last(centrality_df, top_k))
+                else
+                    println("No nodes found with centrality scores.")
+                end
+                
+                push!(results, (
+                    repo = repo,
+                    measure = measure_name,
+                    centrality_df = centrality_df
+                ))
             end
-            push!(cs, centrality_df)
         end
     end
+    
+    return results
 end
+
+# Example usage:
+println("\nCalculating centrality for repositories:")
+repos = ["ai4bharat-indicnlp/indicnlp_corpus", "000Justin000/torchdiffeq", "facebookresearch/online_dialog_eval", "0492wzl/tensorflow_slim_densenet", "huggingface/transformers"]
+measures = [("degree", degree_centrality), ("pagerank", pagerank)]
+
+# Call the function with selected nodes
+cs = calculate_centrality_for_repos(nodes_df, edges_df, repos, measures, selected_nodes=selected_nodes)
 
