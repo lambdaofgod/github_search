@@ -11,8 +11,9 @@ df = Feather.read(dependency_records_path)
 # Create a mapping of nodes to their repositories
 node_to_repos = Dict{String, Set{String}}()
 
+println("creating dictionary")
 # Populate the dictionary from the dataframe
-for i in 1:size(df)[1]
+for i in ProgressBar(1:size(df)[1])
     source = df[i, :source]
     dest = df[i, :destination]
     repo = df[i, :repo]
@@ -42,8 +43,9 @@ src_idxs = [nodes_dict[df[i,:source]] for i in tqdm(1:size(df)[1])]
 dst_idxs = [nodes_dict[df[i,:destination]] for i in tqdm(1:size(df)[1])]
 
 # Create expanded nodes dataframe with one row per node-repo pair
+println("creating nodes dataframe")
 expanded_nodes = []
-for i in 1:length(nodes)
+for i in ProgressBar(1:length(nodes))
     node_name = nodes[i]
     for repo in node_to_repos[node_name]
         push!(expanded_nodes, (i, node_name, repo))
