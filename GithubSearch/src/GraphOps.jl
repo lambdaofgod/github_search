@@ -1,5 +1,4 @@
 module GraphOps
-
 using Graphs
 using DataFrames
 using ProgressBars
@@ -134,7 +133,6 @@ function calculate_repo_centrality(
     selected_nodes::Union{Vector{String}, Nothing}=nothing,
     top_k::Int=10
 )
-    println("\nProcessing repository: ", repo)
     repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
     
     if isnothing(repo_subgraph)
@@ -146,15 +144,6 @@ function calculate_repo_centrality(
     # Filter by selected nodes if provided
     if !isnothing(selected_nodes)
         centrality_df = filter(row -> row.node_name in selected_nodes, centrality_df)
-    end
-    
-    if nrow(centrality_df) > 0
-        println("Top central nodes:")
-        display(first(centrality_df, top_k))
-        println("Least central nodes:")
-        display(last(centrality_df, top_k))
-    else
-        println("No nodes found with centrality scores.")
     end
     
     return (
@@ -179,8 +168,7 @@ function calculate_centrality_for_repos(
         println("#############")
         println(measure_name)
         println("#############")
-        
-        for repo in repos
+        Threads.@threads for repo in ProgressBar(repos)
             result = calculate_repo_centrality(
                 nodes_df, 
                 edges_df, 
