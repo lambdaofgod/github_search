@@ -1,6 +1,7 @@
 using Graphs
 using DataFrames
 using Feather
+using CSV
 using ArgParse
 include("src/GraphOps.jl")
 using .GraphOps
@@ -18,9 +19,9 @@ function parse_commandline()
         "--output-path"
             help = "Path to save the centrality results"
             default = "output/centrality_results.feather"
-        "--repos"
-            help = "Comma-separated list of repositories to analyze"
-            default = "ai4bharat-indicnlp/indicnlp_corpus,000Justin000/torchdiffeq,facebookresearch/online_dialog_eval,0492wzl/tensorflow_slim_densenet,huggingface/transformers"
+        "--repos-file"
+            help = "Path to CSV file containing repositories to analyze"
+            default = "data/repos.csv"
     end
     
     return parse_args(s)
@@ -50,11 +51,13 @@ function main()
         selected_nodes = selected_nodes
     )
     
-    # Parse repositories
-    repos = split(args["repos"], ",")
+    # Load repositories from CSV file
+    println("Loading repositories from: ", args["repos-file"])
+    repos_df = CSV.read(args["repos-file"], DataFrame)
+    repos = repos_df.repo
     
     # Define centrality measures
-    measures = [("degree", degree_centrality), ("pagerank", pagerank)]
+    measures = [("degree", Graphs.degree_centrality), ("pagerank", Graphs.pagerank)]
     
     # Calculate centrality
     println("\nCalculating centrality for repositories:")
