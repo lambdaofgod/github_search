@@ -7,13 +7,21 @@ from dagster import (
     ConfigurableResource,
     load_assets_from_modules,
 )
-from github_search.pipelines.dagster import code2doc_assets, corpora_assets
+from github_search.pipelines.dagster import (
+    code2doc_assets,
+    corpora_assets,
+    document_expansion,
+    call_graph_assets,
+)
 
 
 def get_assets():
-    return load_assets_from_modules(
-        [code2doc_assets], group_name="code2doc"
-    ) + load_assets_from_modules([corpora_assets], group_name="corpus")
+    return (
+        load_assets_from_modules([code2doc_assets], group_name="code2doc")
+        + load_assets_from_modules([corpora_assets], group_name="corpus")
+        + load_assets_from_modules([document_expansion], "librarian")
+        + load_assets_from_modules([call_graph_assets], "call_graph")
+    )
 
 
 defs = Definitions(

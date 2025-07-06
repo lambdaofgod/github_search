@@ -33,7 +33,7 @@ api_vllm:
   endpoint_url: "http://localhost:8000/generate"
   out_dir: "output"
   n_generations: 3
-  model_name: "starcoder-7b"
+  model_name: "qwen2.5:7b-instruct"
   flavor: "vllm"
 api_vllm_dbg:
   endpoint_url: "http://localhost:8000/generate"

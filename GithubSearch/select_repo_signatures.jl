@@ -5,6 +5,7 @@ using CSV
 using ArgParse
 include("src/GraphOps.jl")
 using .GraphOps
+using ProgressBars
 
 function parse_commandline()
     s = ArgParseSettings()
@@ -89,10 +90,10 @@ function main()
         first_write = true
         
         # Process each result directly
-        for result in results
+        for result in ProgressBar(results)
             if !isnothing(result) && nrow(result.centrality_df) > 0
                 # Add repository and measure columns to the centrality dataframe
-                df = copy(result.centrality_df)
+                df = result.centrality_df
                 df.repository = fill(result.repo, nrow(df))
                 df.measure = fill(result.measure, nrow(df))
                 

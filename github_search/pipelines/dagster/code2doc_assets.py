@@ -76,6 +76,7 @@ def sampled_repos(
             "head": MetadataValue.md(sampled_repos_df.head().to_markdown()),
         }
     )
+    sampled_repos_df.to_csv("/tmp/sampled_repos.csv", index=False, encoding="utf-8")
     return sampled_repos_df
 
 

@@ -1,0 +1,208 @@
+#+title: Call Graph Extraction
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+import pathlib
+import pandas as pd
+import tqdm
+
+
+repos_path = pathlib.Path("~/Projects/github_search/data/repos/").expanduser()
+repo_paths = list(repos_path.glob("*"))
+example_repo_paths = list(repos_path.glob("008*"))
+example_repo_paths = [p for p in example_repo_paths if not p.name.endswith("zip")]
+example_repo_path = example_repo_paths[0]
+example_repo_files = list(example_repo_path.expanduser().rglob("*py"))
+example_repo_files
+#+END_SRC
+
+#+RESULTS:
+| PosixPath | (/home/kuba/Projects/github_search/data/repos/008karan_SincNet_demo/speaker_id.py) | PosixPath | (/home/kuba/Projects/github_search/data/repos/008karan_SincNet_demo/inference.py) | PosixPath | (/home/kuba/Projects/github_search/data/repos/008karan_SincNet_demo/data_io.py) | PosixPath | (/home/kuba/Projects/github_search/data/repos/008karan_SincNet_demo/dnn_models.py) | PosixPath | (/home/kuba/Projects/github_search/data/repos/008karan_SincNet_demo/TIMIT_preparation.py) | PosixPath | (/home/kuba/Projects/github_search/data/repos/008karan_SincNet_demo/similarity.py) | PosixPath | (/home/kuba/Projects/github_search/data/repos/008karan_SincNet_demo/compute_d_vector.py) |
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+len(example_repo_paths)
+#+END_SRC
+
+#+RESULTS:
+: 1
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+def get_repo_name_from_path(p):
+    return str(p).replace("_", "/", 1)
+
+p = example_repo_files[0].relative_to(repos_path).parent
+get_repo_name_from_path(p)
+#+END_SRC
+
+#+RESULTS:
+: 008karan/SincNet_demo
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+p
+#+END_SRC
+
+#+RESULTS:
+: 008karan_SincNet_demo
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+def get_python_files_df(repo_path):
+    repo_name = get_repo_name_from_path(repo_path.name)
+    repo_file_paths = repo_path.rglob("**/*.py")
+    repo_file_contents = {}
+    for p in repo_file_paths:
+        try:
+            p_name = p.relative_to(repo_path)
+            with open(p) as f:
+                file_contents = f.read()
+            repo_file_contents[str(p_name)] = file_contents
+        except:
+            print(f"error in repo {repo_name} processing file {p}")
+    repo_file_contents_df = pd.Series(repo_file_contents).reset_index()
+    repo_file_contents_df.columns = ["path", "content"]
+    repo_file_contents_df["repo_name"] = repo_name
+    return repo_file_contents_df
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+python_files_dfs = [get_python_files_df(p) for p in tqdm.tqdm(repo_paths)]
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+python_files_df = pd.concat(python_files_dfs).sort_values("repo_name")
+python_files_df.shape
+#+END_SRC
+
+#+RESULTS:
+| 228871 | 3 |
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+python_files_df["repo_name"].value_counts().describe()
+#+END_SRC
+
+#+RESULTS:
+: count    6864.000000
+: mean       33.343677
+: std        79.376327
+: min         1.000000
+: 25%         7.000000
+: 50%        14.000000
+: 75%        31.000000
+: max      1934.000000
+: Name: count, dtype: float64
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+from github_search.python_call_graph import get_function_calls, RepoDependencyFetcher
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+python_files_df.sort_values("repo_name")
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+                     path  ...              repo_name
+6     compute_d_vector.py  ...  008karan/SincNet_demo
+4    TIMIT_preparation.py  ...  008karan/SincNet_demo
+0           speaker_id.py  ...  008karan/SincNet_demo
+3           dnn_models.py  ...  008karan/SincNet_demo
+2              data_io.py  ...  008karan/SincNet_demo
+..                    ...  ...                    ...
+11     HS-B/eval/gener.py  ...         zysszy/TreeGen
+12  HS-B/eval/ast2code.py  ...         zysszy/TreeGen
+10                 run.py  ...         zysszy/TreeGen
+1          trans_train.py  ...         zysszy/TreeGen
+4       read_tree_path.py  ...         zysszy/TreeGen
+
+[228871 rows x 3 columns]
+#+end_example
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+example_contents = python_files_df["content"].iloc[3]
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+dependency_fetcher = RepoDependencyFetcher()
+dependency_records_df = dependency_fetcher.prepare_dependency_records_df(python_files_df.head())
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+import ast
+
+expr = ast.parse(example_contents)
+type(expr)
+#+END_SRC
+
+#+RESULTS:
+: <class 'ast.Module'>
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+import json
+from github_search.python_code_analysis import get_ast_analysis_result
+
+extracted_data = analyze_code(example_contents, True)
+print(json.dumps(extracted_data.model_dump(), indent=2))
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+sample_dependency_records = [get_ast_analysis_result(contents, True) for contents in tqdm.tqdm(python_files_df["content"].iloc[:100])]
+#+END_SRC
+
+#+RESULTS:
+
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+dependency_records = [analyze_code(contents, True) for contents in tqdm.tqdm(python_files_df["content"])]
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+import pickle
+
+with open("dependency_records.pkl", "wb") as f:
+    pickle.dump(dependency_records, f)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+import pickle
+from github_search.python_code_analysis import ASTAnalysisResult
+
+with open("dependency_records.pkl", "rb") as f:
+    dependency_records = pickle.load(f)
+#+END_SRC
+
+#+RESULTS:
+: /tmp/babel-rOv9H4/python-tUYHof
+
+* Defining the call graph
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+from github_search.python_call_graph import GraphExtractor
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+graph_dependencies_df = pd.concat([GraphExtractor.extract_edges_df(p, res) for (p, res) in zip(python_files_df["path"], sample_dependency_records)])
+#+END_SRC
+
+#+RESULTS:

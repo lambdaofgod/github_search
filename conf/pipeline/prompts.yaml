@@ -1,6 +1,6 @@
 few_shot_markdown:
   prompt_template_name: "md_prompt.jinja"
-  templates_path: "inputs/prompt_templates"
+  templates_path: "github_search/pipelines/prompt_templates"
   data_path: "data/prompt_infos.jsonl"
   out_dir: "output"
   field_mapping:

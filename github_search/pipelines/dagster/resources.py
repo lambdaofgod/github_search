@@ -34,7 +34,7 @@ class Code2DocDataConfig(Config):
 
 
 class Code2DocModelConfig(Config):
-    lm_model_name: str = "qwen2.5:3b-instruct"
+    lm_model_name: str = "qwen2.5:7b-instruct"
     lm_base_url: str = "http://localhost:11434"
     files_per_repo: int = 10
     is_debug_run: bool = False  # if True it will generate readmes for only a few repos
