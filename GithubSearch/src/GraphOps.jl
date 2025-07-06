@@ -34,8 +34,19 @@ function get_selected_nodes(nodes_df::DataFrame, edges_df::DataFrame)
     # Create a lookup dictionary for faster access
     node_index_to_name = Dict(nodes_df.index .=> nodes_df.name)
     # Filter out indices that don't exist in the dictionary
-    valid_indices = filter(idx -> haskey(node_index_to_name, idx), selected_node_indices)
-    selected_nodes = [node_index_to_name[idx] for idx in valid_indices] |> unique
+    valid_indices = Int[]
+    for idx in selected_node_indices
+        if haskey(node_index_to_name, idx)
+            push!(valid_indices, idx)
+        end
+    end
+    
+    # Get unique node names
+    selected_nodes = String[]
+    for idx in valid_indices
+        push!(selected_nodes, node_index_to_name[idx])
+    end
+    unique!(selected_nodes)
     
     return selected_nodes
 end

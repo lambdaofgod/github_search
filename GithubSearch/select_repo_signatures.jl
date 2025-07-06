@@ -71,17 +71,33 @@ function main()
     
     # Combine results into a single DataFrame
     if !isempty(results)
-        all_centrality = vcat([result.centrality_df for result in results]...)
+        # Create a new DataFrame with all results
+        all_centrality = DataFrame()
         
-        # Add repository and measure columns
-        all_centrality.repository = repeat([result.repo for result in results], inner=[nrow(result.centrality_df) for result in results])
-        all_centrality.measure = repeat([result.measure for result in results], inner=[nrow(result.centrality_df) for result in results])
+        for result in results
+            if nrow(result.centrality_df) > 0
+                # Make a copy of the centrality dataframe
+                df_copy = copy(result.centrality_df)
+                # Add repository and measure columns
+                df_copy.repository = fill(result.repo, nrow(df_copy))
+                df_copy.measure = fill(result.measure, nrow(df_copy))
+                # Append to the combined dataframe
+                if isempty(all_centrality)
+                    all_centrality = df_copy
+                else
+                    append!(all_centrality, df_copy)
+                end
+            end
+        end
         
         # Save results
-        println("\nSaving results to: ", args["output-path"])
-        Feather.write(args["output-path"], all_centrality)
-        
-        println("Done!")
+        if !isempty(all_centrality)
+            println("\nSaving results to: ", args["output-path"])
+            Feather.write(args["output-path"], all_centrality)
+            println("Done!")
+        else
+            println("No results to save.")
+        end
     else
         println("No results to save.")
     end
