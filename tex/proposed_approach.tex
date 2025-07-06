@@ -1,0 +1,20 @@
+
+\subsection{Dependency Graph}
+
+We will name a graph that is defined by a call graph and Python class and module structure a \emph{dependency graph}.
+
+The graph's nodes are filenames, functions and classes that are extracted using Python \textt{ast} library. In this graph we have file-function edges whenever a function is defined in a given file, and function-function edges for function calls.
+
+Formally
+
+$$E = E_{file} \cup E_{functions} \cup E_{calls}$$
+
+where
+
+\begin{gather*}
+E_{file} = \{(repo, filename) | repo \texttt{ contains } filename\} \\
+E_{functions} = \bigcup\limits_{filename} \{(filename, func) | filename \texttt{ defines function } func\} \\
+E_{calls} = \bigcup\limits_{func} \{(func, called\_func) | func \texttt{ calls } called\_func\}
+\end{gather*}
+
+Intuitively $(v, w) \in E$ if $w$ is defined/contained in $v$, where $v$ is from one level higher (root-repo, repo-file, file-function, function-called function), Thus vertices form dependency hierarchy, where next level contains elements that dependend on elements from previous levels.
