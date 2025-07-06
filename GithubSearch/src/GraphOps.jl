@@ -105,7 +105,9 @@ function calculate_node_centrality(subgraph_data, centrality_function)
     return df
 end
 
-selected_nodes = filter(row -> row[:edge_type] == "repo-file", edges_df)[!,:src]
+# Get node names for repo-file edges
+selected_node_indices = filter(row -> row[:edge_type] == "repo-file", edges_df)[!,:src]
+selected_nodes = [nodes_df[nodes_df.index .== idx, :name][1] for idx in selected_node_indices]
 
 # Example usage:
 # using Graphs.Centrality
@@ -118,6 +120,7 @@ for centrality_measure in [degree_centrality, pagerank]
         repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
         if !isnothing(repo_subgraph)
             centrality_df = calculate_node_centrality(repo_subgraph, eigenvector_centrality)
+            # Filter centrality dataframe to only include selected nodes
             centrality_df = filter(row -> row.node_name in selected_nodes, centrality_df)
             if nrow(centrality_df) > 0
                 println("Top central nodes:")
