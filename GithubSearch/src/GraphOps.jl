@@ -106,22 +106,25 @@ function calculate_node_centrality(subgraph_data, centrality_function)
 end
 
 # Get node names for repo-file edges - optimized with indexing
-selected_node_indices = filter(row -> row[:edge_type] == "repo-file", edges_df)[!,:src]
+selected_node_indices = filter(row -> row[:edge_type] == "repo-file", edges_df)[!,:dst]
 # Create a lookup dictionary for faster access
 node_index_to_name = Dict(nodes_df.index .=> nodes_df.name)
-selected_nodes = [node_index_to_name[idx] for idx in selected_node_indices]
+selected_nodes = [node_index_to_name[idx] for idx in selected_node_indices] |> unique
 
 # Example usage:
 # using Graphs.Centrality
 println("\nCalculating centrality for top 10 repositories:")
-repos = ["ai4bharat-indicnlp/indicnlp_corpus"]# "000Justin000/torchdiffeq", "facebookresearch/online_dialog_eval"] #nodes_df[!,:repo] |> unique
+repos = ["ai4bharat-indicnlp/indicnlp_corpus", "000Justin000/torchdiffeq", "facebookresearch/online_dialog_eval"] #nodes_df[!,:repo] |> unique
 cs = []
-for centrality_measure in [degree_centrality, pagerank]
+for (measure_name, centrality_measure) in zip(["degree", "pagerank"], [degree_centrality, pagerank])
+    println("#############")
+    println(measure_name)
+    println("#############")
     for repo in repos#[1:10]
         println("\nProcessing repository: ", repo)
         repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
         if !isnothing(repo_subgraph)
-            centrality_df = calculate_node_centrality(repo_subgraph, eigenvector_centrality)
+            centrality_df = calculate_node_centrality(repo_subgraph, centrality_measure)
             # Filter centrality dataframe to only include selected nodes
             centrality_df = filter(row -> row.node_name in selected_nodes, centrality_df)
             if nrow(centrality_df) > 0
