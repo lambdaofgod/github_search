@@ -29,7 +29,7 @@ class GraphCentralityAnalyzer(BaseModel):
             topk: Number of top nodes to return per repository (used when selected_edge_types is a list)
 
         Returns:
-            DataFrame with columns [repo_name, node, centrality_score, edge_type]
+            DataFrame with columns [repo_name, node, centrality_score, edge_type, node_edge_type, node_role]
         """
         centrality_results = []
 
@@ -96,18 +96,57 @@ class GraphCentralityAnalyzer(BaseModel):
             topk: Number of top nodes to return (used when selected_edge_types is a list)
 
         Returns:
-            List of dictionaries with repo_name, node, centrality_score, and edge_type
+            List of dictionaries with repo_name, node, centrality_score, edge_type, node_edge_type, and node_role
         """
         repo_edges = edge_df[edge_df["repo_name"] == repo_name]
+        
+        # Build node metadata for edge types and roles
+        node_metadata = self._build_node_metadata(repo_edges)
 
         if isinstance(selected_edge_types, dict):
             return self._process_per_edge_type_topk(
-                repo_name, repo_edges, centralities, selected_edge_types
+                repo_name, repo_edges, centralities, selected_edge_types, node_metadata
             )
         else:
             return self._process_unified_topk(
-                repo_name, repo_edges, centralities, selected_edge_types, topk
+                repo_name, repo_edges, centralities, selected_edge_types, topk, node_metadata
             )
+
+    def _build_node_metadata(self, repo_edges: pd.DataFrame) -> Dict[str, Dict[str, any]]:
+        """
+        Build metadata for each node including edge types and roles.
+        
+        Args:
+            repo_edges: DataFrame with edges for this repository
+            
+        Returns:
+            Dictionary mapping node names to metadata with edge_types and roles
+        """
+        node_metadata = {}
+        
+        for _, row in repo_edges.iterrows():
+            source = row["source"]
+            target = row["target"]
+            edge_type = row["edge_type"]
+            
+            # Initialize metadata for source node
+            if source not in node_metadata:
+                node_metadata[source] = {"edge_types": set(), "roles": set()}
+            node_metadata[source]["edge_types"].add(edge_type)
+            node_metadata[source]["roles"].add("source")
+            
+            # Initialize metadata for target node
+            if target not in node_metadata:
+                node_metadata[target] = {"edge_types": set(), "roles": set()}
+            node_metadata[target]["edge_types"].add(edge_type)
+            node_metadata[target]["roles"].add("target")
+            
+        # Convert sets to sorted lists for consistent output
+        for node in node_metadata:
+            node_metadata[node]["edge_types"] = sorted(list(node_metadata[node]["edge_types"]))
+            node_metadata[node]["roles"] = sorted(list(node_metadata[node]["roles"]))
+            
+        return node_metadata
 
     def _process_per_edge_type_topk(
         self,
@@ -115,6 +154,7 @@ class GraphCentralityAnalyzer(BaseModel):
         repo_edges: pd.DataFrame,
         centralities: Dict[str, float],
         edge_types_with_topk: Dict[str, int],
+        node_metadata: Dict[str, Dict[str, any]],
     ) -> List[Dict[str, any]]:
         """
         Process centralities with per-edge-type topk limits.
@@ -124,15 +164,16 @@ class GraphCentralityAnalyzer(BaseModel):
             repo_edges: DataFrame with edges for this repository
             centralities: Dictionary mapping node names to centrality scores
             edge_types_with_topk: Dictionary mapping edge types to their topk limits
+            node_metadata: Dictionary mapping node names to metadata
 
         Returns:
-            List of dictionaries with repo_name, node, centrality_score, and edge_type
+            List of dictionaries with repo_name, node, centrality_score, edge_type, node_edge_type, and node_role
         """
         results = []
 
         for edge_type, edge_type_topk in edge_types_with_topk.items():
             edge_type_results = self._get_topk_for_edge_type(
-                repo_name, repo_edges, centralities, edge_type, edge_type_topk
+                repo_name, repo_edges, centralities, edge_type, edge_type_topk, node_metadata
             )
             results.extend(edge_type_results)
 
@@ -145,6 +186,7 @@ class GraphCentralityAnalyzer(BaseModel):
         centralities: Dict[str, float],
         selected_edge_types: List[str],
         topk: Optional[int],
+        node_metadata: Dict[str, Dict[str, any]],
     ) -> List[Dict[str, any]]:
         """
         Process centralities with unified topk limit across all edge types.
@@ -155,9 +197,10 @@ class GraphCentralityAnalyzer(BaseModel):
             centralities: Dictionary mapping node names to centrality scores
             selected_edge_types: List of edge types to include in results
             topk: Number of top nodes to return
+            node_metadata: Dictionary mapping node names to metadata
 
         Returns:
-            List of dictionaries with repo_name, node, and centrality_score
+            List of dictionaries with repo_name, node, centrality_score, node_edge_type, and node_role
         """
         # Get all nodes from selected edge types
         selected_edges = repo_edges[repo_edges["edge_type"].isin(selected_edge_types)]
@@ -178,12 +221,17 @@ class GraphCentralityAnalyzer(BaseModel):
         if topk is not None:
             sorted_centralities = sorted_centralities[:topk]
 
-        # Convert to list of records (without edge_type for backward compatibility)
+        # Convert to list of records with node metadata
         results = []
         for node, score in sorted_centralities:
-            results.append(
-                {"repo_name": repo_name, "node": node, "centrality_score": score}
-            )
+            metadata = node_metadata.get(node, {"edge_types": [], "roles": []})
+            results.append({
+                "repo_name": repo_name, 
+                "node": node, 
+                "centrality_score": score,
+                "node_edge_type": ",".join(metadata["edge_types"]),
+                "node_role": ",".join(metadata["roles"])
+            })
 
         return results
 
@@ -194,6 +242,7 @@ class GraphCentralityAnalyzer(BaseModel):
         centralities: Dict[str, float],
         edge_type: str,
         topk: int,
+        node_metadata: Dict[str, Dict[str, any]],
     ) -> List[Dict[str, any]]:
         """
         Get top-k centrality results for a specific edge type.
@@ -204,9 +253,10 @@ class GraphCentralityAnalyzer(BaseModel):
             centralities: Dictionary mapping node names to centrality scores
             edge_type: Specific edge type to process
             topk: Number of top nodes to return for this edge type
+            node_metadata: Dictionary mapping node names to metadata
 
         Returns:
-            List of dictionaries with repo_name, node, centrality_score, and edge_type
+            List of dictionaries with repo_name, node, centrality_score, edge_type, node_edge_type, and node_role
         """
         # Get nodes for this specific edge type
         edge_type_edges = repo_edges[repo_edges["edge_type"] == edge_type]
@@ -228,17 +278,18 @@ class GraphCentralityAnalyzer(BaseModel):
         if topk is not None:
             sorted_centralities = sorted_centralities[:topk]
 
-        # Add results with edge type information
+        # Add results with edge type and node metadata information
         results = []
         for node, score in sorted_centralities:
-            results.append(
-                {
-                    "repo_name": repo_name,
-                    "node": node,
-                    "centrality_score": score,
-                    "edge_type": edge_type,
-                }
-            )
+            metadata = node_metadata.get(node, {"edge_types": [], "roles": []})
+            results.append({
+                "repo_name": repo_name,
+                "node": node,
+                "centrality_score": score,
+                "edge_type": edge_type,
+                "node_edge_type": ",".join(metadata["edge_types"]),
+                "node_role": ",".join(metadata["roles"])
+            })
 
         return results
 
