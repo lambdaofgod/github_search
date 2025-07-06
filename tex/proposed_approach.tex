@@ -3,18 +3,24 @@
 
 We will name a graph that is defined by a call graph and Python class and module structure a \emph{dependency graph}.
 
-The graph's nodes are filenames, functions and classes that are extracted using Python \textt{ast} library. In this graph we have file-function edges whenever a function is defined in a given file, and function-function edges for function calls.
+The graph's nodes are repository names, filenames, functions, classes, methods, and imported modules that are extracted using Python \texttt{ast} library. The edges represent various dependency relationships in the codebase.
 
-Formally
+Formally, the edge set is defined as:
 
-$$E = E_{file} \cup E_{functions} \cup E_{calls}$$
+$$E = E_{repo} \cup E_{file} \cup E_{class} \cup E_{function} \cup E_{import} \cup E_{inheritance} \cup E_{method} \cup E_{calls} \cup E_{import\_usage}$$
 
 where
 
 \begin{gather*}
-E_{file} = \{(repo, filename) | repo \texttt{ contains } filename\} \\
-E_{functions} = \bigcup\limits_{filename} \{(filename, func) | filename \texttt{ defines function } func\} \\
-E_{calls} = \bigcup\limits_{func} \{(func, called\_func) | func \texttt{ calls } called\_func\}
+E_{repo} = \{(repo, filename) | repo \texttt{ contains } filename\} \\
+E_{file} = \bigcup\limits_{filename} \{(filename, func) | filename \texttt{ defines function } func\} \\
+E_{class} = \bigcup\limits_{filename} \{(filename, class) | filename \texttt{ defines class } class\} \\
+E_{function} = \bigcup\limits_{func} \{(func, called\_func) | func \texttt{ calls } called\_func\} \\
+E_{import} = \bigcup\limits_{filename} \{(filename, module) | filename \texttt{ imports } module\} \\
+E_{inheritance} = \{(child\_class, parent\_class) | child\_class \texttt{ inherits from } parent\_class\} \\
+E_{method} = \{(class, method) | class \texttt{ has method } method\} \\
+E_{calls} = \bigcup\limits_{func} \{(func, called\_func) | func \texttt{ calls } called\_func\} \\
+E_{import\_usage} = \{(imported\_module, used\_name) | imported\_module \texttt{ provides } used\_name\}
 \end{gather*}
 
-Intuitively $(v, w) \in E$ if $w$ is defined/contained in $v$, where $v$ is from one level higher (root-repo, repo-file, file-function, function-called function), Thus vertices form dependency hierarchy, where next level contains elements that dependend on elements from previous levels.
+This comprehensive graph captures the full dependency structure of Python codebases, including containment relationships (repo-file, file-class, file-function), usage relationships (function calls, import usage), structural relationships (class inheritance, class-method), and import dependencies.
