@@ -1,19 +1,15 @@
 module GraphOps
 
 using Graphs
-using Feather
 using DataFrames
 using ProgressBars
 using SortingAlgorithms
 using Statistics
 
-export load_graph_data, load_repo_subgraph, calculate_node_centrality, calculate_repo_centrality, calculate_centrality_for_repos
+export get_selected_nodes, build_graph, load_repo_subgraph, calculate_node_centrality, calculate_repo_centrality, calculate_centrality_for_repos
 
-function load_graph_data(nodes_path, edges_path)
-    # Load the nodes and edges data
-    nodes_df = Feather.read(nodes_path)
-    edges_df = Feather.read(edges_path)
-
+# Function to build a graph from nodes and edges dataframes
+function build_graph(nodes_df::DataFrame, edges_df::DataFrame)
     # Create a graph
     g = SimpleGraph(nrow(nodes_df))
 
@@ -28,6 +24,11 @@ function load_graph_data(nodes_path, edges_path)
     println("Number of nodes: ", nv(g))
     println("Number of edges: ", ne(g))
     
+    return g
+end
+
+# Function to get selected nodes for analysis
+function get_selected_nodes(nodes_df::DataFrame, edges_df::DataFrame)
     # Get node names for repo-file edges - optimized with indexing
     selected_node_indices = filter(row -> row[:edge_type] in ["repo-file", "file-function"], edges_df)[!,:dst]
     # Create a lookup dictionary for faster access
@@ -36,12 +37,7 @@ function load_graph_data(nodes_path, edges_path)
     valid_indices = filter(idx -> haskey(node_index_to_name, idx), selected_node_indices)
     selected_nodes = [node_index_to_name[idx] for idx in valid_indices] |> unique
     
-    return (
-        nodes_df = nodes_df,
-        edges_df = edges_df,
-        graph = g,
-        selected_nodes = selected_nodes
-    )
+    return selected_nodes
 end
 
 # Function to create a subgraph for a specific repository
@@ -94,17 +90,6 @@ function load_repo_subgraph(nodes_df, edges_df, repo_name)
     )
 end
 
-all_graph = (graph = g, node_names = nodes_df[!,:name], edges_df = edges_df)
-
-# Example usage:
-repo_name = "000Justin000/torchdiffeq"
-repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo_name)
-
-if !isnothing(repo_subgraph)
-    println("\nSubgraph for repository: ", repo_name)
-    println("Number of nodes: ", nv(repo_subgraph.graph))
-    println("Number of edges: ", ne(repo_subgraph.graph))
-end
 
 # Function to calculate centrality scores for nodes in a subgraph
 function calculate_node_centrality(subgraph_data, centrality_function)

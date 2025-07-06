@@ -1,4 +1,5 @@
 using Graphs
+using Graphs.Centrality
 using DataFrames
 using Feather
 using ArgParse
@@ -29,9 +30,26 @@ end
 function main()
     args = parse_commandline()
     
-    # Load graph data
-    println("Loading graph data...")
-    data = load_graph_data(args["nodes-path"], args["edges-path"])
+    # Load the nodes and edges data
+    println("Loading data from files...")
+    nodes_df = Feather.read(args["nodes-path"])
+    edges_df = Feather.read(args["edges-path"])
+    
+    # Build the graph
+    println("Building graph...")
+    g = build_graph(nodes_df, edges_df)
+    
+    # Get selected nodes for analysis
+    println("Identifying nodes for analysis...")
+    selected_nodes = get_selected_nodes(nodes_df, edges_df)
+    
+    # Create data structure
+    data = (
+        nodes_df = nodes_df,
+        edges_df = edges_df,
+        graph = g,
+        selected_nodes = selected_nodes
+    )
     
     # Parse repositories
     repos = split(args["repos"], ",")
