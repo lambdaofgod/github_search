@@ -50,7 +50,18 @@ function load_repo_subgraph(nodes_df, edges_df, repo_name)
 
     # Create a reverse mapping to get original node names
     reverse_map = Dict(i => node for (node, i) in node_map)
-    node_names = [nodes_df[reverse_map[i], :name] for i in 1:length(repo_nodes)]
+    
+    # Filter nodes_df to get only the nodes for this repository
+    repo_nodes_df = filter(row -> row.repo == repo_name && row.index in repo_nodes, nodes_df)
+    
+    # Create a mapping from node index to node name
+    node_index_to_name = Dict{Int, String}()
+    for row in eachrow(repo_nodes_df)
+        node_index_to_name[row.index] = row.name
+    end
+    
+    # Get node names in the correct order
+    node_names = [get(node_index_to_name, reverse_map[i], "Unknown") for i in 1:length(repo_nodes)]
 
     return (
         graph = subgraph,
@@ -89,18 +100,28 @@ function calculate_node_centrality(subgraph_data, centrality_function)
     )
     
     # Sort the DataFrame by centrality score in descending order
-    #sort!(df, :centrality_score, rev=true)
+    sort!(df, :centrality_score, rev=true, alg=QuickSort)
     
     return df
 end
 
 # Example usage:
 # using Graphs.Centrality
+println("\nCalculating centrality for top 10 repositories:")
 repos = nodes_df[!,:repo] |> unique
 cs = []
 for repo in repos[1:10]
+    println("\nProcessing repository: ", repo)
     repo_subgraph = load_repo_subgraph(nodes_df, edges_df, repo)
-    centrality_df = calculate_node_centrality(repo_subgraph, pagerank)
-    push!(cs, centrality_df)
+    if !isnothing(repo_subgraph)
+        centrality_df = calculate_node_centrality(repo_subgraph, pagerank)
+        println("Top 5 central nodes:")
+        if nrow(centrality_df) > 0
+            display(first(centrality_df, 5))
+        else
+            println("No nodes found with centrality scores.")
+        end
+        push!(cs, centrality_df)
+    end
 end
 
