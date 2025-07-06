@@ -21,15 +21,21 @@ def load_yaml_key(config_path: str, key: str) -> Dict[str, Any]:
 class DocumentExpansionConfig(Config):
     """Configuration for document expansion pipeline"""
 
-    sampling_config: Dict[str, Any] = load_yaml_key(
-        "conf/pipeline/sampling.yaml", "no_sampling"
-    )
-    generation_config: Dict[str, Any] = load_yaml_key(
-        "conf/pipeline/generation.yaml", "api_vllm"
-    )
-    prompt_config: Dict[str, Any] = load_yaml_key(
-        "conf/pipeline/prompts.yaml", "few_shot_markdown"
-    )
+    sampling_config_key: str = "no_sampling"
+    generation_config_key: str = "api_vllm"
+    prompt_config_key: str = "few_shot_markdown"
+
+    @property
+    def sampling_config(self) -> Dict[str, Any]:
+        return load_yaml_key("conf/pipeline/sampling.yaml", self.sampling_config_key)
+
+    @property
+    def generation_config(self) -> Dict[str, Any]:
+        return load_yaml_key("conf/pipeline/generation.yaml", self.generation_config_key)
+
+    @property
+    def prompt_config(self) -> Dict[str, Any]:
+        return load_yaml_key("conf/pipeline/prompts.yaml", self.prompt_config_key)
 
 
 @asset
