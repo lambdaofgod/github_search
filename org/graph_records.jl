@@ -42,25 +42,16 @@ nodes_dict = Dict([(nodes[i], i) for i in 1:length(nodes)])
 src_idxs = [nodes_dict[df[i,:source]] for i in tqdm(1:size(df)[1])]
 dst_idxs = [nodes_dict[df[i,:destination]] for i in tqdm(1:size(df)[1])]
 
-# Count total number of rows needed for nodes_df
-println("counting total node-repo pairs")
-global row_count = 0
-for i in 1:length(nodes)
-    node_name = nodes[i]
-    global row_count += length(node_to_repos[node_name])
-end
-
-# Pre-allocate the dataframe
+# Create a nodes dataframe directly from the node_to_repos dictionary
 println("creating nodes dataframe")
 nodes_df = DataFrame(index = Int[], name = String[], repo = String[])
-# DataFrames don't support sizehint! directly
 
-# Fill the dataframe
+# Fill the dataframe using the dictionary
 println("filling nodes dataframe")
-for i in ProgressBar(1:length(nodes))
-    node_name = nodes[i]
-    for repo in node_to_repos[node_name]
-        push!(nodes_df, (i, node_name, repo))
+for (node_name, repos) in ProgressBar(node_to_repos)
+    node_idx = nodes_dict[node_name]
+    for repo in repos
+        push!(nodes_df, (node_idx, node_name, repo))
     end
 end
 
