@@ -83,8 +83,10 @@ def get_node_type(node, graph):
     return 'unknown'
 
 
-def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
+def create_interactive_plotly_graph(repo_name, graph, layout_type="spring", selected_edge_types=None):
     """Create an interactive Plotly graph with node names and edge types"""
+    if selected_edge_types is None:
+        selected_edge_types = set()
     # Get node positions using selected layout
     if layout_type == "spring":
         pos = nx.spring_layout(graph, k=1, iterations=50)
@@ -107,12 +109,19 @@ def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
     else:
         pos = nx.spring_layout(graph, k=1, iterations=50)
     
+    # Filter edges based on selected edge types
+    filtered_edges = []
+    for edge in graph.edges(data=True):
+        edge_type = edge[2].get('edge_type', 'unknown')
+        if not selected_edge_types or edge_type in selected_edge_types:
+            filtered_edges.append(edge)
+    
     # Extract edges with their data
     edge_x = []
     edge_y = []
     edge_info = []
     
-    for edge in graph.edges(data=True):
+    for edge in filtered_edges:
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
         edge_x.extend([x0, x1, None])
@@ -142,6 +151,16 @@ def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
         'unknown': '#DDA0DD'      # Plum
     }
     
+    # Get nodes that are connected by filtered edges
+    connected_nodes = set()
+    for edge in filtered_edges:
+        connected_nodes.add(edge[0])
+        connected_nodes.add(edge[1])
+    
+    # If no edges are selected, show all nodes
+    if not selected_edge_types:
+        connected_nodes = set(graph.nodes())
+    
     # Extract node information
     node_x = []
     node_y = []
@@ -150,7 +169,7 @@ def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
     node_colors = []
     node_types = []
     
-    for node in graph.nodes():
+    for node in connected_nodes:
         x, y = pos[node]
         node_x.append(x)
         node_y.append(y)
