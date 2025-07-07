@@ -245,29 +245,29 @@ def get_available_edge_types(graph):
     for _, _, data in graph.edges(data=True):
         edge_type = data.get("edge_type", "unknown")
         edge_types.add(edge_type)
-    
+
     # Define preferred order
     preferred_order = [
-        "repo-file", 
-        "file-class", 
-        "file-import", 
-        "import-import", 
-        "file-function", 
-        "class-method", 
+        "repo-file",
+        "file-class",
+        "file-import",
+        "inheritance",
+        "import-import",
+        "file-function",
+        "class-method",
         "function-function",
-        "inheritance"
     ]
-    
+
     # Sort edge types according to preferred order, then alphabetically for any others
     ordered_types = []
     for edge_type in preferred_order:
         if edge_type in edge_types:
             ordered_types.append(edge_type)
             edge_types.remove(edge_type)
-    
+
     # Add any remaining edge types alphabetically
     ordered_types.extend(sorted(list(edge_types)))
-    
+
     return ordered_types
 
 
@@ -418,9 +418,7 @@ def create_app():
                 for i in range(8):  # Support up to 8 edge types
                     if i < len(initial_edge_types):
                         checkbox = gr.Checkbox(
-                            label=initial_edge_types[i], 
-                            value=True, 
-                            visible=True
+                            label=initial_edge_types[i], value=True, visible=True
                         )
                     else:
                         checkbox = gr.Checkbox(label=f"Edge Type {i+1}", visible=False)
