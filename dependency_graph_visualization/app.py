@@ -108,8 +108,10 @@ def create_interactive_plotly_graph(repo_name, graph):
     fig = go.Figure(data=[edge_trace, node_trace])
     
     fig.update_layout(
-        title=f'Interactive Dependency Graph: {repo_name}',
-        titlefont_size=16,
+        title=dict(
+            text=f'Interactive Dependency Graph: {repo_name}',
+            font=dict(size=16)
+        ),
         showlegend=True,
         hovermode='closest',
         margin=dict(b=20, l=5, r=5, t=40),
