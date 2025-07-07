@@ -29,10 +29,29 @@ def init_graphs():
     return selected_graphs, selected_repo_counts
 
 
-def create_interactive_plotly_graph(repo_name, graph):
+def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
     """Create an interactive Plotly graph with node names and edge types"""
-    # Get node positions using spring layout
-    pos = nx.spring_layout(graph, k=1, iterations=50)
+    # Get node positions using selected layout
+    if layout_type == "spring":
+        pos = nx.spring_layout(graph, k=1, iterations=50)
+    elif layout_type == "circular":
+        pos = nx.circular_layout(graph)
+    elif layout_type == "kamada_kawai":
+        pos = nx.kamada_kawai_layout(graph)
+    elif layout_type == "fruchterman_reingold":
+        pos = nx.fruchterman_reingold_layout(graph, k=1, iterations=50)
+    elif layout_type == "shell":
+        pos = nx.shell_layout(graph)
+    elif layout_type == "spectral":
+        pos = nx.spectral_layout(graph)
+    elif layout_type == "planar":
+        try:
+            pos = nx.planar_layout(graph)
+        except nx.NetworkXException:
+            # Fallback to spring layout if graph is not planar
+            pos = nx.spring_layout(graph, k=1, iterations=50)
+    else:
+        pos = nx.spring_layout(graph, k=1, iterations=50)
     
     # Extract edges with their data
     edge_x = []
@@ -131,7 +150,7 @@ def create_interactive_plotly_graph(repo_name, graph):
     return fig
 
 
-def visualize_graph(repo_name, graphs_dict):
+def visualize_graph(repo_name, graphs_dict, layout_type="spring"):
     """Visualize the selected repository's graph"""
     if repo_name not in graphs_dict:
         return None, f"Repository '{repo_name}' not found in loaded graphs."
@@ -142,7 +161,7 @@ def visualize_graph(repo_name, graphs_dict):
     graph = graphs_dict[repo_name]
     
     # Create interactive Plotly graph
-    fig = create_interactive_plotly_graph(repo_name, graph)
+    fig = create_interactive_plotly_graph(repo_name, graph, layout_type)
     
     # Generate statistics
     edge_types = {}
@@ -169,8 +188,8 @@ def create_app():
     graphs_dict, repo_counts = init_graphs()
     repo_names = list(graphs_dict.keys())
 
-    def plot_selected_repo(repo_name):
-        fig, stats = visualize_graph(repo_name, graphs_dict)
+    def plot_selected_repo(repo_name, layout_type):
+        fig, stats = visualize_graph(repo_name, graphs_dict, layout_type)
         return fig, stats
 
     # Create Gradio interface
@@ -186,6 +205,20 @@ def create_app():
                     value=repo_names[0] if repo_names else None,
                 )
 
+                layout_dropdown = gr.Dropdown(
+                    choices=[
+                        ("Spring Layout (Force-directed)", "spring"),
+                        ("Circular Layout", "circular"),
+                        ("Kamada-Kawai Layout", "kamada_kawai"),
+                        ("Fruchterman-Reingold Layout", "fruchterman_reingold"),
+                        ("Shell Layout", "shell"),
+                        ("Spectral Layout", "spectral"),
+                        ("Planar Layout", "planar")
+                    ],
+                    label="Select Layout",
+                    value="spring"
+                )
+
                 visualize_btn = gr.Button("Visualize Graph", variant="primary")
 
                 stats_text = gr.Textbox(
@@ -198,14 +231,21 @@ def create_app():
         # Set up event handlers
         visualize_btn.click(
             fn=plot_selected_repo,
-            inputs=[repo_dropdown],
+            inputs=[repo_dropdown, layout_dropdown],
             outputs=[graph_plot, stats_text],
         )
 
         # Auto-visualize on dropdown change
         repo_dropdown.change(
             fn=plot_selected_repo,
-            inputs=[repo_dropdown],
+            inputs=[repo_dropdown, layout_dropdown],
+            outputs=[graph_plot, stats_text],
+        )
+
+        # Auto-visualize on layout change
+        layout_dropdown.change(
+            fn=plot_selected_repo,
+            inputs=[repo_dropdown, layout_dropdown],
             outputs=[graph_plot, stats_text],
         )
 
