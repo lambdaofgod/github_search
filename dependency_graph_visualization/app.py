@@ -211,9 +211,12 @@ def create_interactive_plotly_graph(
         hovertext=node_info,
         text=node_text,
         textposition="middle center",
-        textfont=dict(size=8),
+        textfont=dict(size=8, color="rgba(0,0,0,0.6)"),  # Semi-transparent text
         marker=dict(
-            size=12, color=node_colors, line=dict(width=1, color="black"), opacity=0.8
+            size=node_sizes, 
+            color=node_colors, 
+            line=dict(width=1, color="black"), 
+            opacity=0.8
         ),
         name="Nodes",
     )
