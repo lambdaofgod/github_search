@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import tqdm
 from github_search.python_call_graph_analysis import GraphCentralityAnalyzer
 import io
-import base64
+from PIL import Image
 
 
 def init_graphs():
@@ -34,6 +34,9 @@ def visualize_graph(repo_name, graphs_dict):
     """Visualize the selected repository's graph"""
     if repo_name not in graphs_dict:
         return None, f"Repository '{repo_name}' not found in loaded graphs."
+    
+    if repo_name is None:
+        return None, "Please select a repository."
 
     graph = graphs_dict[repo_name]
 
@@ -57,10 +60,11 @@ def visualize_graph(repo_name, graphs_dict):
     plt.title(f"Dependency Graph for {repo_name}")
     plt.tight_layout()
 
-    # Save plot to bytes
+    # Save plot to bytes and convert to PIL Image
     img_buffer = io.BytesIO()
     plt.savefig(img_buffer, format="png", dpi=150, bbox_inches="tight")
     img_buffer.seek(0)
+    pil_image = Image.open(img_buffer)
     plt.close()
 
     # Return the image and stats
@@ -70,7 +74,7 @@ def visualize_graph(repo_name, graphs_dict):
     Number of edges: {graph.number_of_edges()}
     """
 
-    return img_buffer.getvalue(), stats
+    return pil_image, stats
 
 
 def create_app():
