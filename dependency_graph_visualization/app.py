@@ -370,8 +370,11 @@ def create_app():
         # Create checkboxes for each edge type (up to 8)
         for i in range(8):
             if i < len(edge_types):
+                edge_type = edge_types[i]
+                # function-function should be unchecked by default
+                default_value = edge_type != "function-function"
                 checkboxes.append(
-                    gr.Checkbox(label=edge_types[i], value=True, visible=True)
+                    gr.Checkbox(label=edge_type, value=default_value, visible=True)
                 )
             else:
                 checkboxes.append(gr.Checkbox(visible=False))
