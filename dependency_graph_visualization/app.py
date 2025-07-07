@@ -29,6 +29,47 @@ def init_graphs():
     return selected_graphs, selected_repo_counts
 
 
+def get_node_type(node, graph):
+    """Determine node type based on edge relationships"""
+    node_str = str(node)
+    
+    # Check if it's a repository (has '/' and is source of repo-file edges)
+    if '/' in node_str:
+        for _, _, data in graph.edges(node, data=True):
+            if data.get('edge_type') == 'repo-file':
+                return 'repository'
+    
+    # Check if it's a file (target of repo-file edges or source of file-* edges)
+    if '.py' in node_str:
+        # Check if it's target of repo-file edge
+        for source, target, data in graph.edges(data=True):
+            if target == node and data.get('edge_type') == 'repo-file':
+                return 'file'
+        # Check if it's source of file-* edges
+        for _, _, data in graph.edges(node, data=True):
+            edge_type = data.get('edge_type', '')
+            if edge_type.startswith('file-'):
+                return 'file'
+    
+    # Check if it's a class (target of file-class edges)
+    for source, target, data in graph.edges(data=True):
+        if target == node and data.get('edge_type') == 'file-class':
+            return 'class'
+    
+    # Check if it's a function (target of file-function edges)
+    for source, target, data in graph.edges(data=True):
+        if target == node and data.get('edge_type') == 'file-function':
+            return 'function'
+    
+    # Check if it's a method (target of class-method edges)
+    for source, target, data in graph.edges(data=True):
+        if target == node and data.get('edge_type') == 'class-method':
+            return 'method'
+    
+    # Default fallback
+    return 'unknown'
+
+
 def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
     """Create an interactive Plotly graph with node names and edge types"""
     # Get node positions using selected layout
@@ -77,17 +118,32 @@ def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
         name='Edges'
     )
     
+    # Define color scheme for node types
+    node_type_colors = {
+        'repository': '#FF6B6B',  # Red
+        'file': '#4ECDC4',        # Teal
+        'class': '#45B7D1',       # Blue
+        'function': '#96CEB4',    # Green
+        'method': '#FFEAA7',      # Yellow
+        'unknown': '#DDA0DD'      # Plum
+    }
+    
     # Extract node information
     node_x = []
     node_y = []
     node_text = []
     node_info = []
     node_colors = []
+    node_types = []
     
     for node in graph.nodes():
         x, y = pos[node]
         node_x.append(x)
         node_y.append(y)
+        
+        # Determine node type
+        node_type = get_node_type(node, graph)
+        node_types.append(node_type)
         
         # Truncate long node names for display
         display_name = str(node)
@@ -95,15 +151,10 @@ def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
             display_name = display_name[:27] + "..."
         
         node_text.append(display_name)
-        node_info.append(f"Node: {node}<br>Degree: {graph.degree(node)}")
+        node_info.append(f"Node: {node}<br>Type: {node_type}<br>Degree: {graph.degree(node)}")
         
-        # Color nodes by type (simple heuristic based on node name)
-        if '/' in str(node):  # Repository names
-            node_colors.append('red')
-        elif '.py' in str(node):  # File names
-            node_colors.append('lightblue')
-        else:  # Functions/classes
-            node_colors.append('lightgreen')
+        # Color nodes by type
+        node_colors.append(node_type_colors.get(node_type, node_type_colors['unknown']))
     
     # Create node trace
     node_trace = go.Scatter(
@@ -171,9 +222,20 @@ def visualize_graph(repo_name, graphs_dict, layout_type="spring"):
     
     edge_type_summary = "\n".join([f"  {edge_type}: {count}" for edge_type, count in edge_types.items()])
     
+    # Generate node type statistics
+    node_types = {}
+    for node in graph.nodes():
+        node_type = get_node_type(node, graph)
+        node_types[node_type] = node_types.get(node_type, 0) + 1
+    
+    node_type_summary = "\n".join([f"  {node_type}: {count}" for node_type, count in node_types.items()])
+    
     stats = f"""Repository: {repo_name}
 Number of nodes: {graph.number_of_nodes()}
 Number of edges: {graph.number_of_edges()}
+
+Node types:
+{node_type_summary}
 
 Edge types:
 {edge_type_summary}
