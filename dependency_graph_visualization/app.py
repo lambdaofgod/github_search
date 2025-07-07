@@ -165,6 +165,12 @@ def create_interactive_plotly_graph(
     if not selected_edge_types:
         connected_nodes = set(graph.nodes())
 
+    # Calculate degree statistics for opacity normalization
+    degrees = [graph.degree(node) for node in connected_nodes]
+    min_degree = min(degrees) if degrees else 0
+    max_degree = max(degrees) if degrees else 1
+    degree_range = max_degree - min_degree if max_degree > min_degree else 1
+
     # Extract node information
     node_x = []
     node_y = []
@@ -173,6 +179,7 @@ def create_interactive_plotly_graph(
     node_colors = []
     node_types = []
     node_sizes = []
+    node_opacities = []
 
     for node in connected_nodes:
         x, y = pos[node]
@@ -188,6 +195,11 @@ def create_interactive_plotly_graph(
         # Scale size between 8 and 25 based on degree
         size = max(8, min(25, 8 + degree * 1.5))
         node_sizes.append(size)
+
+        # Calculate opacity based on normalized degree (0.3 to 1.0)
+        normalized_degree = (degree - min_degree) / degree_range
+        opacity = 0.3 + (normalized_degree * 0.7)  # Range from 0.3 to 1.0
+        node_opacities.append(opacity)
 
         # Truncate long node names for display
         display_name = str(node)
@@ -216,7 +228,7 @@ def create_interactive_plotly_graph(
             size=node_sizes, 
             color=node_colors, 
             line=dict(width=1, color="black"), 
-            opacity=0.8
+            opacity=node_opacities  # Variable opacity based on degree
         ),
         name="Nodes",
     )
