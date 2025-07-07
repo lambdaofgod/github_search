@@ -172,6 +172,7 @@ def create_interactive_plotly_graph(
     node_info = []
     node_colors = []
     node_types = []
+    node_sizes = []
 
     for node in connected_nodes:
         x, y = pos[node]
@@ -181,6 +182,12 @@ def create_interactive_plotly_graph(
         # Determine node type
         node_type = get_node_type(node, graph)
         node_types.append(node_type)
+
+        # Calculate node size based on degree
+        degree = graph.degree(node)
+        # Scale size between 8 and 25 based on degree
+        size = max(8, min(25, 8 + degree * 1.5))
+        node_sizes.append(size)
 
         # Truncate long node names for display
         display_name = str(node)
