@@ -10,7 +10,7 @@ import plotly.express as px
 def init_graphs():
     """Initialize graphs from dependency data on startup"""
     print("Loading dependency data...")
-    graph_dependencies_df = pd.read_parquet("output/dependency_records.parquet")
+    graph_dependencies_df = pd.read_parquet("../output/dependency_records.parquet")
 
     print("Calculating repo counts...")
     repo_counts = graph_dependencies_df["repo_name"].value_counts()
