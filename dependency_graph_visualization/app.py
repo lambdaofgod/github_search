@@ -51,14 +51,27 @@ def get_node_type(node, graph):
             if edge_type.startswith('file-'):
                 return 'file'
     
-    # Check if it's a class (target of file-class edges)
+    # Check if it's an import (target of file-import or source/target of import-import)
     for source, target, data in graph.edges(data=True):
-        if target == node and data.get('edge_type') == 'file-class':
+        edge_type = data.get('edge_type', '')
+        if (target == node and edge_type == 'file-import') or \
+           (edge_type == 'import-import' and (source == node or target == node)):
+            return 'import'
+    
+    # Check if it's a class (target of file-class edges or source of class-method/inheritance)
+    for source, target, data in graph.edges(data=True):
+        edge_type = data.get('edge_type', '')
+        if target == node and edge_type == 'file-class':
+            return 'class'
+        if source == node and edge_type in ['class-method', 'inheritance']:
             return 'class'
     
-    # Check if it's a function (target of file-function edges)
+    # Check if it's a function (target of file-function or function-function edges)
     for source, target, data in graph.edges(data=True):
-        if target == node and data.get('edge_type') == 'file-function':
+        edge_type = data.get('edge_type', '')
+        if target == node and edge_type == 'file-function':
+            return 'function'
+        if edge_type == 'function-function' and (source == node or target == node):
             return 'function'
     
     # Check if it's a method (target of class-method edges)
@@ -125,6 +138,7 @@ def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
         'class': '#45B7D1',       # Blue
         'function': '#96CEB4',    # Green
         'method': '#FFEAA7',      # Yellow
+        'import': '#FF9F43',      # Orange
         'unknown': '#DDA0DD'      # Plum
     }
     
@@ -201,7 +215,16 @@ def create_interactive_plotly_graph(repo_name, graph, layout_type="spring"):
     return fig
 
 
-def visualize_graph(repo_name, graphs_dict, layout_type="spring"):
+def get_available_edge_types(graph):
+    """Get all unique edge types in the graph"""
+    edge_types = set()
+    for _, _, data in graph.edges(data=True):
+        edge_type = data.get('edge_type', 'unknown')
+        edge_types.add(edge_type)
+    return sorted(list(edge_types))
+
+
+def visualize_graph(repo_name, graphs_dict, layout_type="spring", selected_edge_types=None):
     """Visualize the selected repository's graph"""
     if repo_name not in graphs_dict:
         return None, f"Repository '{repo_name}' not found in loaded graphs."
@@ -212,32 +235,46 @@ def visualize_graph(repo_name, graphs_dict, layout_type="spring"):
     graph = graphs_dict[repo_name]
     
     # Create interactive Plotly graph
-    fig = create_interactive_plotly_graph(repo_name, graph, layout_type)
+    fig = create_interactive_plotly_graph(repo_name, graph, layout_type, selected_edge_types)
     
-    # Generate statistics
+    # Generate statistics for filtered graph
     edge_types = {}
+    filtered_edge_count = 0
     for _, _, data in graph.edges(data=True):
         edge_type = data.get('edge_type', 'unknown')
-        edge_types[edge_type] = edge_types.get(edge_type, 0) + 1
+        if not selected_edge_types or edge_type in selected_edge_types:
+            edge_types[edge_type] = edge_types.get(edge_type, 0) + 1
+            filtered_edge_count += 1
     
     edge_type_summary = "\n".join([f"  {edge_type}: {count}" for edge_type, count in edge_types.items()])
     
-    # Generate node type statistics
+    # Generate node type statistics for visible nodes
+    if selected_edge_types:
+        # Get nodes connected by filtered edges
+        connected_nodes = set()
+        for source, target, data in graph.edges(data=True):
+            edge_type = data.get('edge_type', 'unknown')
+            if edge_type in selected_edge_types:
+                connected_nodes.add(source)
+                connected_nodes.add(target)
+    else:
+        connected_nodes = set(graph.nodes())
+    
     node_types = {}
-    for node in graph.nodes():
+    for node in connected_nodes:
         node_type = get_node_type(node, graph)
         node_types[node_type] = node_types.get(node_type, 0) + 1
     
     node_type_summary = "\n".join([f"  {node_type}: {count}" for node_type, count in node_types.items()])
     
     stats = f"""Repository: {repo_name}
-Number of nodes: {graph.number_of_nodes()}
-Number of edges: {graph.number_of_edges()}
+Visible nodes: {len(connected_nodes)} / {graph.number_of_nodes()}
+Visible edges: {filtered_edge_count} / {graph.number_of_edges()}
 
-Node types:
+Visible node types:
 {node_type_summary}
 
-Edge types:
+Visible edge types:
 {edge_type_summary}
 """
 
@@ -250,9 +287,37 @@ def create_app():
     graphs_dict, repo_counts = init_graphs()
     repo_names = list(graphs_dict.keys())
 
-    def plot_selected_repo(repo_name, layout_type):
-        fig, stats = visualize_graph(repo_name, graphs_dict, layout_type)
+    def plot_selected_repo(repo_name, layout_type, *edge_type_checkboxes):
+        # Convert checkbox values to selected edge types
+        edge_types = get_available_edge_types(graphs_dict[repo_name]) if repo_name in graphs_dict else []
+        selected_edge_types = set()
+        for i, is_selected in enumerate(edge_type_checkboxes):
+            if is_selected and i < len(edge_types):
+                selected_edge_types.add(edge_types[i])
+        
+        fig, stats = visualize_graph(repo_name, graphs_dict, layout_type, selected_edge_types)
         return fig, stats
+    
+    def update_edge_checkboxes(repo_name):
+        """Update edge type checkboxes when repository changes"""
+        if repo_name not in graphs_dict:
+            return [gr.Checkbox(visible=False)] * 8
+        
+        edge_types = get_available_edge_types(graphs_dict[repo_name])
+        checkboxes = []
+        
+        # Create checkboxes for each edge type (up to 8)
+        for i in range(8):
+            if i < len(edge_types):
+                checkboxes.append(gr.Checkbox(
+                    label=edge_types[i], 
+                    value=True, 
+                    visible=True
+                ))
+            else:
+                checkboxes.append(gr.Checkbox(visible=False))
+        
+        return checkboxes
 
     # Create Gradio interface
     with gr.Blocks(title="Dependency Graph Visualization") as app:
@@ -281,35 +346,61 @@ def create_app():
                     value="spring"
                 )
 
+                gr.Markdown("### Edge Type Filters")
+                gr.Markdown("Select which edge types to display:")
+                
+                # Create checkboxes for edge types (will be updated dynamically)
+                edge_checkboxes = []
+                for i in range(8):  # Support up to 8 edge types
+                    checkbox = gr.Checkbox(label=f"Edge Type {i+1}", visible=False)
+                    edge_checkboxes.append(checkbox)
+
                 visualize_btn = gr.Button("Visualize Graph", variant="primary")
 
                 stats_text = gr.Textbox(
-                    label="Graph Statistics", lines=4, interactive=False
+                    label="Graph Statistics", lines=6, interactive=False
                 )
 
             with gr.Column(scale=2):
                 graph_plot = gr.Plot(label="Interactive Dependency Graph")
 
         # Set up event handlers
+        all_inputs = [repo_dropdown, layout_dropdown] + edge_checkboxes
+        
         visualize_btn.click(
             fn=plot_selected_repo,
-            inputs=[repo_dropdown, layout_dropdown],
+            inputs=all_inputs,
             outputs=[graph_plot, stats_text],
+        )
+
+        # Update checkboxes when repository changes
+        repo_dropdown.change(
+            fn=update_edge_checkboxes,
+            inputs=[repo_dropdown],
+            outputs=edge_checkboxes,
         )
 
         # Auto-visualize on dropdown change
         repo_dropdown.change(
             fn=plot_selected_repo,
-            inputs=[repo_dropdown, layout_dropdown],
+            inputs=all_inputs,
             outputs=[graph_plot, stats_text],
         )
 
         # Auto-visualize on layout change
         layout_dropdown.change(
             fn=plot_selected_repo,
-            inputs=[repo_dropdown, layout_dropdown],
+            inputs=all_inputs,
             outputs=[graph_plot, stats_text],
         )
+        
+        # Auto-visualize on checkbox changes
+        for checkbox in edge_checkboxes:
+            checkbox.change(
+                fn=plot_selected_repo,
+                inputs=all_inputs,
+                outputs=[graph_plot, stats_text],
+            )
 
     return app
 
