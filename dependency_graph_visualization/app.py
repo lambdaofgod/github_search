@@ -92,13 +92,13 @@ def create_interactive_plotly_graph(
         selected_edge_types = set()
     # Get node positions using selected layout
     if layout_type == "spring":
-        pos = nx.spring_layout(graph, k=1, iterations=50)
+        pos = nx.spring_layout(graph, k=1, iterations=100)
     elif layout_type == "circular":
         pos = nx.circular_layout(graph)
     elif layout_type == "kamada_kawai":
         pos = nx.kamada_kawai_layout(graph)
     elif layout_type == "fruchterman_reingold":
-        pos = nx.fruchterman_reingold_layout(graph, k=1, iterations=50)
+        pos = nx.fruchterman_reingold_layout(graph, k=1, iterations=100)
     elif layout_type == "shell":
         pos = nx.shell_layout(graph)
     elif layout_type == "spectral":
