@@ -355,6 +355,11 @@ def create_app():
 
         return checkboxes
 
+    # Get initial edge types for the first repository
+    initial_edge_types = []
+    if repo_names:
+        initial_edge_types = get_available_edge_types(graphs_dict[repo_names[0]])
+
     # Create Gradio interface
     with gr.Blocks(title="Dependency Graph Visualization") as app:
         gr.Markdown("# Dependency Graph Visualization")
@@ -385,10 +390,17 @@ def create_app():
                 gr.Markdown("### Edge Type Filters")
                 gr.Markdown("Select which edge types to display:")
 
-                # Create checkboxes for edge types (will be updated dynamically)
+                # Create checkboxes for edge types with initial values
                 edge_checkboxes = []
                 for i in range(8):  # Support up to 8 edge types
-                    checkbox = gr.Checkbox(label=f"Edge Type {i+1}", visible=False)
+                    if i < len(initial_edge_types):
+                        checkbox = gr.Checkbox(
+                            label=initial_edge_types[i], 
+                            value=True, 
+                            visible=True
+                        )
+                    else:
+                        checkbox = gr.Checkbox(label=f"Edge Type {i+1}", visible=False)
                     edge_checkboxes.append(checkbox)
 
                 visualize_btn = gr.Button("Visualize Graph", variant="primary")
