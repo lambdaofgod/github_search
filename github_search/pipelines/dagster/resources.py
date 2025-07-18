@@ -1,3 +1,4 @@
+from typing import List, Optional
 from dagster import (
     asset,
     multi_asset,
@@ -23,9 +24,14 @@ class PhoenixTracker(ConfigurableResource):
         return px.Client().get_trace_dataset().dataframe
 
 
-class Code2DocDataConfig(Config):
+class InputDataConfig(Config):
+    python_files_path: str = "output/python_files.parquet"
     repos_df_path: str = "output/paperswithcode_with_readmes.json.gz"
     python_code_path: str = "output/repo_selected_files.parquet"
+
+
+class Code2DocDataConfig(Config):
+
     repomaps_path: str = "output/aider/selected_repo_maps_1024.json"
     n_repos_per_task: int = 10
     min_task_size: int = 5
@@ -49,3 +55,19 @@ class CorpusConfig(Config):
     min_repos_per_task: int = 5
     python_code_file: str = "python_files_with_selected_code.feather"
     max_repo_tasks: int = 10
+
+
+class DependencyGraphConfig(Config):
+    centrality_edge_types: List[str] = [
+        "repo-file",
+        "file-class",
+        "file-function",
+        "file-import",
+    ]
+    n_nodes_per_type: int = 10
+
+
+class LibrarianConfig(Config):
+    n_shot: int = 2
+    lm_model_name: str = "qwen2.5:7b-instruct"
+    lm_base_url: str = "http://localhost:11434"

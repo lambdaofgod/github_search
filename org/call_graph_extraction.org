@@ -99,86 +99,6 @@ python_files_df["repo_name"].value_counts().describe()
 : max      1934.000000
 : Name: count, dtype: float64
 
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-from github_search.python_call_graph import get_function_calls, RepoDependencyFetcher
-#+END_SRC
-
-#+RESULTS:
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-python_files_df.sort_values("repo_name")
-#+END_SRC
-
-#+RESULTS:
-#+begin_example
-                     path  ...              repo_name
-6     compute_d_vector.py  ...  008karan/SincNet_demo
-4    TIMIT_preparation.py  ...  008karan/SincNet_demo
-0           speaker_id.py  ...  008karan/SincNet_demo
-3           dnn_models.py  ...  008karan/SincNet_demo
-2              data_io.py  ...  008karan/SincNet_demo
-..                    ...  ...                    ...
-11     HS-B/eval/gener.py  ...         zysszy/TreeGen
-12  HS-B/eval/ast2code.py  ...         zysszy/TreeGen
-10                 run.py  ...         zysszy/TreeGen
-1          trans_train.py  ...         zysszy/TreeGen
-4       read_tree_path.py  ...         zysszy/TreeGen
-
-[228871 rows x 3 columns]
-#+end_example
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-example_contents = python_files_df["content"].iloc[3]
-#+END_SRC
-
-#+RESULTS:
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-dependency_fetcher = RepoDependencyFetcher()
-dependency_records_df = dependency_fetcher.prepare_dependency_records_df(python_files_df.head())
-#+END_SRC
-
-#+RESULTS:
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-import ast
-
-expr = ast.parse(example_contents)
-type(expr)
-#+END_SRC
-
-#+RESULTS:
-: <class 'ast.Module'>
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-
-#+END_SRC
-
-#+RESULTS:
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-import json
-from github_search.python_code_analysis import get_ast_analysis_result
-
-#extracted_data = get_ast_analysis_result(example_contents, True)
-#print(json.dumps(extracted_data.model_dump(), indent=2))
-#+END_SRC
-
-#+RESULTS:
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
-sample_dependency_records = [get_ast_analysis_result(contents, True) for contents in tqdm.tqdm(python_files_df["content"].iloc[:100])]
-#+END_SRC
-
-#+RESULTS:
-
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
-dependency_records = [analyze_code(contents, True) for contents in tqdm.tqdm(python_files_df["content"])]
-#+END_SRC
-
-#+RESULTS:
-
 * Defining the call graph
 
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
@@ -189,12 +109,13 @@ from github_search.python_call_graph import GraphExtractor
 #+RESULTS:
 
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
-# graph_dependencies_df = GraphExtractor.extract_repo_dependencies_to_parquet(python_files_df, "../output/dependency_records.parquet")
+graph_dependencies_df = GraphExtractor.extract_repo_dependencies_to_parquet(python_files_df, "../output/dependency_records.parquet")
 
 graph_dependencies_df = pd.read_parquet("../output/dependency_records.parquet")
 #+END_SRC
 
 #+RESULTS:
+: /tmp/babel-zaYAly/python-tCFaGB
 
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
 #graph_dependencies_df.to_parquet("/tmp/deps.parquet")
@@ -214,14 +135,36 @@ graph_dependencies_df = pd.read_parquet("../output/dependency_records.parquet")
 #+RESULTS:
 
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
-centralities_df = GraphCentralityAnalyzer(centrality_method="pagerank").analyze_centralities(graph_dependencies_df, ["repo-file", "file-class", "file-function"], 10)
-#+END_SRC
-
-#+RESULTS:
-: /tmp/babel-rOv9H4/python-YUj5JW
-
-#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
 centralities_df = GraphCentralityAnalyzer(centrality_method="pagerank").analyze_centralities(graph_dependencies_df, {edge_type: 10 for edge_type in ["repo-file", "file-class", "file-function", "file-import"]})
 #+END_SRC
 
 #+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
+centralities_df.to_csv("../output/pagerank_centralities.csv")
+#+END_SRC
+
+#+RESULTS:
+: None
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+centralities_df
+#+END_SRC
+
+#+RESULTS:
+| 236752 | 6 |
+
+#+BEGIN_SRC python :session call_graph_extraction.org  :exports both
+graph_dependencies_df["repo_name"].value_counts().describe()
+#+END_SRC
+
+#+RESULTS:
+: count     6780.000000
+: mean      1743.188201
+: std       4211.351139
+: min          1.000000
+: 25%        304.000000
+: 50%        701.000000
+: 75%       1603.250000
+: max      97185.000000
+: Name: count, dtype: float64

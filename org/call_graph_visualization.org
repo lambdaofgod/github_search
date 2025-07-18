@@ -1,0 +1,232 @@
+#+title: Call Graph Visualization
+
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+import pandas as pd
+from github_search.python_call_graph_analysis import GraphCentralityAnalyzer, get_dependency_signatures
+import tqdm
+
+pd.options.display.max_columns = 5
+#+END_SRC
+
+#+RESULTS:
+
+* Old temporary version (moved to Dagster)
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+#graph_dependencies_df = pd.read_csv("/tmp/deps.csv")
+graph_dependencies_df = pd.read_parquet("../output/dependency_records.parquet")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+repo_counts = graph_dependencies_df["repo_name"].value_counts()
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+graph_dependencies_df["edge_type"].value_counts()
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+edge_type
+function-function    7093728
+file-import          1595523
+import-import        1022417
+class-method          951171
+file-function         497494
+file-class            229939
+repo-file             222235
+inheritance           206309
+Name: count, dtype: int64
+#+end_example
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+repo_counts.describe()
+#+END_SRC
+
+#+RESULTS:
+: count     6780.000000
+: mean      1743.188201
+: std       4211.351139
+: min          1.000000
+: 25%        304.000000
+: 50%        701.000000
+: 75%       1603.250000
+: max      97185.000000
+: Name: count, dtype: float64
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+selected_repo_counts = repo_counts[(repo_counts >= 300) & (repo_counts <= 305)]
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both :async
+selected_graphs = [GraphCentralityAnalyzer(centrality_method="pagerank").load_graph_from_edge_df(repo_name, graph_dependencies_df) for repo_name in tqdm.tqdm(selected_repo_counts.index)]
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+import networkx as nx
+
+nx.draw(selected_graphs[0])
+#+END_SRC
+
+#+RESULTS:
+: None
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+graph = selected_graphs[0]
+node_names = list(graph.nodes)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+list(graph.edges.data())[:10]
+#+END_SRC
+
+#+RESULTS:
+| nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle | flow_2d_resnets.py   | (edge_type : repo-file repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle | jpg2pkl.py           | (edge_type : repo-file repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle | rep_flow_2d_layer.py | (edge_type : repo-file repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle | hmdb_dataset.py      | (edge_type : repo-file repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle | avi2jpg.py           | (edge_type : repo-file repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle | train_model.py       | (edge_type : repo-file repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle | infer.py             | (edge_type : repo-file repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| flow_2d_resnets.py                                                                     | Bottleneck           | (edge_type : file-class repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| flow_2d_resnets.py                                                                     | ConvBNLayer          | (edge_type : file-class repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+| flow_2d_resnets.py                                                                     | ResNet               | (edge_type : file-class repo_name : nikankind/Reproduce-Article-Representation-Flow-for-Action-Recognition-with-PaddlePaddle) |
+
+* Dagster - extracted centralities
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+import pickle
+
+with open("/home/kuba/Projects/github_search/.dagster/storage/centralities_df", "rb") as f:
+    centralities_df = pickle.load(f)
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+centralities_df.columns
+#+END_SRC
+
+#+RESULTS:
+: Index(['repo_name', 'node', 'centrality_score', 'edge_type', 'node_edge_type',
+:        'node_role'],
+:       dtype='object')
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+centralities_df.head()
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+               repo_name                  node  ...  \
+0  008karan/SincNet_demo   compute_d_vector.py  ...
+1  008karan/SincNet_demo  TIMIT_preparation.py  ...
+2  008karan/SincNet_demo         speaker_id.py  ...
+3  008karan/SincNet_demo         dnn_models.py  ...
+4  008karan/SincNet_demo            data_io.py  ...
+
+                                   node_edge_type      node_role
+0                           file-import,repo-file  source,target
+1             file-function,file-import,repo-file  source,target
+2             file-function,file-import,repo-file  source,target
+3  file-class,file-function,file-import,repo-file  source,target
+4             file-function,file-import,repo-file  source,target
+
+[5 rows x 6 columns]
+#+end_example
+
+The dependency signatures consist of selected node names per given repo
+
+#+BEGIN_QUOTE
+AWehenkel/UMNN
+
+repo-file:
+UCIExperiments.py, models/__init__.py, models/vae_lib/utils/plotting.py, lib/dataloader.py, lib/visualize_flow.py, lib/utils.py, lib/toy_data.py, lib/__init__.py, lib/transform.py, datasets/hepmass.py
+
+file-class:
+Data, VAE, AmortizedCNFVAE, MADE, UMNNMAFFlow, ConditionnalMADE, UMNNMAF, GatedConvTranspose2d, GatedConv2d, EmbeddingNetwork
+
+file-function:
+load_data, log_normal_diag, log_normal_standard, calculate_likelihood, calculate_loss, plot_reconstructions, log_bernoulli, logsumexp, integrate, load_data_normalised
+
+file-import:
+numpy, torch, os.path.join, torch.nn, __future__.print_function, math, os, datasets, matplotlib.pyplot, matplotlib
+#+END_QUOTE
+
+#+BEGIN_SRC python :session call_graph_visualization.org :exports both
+#+END_SRC
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both :async
+# Get the signatures for all repos
+repo_signatures = get_dependency_signatures(centralities_df)
+
+# Format and print the signature for the first repo, with specific edge types
+#repo_signatures_formatted = all_repo_signatures.apply(format_signature, edge_types=['repo-file', 'file-import', 'file-class', 'file-function'])
+print(repo_signatures.iloc[0])
+#+END_SRC
+
+#+RESULTS:
+: None
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+repo_signatures_formatted.index[0]
+#+END_SRC
+
+#+RESULTS:
+: 008karan/SincNet_demo
+
+* Old version
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+old_dependencies_df = pd.read_parquet("../output/dependency_representations.parquet")
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python :session call_graph_visualization.org  :exports both
+old_dependencies_df.head()
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+                          repo  \
+0     000Justin000/torchdiffeq
+1        008karan/SincNet_demo
+2                011235813/cm3
+3  011235813/hierarchical-marl
+4                011235813/lio
+
+                                repository_signature  \
+0  Lipschitz control, Backwards differentiation, ...
+1  speech emotion recognition, agents.py This is ...
+2  reinforcement learning, convolution network, a...
+3  hsd, iql, roboschool,  alg/alg_hsd.py, alg/alg...
+4  learning, robotics, physics simulation,  lio/a...
+
+                                dependency_signature  \
+0  examples/latent_ode.py, examples/odenet_mnist....
+1  compute_d_vector.py, speaker_id.py, dnn_models...
+2  alg/alg_baseline.py, alg/alg_baseline_checkers...
+3  alg/alg_hsd.py, alg/alg_hsd_scripted.py, alg/a...
+4  lio/alg/actor_critic.py, lio/alg/actor_critic_...
+
+                                     generated_tasks
+0  Lipschitz control, Backwards differentiation, ...
+1  speech emotion recognition, agents.py This is ...
+2  reinforcement learning, convolution network, a...
+3                             hsd, iql, roboschool,
+4           learning, robotics, physics simulation,
+#+end_example

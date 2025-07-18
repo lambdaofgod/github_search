@@ -12,6 +12,7 @@ from github_search.pipelines.dagster import (
     corpora_assets,
     document_expansion,
     call_graph_assets,
+    input_assets,
 )
 
 
@@ -21,6 +22,7 @@ def get_assets():
         + load_assets_from_modules([corpora_assets], group_name="corpus")
         + load_assets_from_modules([document_expansion], "librarian")
         + load_assets_from_modules([call_graph_assets], "call_graph")
+        + load_assets_from_modules([input_assets], "inputs")
     )
 
 

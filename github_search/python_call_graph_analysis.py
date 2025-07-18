@@ -99,7 +99,7 @@ class GraphCentralityAnalyzer(BaseModel):
             List of dictionaries with repo_name, node, centrality_score, edge_type, node_edge_type, and node_role
         """
         repo_edges = edge_df[edge_df["repo_name"] == repo_name]
-        
+
         # Build node metadata for edge types and roles
         node_metadata = self._build_node_metadata(repo_edges)
 
@@ -109,43 +109,52 @@ class GraphCentralityAnalyzer(BaseModel):
             )
         else:
             return self._process_unified_topk(
-                repo_name, repo_edges, centralities, selected_edge_types, topk, node_metadata
+                repo_name,
+                repo_edges,
+                centralities,
+                selected_edge_types,
+                topk,
+                node_metadata,
             )
 
-    def _build_node_metadata(self, repo_edges: pd.DataFrame) -> Dict[str, Dict[str, any]]:
+    def _build_node_metadata(
+        self, repo_edges: pd.DataFrame
+    ) -> Dict[str, Dict[str, any]]:
         """
         Build metadata for each node including edge types and roles.
-        
+
         Args:
             repo_edges: DataFrame with edges for this repository
-            
+
         Returns:
             Dictionary mapping node names to metadata with edge_types and roles
         """
         node_metadata = {}
-        
+
         for _, row in repo_edges.iterrows():
             source = row["source"]
             target = row["target"]
             edge_type = row["edge_type"]
-            
+
             # Initialize metadata for source node
             if source not in node_metadata:
                 node_metadata[source] = {"edge_types": set(), "roles": set()}
             node_metadata[source]["edge_types"].add(edge_type)
             node_metadata[source]["roles"].add("source")
-            
+
             # Initialize metadata for target node
             if target not in node_metadata:
                 node_metadata[target] = {"edge_types": set(), "roles": set()}
             node_metadata[target]["edge_types"].add(edge_type)
             node_metadata[target]["roles"].add("target")
-            
+
         # Convert sets to sorted lists for consistent output
         for node in node_metadata:
-            node_metadata[node]["edge_types"] = sorted(list(node_metadata[node]["edge_types"]))
+            node_metadata[node]["edge_types"] = sorted(
+                list(node_metadata[node]["edge_types"])
+            )
             node_metadata[node]["roles"] = sorted(list(node_metadata[node]["roles"]))
-            
+
         return node_metadata
 
     def _process_per_edge_type_topk(
@@ -173,7 +182,12 @@ class GraphCentralityAnalyzer(BaseModel):
 
         for edge_type, edge_type_topk in edge_types_with_topk.items():
             edge_type_results = self._get_topk_for_edge_type(
-                repo_name, repo_edges, centralities, edge_type, edge_type_topk, node_metadata
+                repo_name,
+                repo_edges,
+                centralities,
+                edge_type,
+                edge_type_topk,
+                node_metadata,
             )
             results.extend(edge_type_results)
 
@@ -225,13 +239,15 @@ class GraphCentralityAnalyzer(BaseModel):
         results = []
         for node, score in sorted_centralities:
             metadata = node_metadata.get(node, {"edge_types": [], "roles": []})
-            results.append({
-                "repo_name": repo_name, 
-                "node": node, 
-                "centrality_score": score,
-                "node_edge_type": ",".join(metadata["edge_types"]),
-                "node_role": ",".join(metadata["roles"])
-            })
+            results.append(
+                {
+                    "repo_name": repo_name,
+                    "node": node,
+                    "centrality_score": score,
+                    "node_edge_type": ",".join(metadata["edge_types"]),
+                    "node_role": ",".join(metadata["roles"]),
+                }
+            )
 
         return results
 
@@ -282,14 +298,16 @@ class GraphCentralityAnalyzer(BaseModel):
         results = []
         for node, score in sorted_centralities:
             metadata = node_metadata.get(node, {"edge_types": [], "roles": []})
-            results.append({
-                "repo_name": repo_name,
-                "node": node,
-                "centrality_score": score,
-                "edge_type": edge_type,
-                "node_edge_type": ",".join(metadata["edge_types"]),
-                "node_role": ",".join(metadata["roles"])
-            })
+            results.append(
+                {
+                    "repo_name": repo_name,
+                    "node": node,
+                    "centrality_score": score,
+                    "edge_type": edge_type,
+                    "node_edge_type": ",".join(metadata["edge_types"]),
+                    "node_role": ",".join(metadata["roles"]),
+                }
+            )
 
         return results
 
@@ -322,3 +340,59 @@ class GraphCentralityAnalyzer(BaseModel):
             G.add_edge(source, target, edge_type=edge_type, repo_name=repo_name)
 
         return G
+
+
+def _get_dependency_signature_data(centralities_df, top_n=10):
+    """
+    Extracts dependency signatures from a DataFrame of node centralities.
+    Returns a Pandas Series with repo_name as index and signature dictionaries as values.
+    Each dictionary contains the repo_name and the top nodes for each edge type.
+    """
+    # Explode the edge types so we can filter and group on them
+    exploded_df = centralities_df.assign(
+        node_edge_type=centralities_df["node_edge_type"].str.split(",")
+    ).explode("node_edge_type")
+
+    # Get top N for each group
+    top_nodes_df = (
+        exploded_df.sort_values("centrality_score", ascending=False)
+        .groupby(["repo_name", "node_edge_type"])
+        .head(top_n)
+    )
+
+    def create_signature_dict(df):
+        signature = df.groupby("node_edge_type")["node"].apply(list).to_dict()
+        signature["repo_name"] = df.name
+        return signature
+
+    signatures_by_repo = top_nodes_df.groupby("repo_name").apply(create_signature_dict)
+
+    return signatures_by_repo
+
+
+def _format_signature(signature_dict, edge_types=None):
+    """
+    Formats the dependency signatures for a single repository into a string.
+    """
+    repo_name = signature_dict.get("repo_name")
+    output = f"repo: {repo_name}\n\n"
+
+    edges_to_iterate = edge_types if edge_types is not None else signature_dict.keys()
+
+    for edge_type in edges_to_iterate:
+        if edge_type == "repo_name":
+            continue
+        nodes = signature_dict.get(edge_type)
+        if nodes:
+            output += f"{edge_type}:\n"
+            output += ", ".join(nodes) + "\n\n"
+    return output.strip()
+
+
+def get_dependency_signatures(
+    centralities_df,
+    edge_types=["repo-file", "file-import", "file-class", "file-function"],
+):
+    all_repo_signatures = _get_dependency_signature_data(centralities_df)
+    # Format and print the signature for the first repo, with specific edge types
+    return all_repo_signatures.apply(_format_signature, edge_types=edge_types)

@@ -28,22 +28,6 @@ from github_search.lms.code2documentation import (
 logging.basicConfig(level=logging.INFO)
 
 
-@multi_asset(
-    outs={"repos_df": AssetOut(), "python_code_df": AssetOut()},
-)
-def prepared_data(config: Code2DocDataConfig):
-    """
-    repos and python code dataframes
-    """
-    with tqdm_logging_redirect():
-        repos_df, python_code_df = Code2DocSteps.prepare_data_df(
-            config.repos_df_path,
-            config.python_code_path,
-        )
-    yield Output(repos_df, output_name="repos_df")
-    yield Output(python_code_df, output_name="python_code_df")
-
-
 @asset(
     ins={"repos_df": AssetIn(), "python_code_df": AssetIn()},
 )

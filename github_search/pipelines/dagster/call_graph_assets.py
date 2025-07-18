@@ -1,8 +1,8 @@
-from typing import Any, Dict, List
-from pathlib import Path
 import pandas as pd
-import json
+import jinja2
+import random
 import tqdm
+from typing import List
 from dagster import (
     asset,
     multi_asset,
@@ -13,45 +13,22 @@ from dagster import (
     AssetIn,
 )
 from github_search.python_call_graph import GraphExtractor
-from github_search.python_call_graph_analysis import GraphCentralityAnalyzer
-from github_search.pipelines.dagster.resources import CorpusConfig
-
-
-@asset
-def python_files_df(
-    context: AssetExecutionContext, config: CorpusConfig
-) -> pd.DataFrame:
-    """
-    Load Python files dataframe from configured path.
-    Expected columns: ['path', 'content', 'repo_name']
-    """
-    data_path = Path(config.data_path).expanduser()
-    python_files_path = data_path / config.python_files_file
-
-    context.log.info(f"Loading Python files from {python_files_path}")
-
-    # Load the dataframe - assuming it's saved as parquet/feather/csv
-    if python_files_path.suffix == ".parquet":
-        df = pd.read_parquet(python_files_path)
-    elif python_files_path.suffix == ".feather":
-        df = pd.read_feather(python_files_path)
-    elif python_files_path.suffix == ".csv":
-        df = pd.read_csv(python_files_path)
-    else:
-        raise ValueError(f"Unsupported file format: {python_files_path.suffix}")
-
-    context.log.info(
-        f"Loaded {len(df)} Python files from {df['repo_name'].nunique()} repositories"
-    )
-    context.add_output_metadata(
-        {
-            "num_files": len(df),
-            "num_repos": df["repo_name"].nunique(),
-            "avg_files_per_repo": df["repo_name"].value_counts().mean(),
-        }
-    )
-
-    return df.sort_values("repo_name")
+from github_search.python_call_graph_analysis import (
+    GraphCentralityAnalyzer,
+    get_dependency_signatures,
+)
+from github_search.pipelines.dagster.resources import (
+    DependencyGraphConfig,
+    LibrarianConfig,
+)
+import pathlib
+import dspy
+from github_search.librarian import (
+    OllamaTypedPredict,
+    create_fewshot_prompts,
+    sample_context_repo_idxs,
+)
+from pydantic import BaseModel
 
 
 @asset
@@ -86,22 +63,15 @@ def graph_dependencies_df(
 def centralities_df(
     context: AssetExecutionContext,
     graph_dependencies_df: pd.DataFrame,
-    config: CorpusConfig,
+    config: DependencyGraphConfig,
 ) -> pd.DataFrame:
     """
     Analyze graph centralities using PageRank algorithm.
     """
     # Default edge types and limits from the org file
     edge_type_limits = {
-        "repo-file": 10,
-        "file-class": 10,
-        "file-function": 10,
-        "file-import": 10,
+        etype: config.n_nodes_per_type for etype in config.centrality_edge_types
     }
-
-    # Override with config if available
-    if hasattr(config, "centrality_edge_types"):
-        edge_type_limits.update(config.centrality_edge_types)
 
     centrality_method = getattr(config, "centrality_method", "pagerank")
 
@@ -118,8 +88,106 @@ def centralities_df(
         {
             "num_centrality_nodes": len(centralities_df),
             "centrality_method": centrality_method,
-            "edge_type_limits": edge_type_limits,
         }
     )
 
     return centralities_df
+
+
+@asset
+def dependency_signatures(
+    context: AssetExecutionContext, centralities_df: pd.DataFrame
+) -> pd.Series:
+    """
+    Extracts dependency signatures from a DataFrame of node centralities.
+    """
+
+    signatures = get_dependency_signatures(centralities_df)
+    context.log.info(f"Extracted {len(signatures)} dependency signatures")
+
+    context.add_output_metadata(
+        {
+            "example_signature": signatures.iloc[0],
+        }
+    )
+
+    return signatures
+
+
+@asset
+def repos_with_dependency_signatures_df(
+    context: AssetExecutionContext,
+    dependency_signatures: pd.Series,
+    sampled_repos: pd.DataFrame,
+):
+
+    df = pd.DataFrame({"signature": dependency_signatures}).merge(
+        sampled_repos, left_index=True, right_on="repo", how="inner"
+    )
+
+    context.add_output_metadata(
+        {
+            "n_repos": len(df),
+        }
+    )
+    return df
+
+
+@asset
+def context_repo_idxs(
+    context: AssetExecutionContext,
+    sampled_repos: pd.DataFrame,
+    graph_dependencies_df: pd.DataFrame,
+    config: LibrarianConfig,
+):
+    repos = set(graph_dependencies_df["repo_name"]).intersection(sampled_repos["repo"])
+    context.add_output_metadata(
+        {
+            "n_repos": len(repos),
+        }
+    )
+
+    return sample_context_repo_idxs(len(repos), config.n_shot)
+
+
+@asset
+def librarian_signatures(
+    context: AssetExecutionContext,
+    repos_with_dependency_signatures_df: pd.DataFrame,
+    context_repo_idxs: List[List[int]],
+    config: LibrarianConfig,
+):
+
+    class LibrarianTasks(BaseModel):
+        tasks: List[str]
+
+    librarian = OllamaTypedPredict(
+        model_name="qwen2.5:7b-instruct", output_cls=LibrarianTasks
+    )
+
+    fewshot_template = """
+    Based on the examples of repos with selected information and their tags, generate tags for the repo without tags
+
+    {% for repo_record in context_repo_records %}
+    {{repo_record["signature"]}}
+    tags:
+    {{repo_record["tasks"]}}
+    {% endfor %}
+
+    {{target_repo_record["signature"]}}
+    tags:
+    """
+
+    librarian_prompts = create_fewshot_prompts(
+        repos_with_dependency_signatures_df, fewshot_template, context_repo_idxs
+    )
+    librarian_signature_values = [
+        librarian(prompt).tasks for prompt in tqdm.tqdm(librarian_prompts.values)
+    ]
+
+    return pd.DataFrame(
+        {
+            "repo": librarian_prompts.index,
+            "librarian_signature": librarian_signature_values,
+        }
+    )
