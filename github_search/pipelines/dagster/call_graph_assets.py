@@ -121,7 +121,7 @@ def repos_with_dependency_signatures_df(
     sampled_repos: pd.DataFrame,
 ):
 
-    df = pd.DataFrame({"signature": dependency_signatures}).merge(
+    df = pd.DataFrame({"dependency_signature": dependency_signatures}).merge(
         sampled_repos, left_index=True, right_on="repo", how="inner"
     )
 
@@ -151,7 +151,7 @@ def context_repo_idxs(
 
 
 @asset
-def librarian_signatures(
+def librarian_tasks(
     context: AssetExecutionContext,
     repos_with_dependency_signatures_df: pd.DataFrame,
     context_repo_idxs: List[List[int]],
@@ -169,13 +169,13 @@ def librarian_signatures(
     Based on the examples of repos with selected information and their tags, generate tags for the repo without tags
 
     {% for repo_record in context_repo_records %}
-    {{repo_record["signature"]}}
-    tags:
+    {{repo_record["dependency_signature"]}}
+    tasks:
     {{repo_record["tasks"]}}
     {% endfor %}
 
-    {{target_repo_record["signature"]}}
-    tags:
+    {{target_repo_record["dependency_signature"]}}
+    tasks:
     """
 
     librarian_prompts = create_fewshot_prompts(
@@ -188,6 +188,18 @@ def librarian_signatures(
     return pd.DataFrame(
         {
             "repo": librarian_prompts.index,
-            "librarian_signature": librarian_signature_values,
+            "generated_tasks": [", ".join(s) for s in librarian_signature_values],
+            "generated_tasks_raw": librarian_signature_values,
         }
     )
+
+
+@asset
+def librarian_signatures_df(
+    librarian_tasks: pd.DataFrame, repos_with_dependency_signatures_df
+):
+    df = librarian_tasks.merge(repos_with_dependency_signatures_df, on="repo")
+    df["repository_signature"] = (
+        df["dependency_signature"] + "\ntasks:\n" + df["generated_tasks"]
+    )
+    return df

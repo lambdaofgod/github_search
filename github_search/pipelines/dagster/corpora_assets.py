@@ -87,7 +87,6 @@ def ir_data(context: AssetExecutionContext):
     ins={
         "sampled_repos": AssetIn(key="sampled_repos"),
         "generated_readmes": AssetIn(key="generated_readmes"),
-        "expanded_documents": AssetIn(key="processed_expanded_documents"),
     },
 )
 def corpus_information(
@@ -95,7 +94,7 @@ def corpus_information(
     config: CorpusConfig,
     sampled_repos: pd.DataFrame,
     generated_readmes: pd.DataFrame,
-    expanded_documents: pd.DataFrame,
+    librarian_signatures_df: pd.DataFrame,
 ) -> str:
     """
     texts:
@@ -114,7 +113,7 @@ def corpus_information(
         sampled_repos["tasks"].apply(len) <= config.max_repo_tasks
     ]
 
-    librarian_signatures_df = pd.read_parquet(config.librarian_signatures_path)
+    # librarian_signatures_df = pd.read_parquet(config.librarian_signatures_path)
     sample_python_code_df = pd.read_feather(
         data_path / "code" / config.python_code_file
     )
@@ -142,15 +141,15 @@ def corpus_information(
     corpora = corpora | prepare_librarian_corpora(
         sampled_repos_df, librarian_signatures_df
     )
-    corpora = corpora | prepare_librarian_corpora(
-        sampled_repos_df,
-        expanded_documents,
-        [
-            "pagerank_dependency_signature",
-            "pagerank_repository_signature",
-            "pagerank_generated_tasks",
-        ],
-    )
+    # corpora = corpora | prepare_librarian_corpora(
+    #     sampled_repos_df,
+    #     expanded_documents,
+    #     [
+    #         "pagerank_dependency_signature",
+    #         "pagerank_repository_signature",
+    #         "pagerank_generated_tasks",
+    #     ],
+    # )
     corpora_keys = list(corpora.keys())
 
     with open("/tmp/corpora.json", "w") as f:
