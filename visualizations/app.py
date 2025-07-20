@@ -5,28 +5,29 @@ import tqdm
 from github_search.python_call_graph_analysis import GraphCentralityAnalyzer
 import plotly.graph_objects as go
 import plotly.express as px
+from datasets import load_dataset
 
 
 def init_graphs():
     """Initialize graphs from dependency data on startup"""
-    print("Loading dependency data...")
-    graph_dependencies_df = pd.read_parquet("output/dependency_records.parquet")
+    print("Loading dependency data from HuggingFace Hub...")
+    dataset = load_dataset(
+        "lambdaofgod/pwc_github_search",
+        data_files="sample_repo_dependency_records.parquet",
+    )
+    graph_dependencies_df = dataset["train"].to_pandas()
 
-    print("Calculating repo counts...")
-    repo_counts = graph_dependencies_df["repo_name"].value_counts()
+    repos = graph_dependencies_df["repo_name"].unique()
 
-    print("Selecting repos with 300-305 dependencies...")
-    selected_repo_counts = repo_counts[(repo_counts >= 300) & (repo_counts <= 305)]
-
-    print(f"Loading {len(selected_repo_counts)} graphs...")
-    selected_graphs = {}
-    for repo_name in tqdm.tqdm(selected_repo_counts.index):
+    graphs = dict()
+    print(f"Loading {len(repos)} graphs...")
+    for repo_name in tqdm.tqdm(repos):
         analyzer = GraphCentralityAnalyzer(centrality_method="pagerank")
         graph = analyzer.load_graph_from_edge_df(repo_name, graph_dependencies_df)
-        selected_graphs[repo_name] = graph
+        graphs[repo_name] = graph
 
     print("Graphs loaded successfully!")
-    return selected_graphs, selected_repo_counts
+    return graphs
 
 
 def get_node_type(node, graph):
@@ -225,10 +226,10 @@ def create_interactive_plotly_graph(
         textposition="middle center",
         textfont=dict(size=8, color="rgba(0,0,0,0.6)"),  # Semi-transparent text
         marker=dict(
-            size=node_sizes, 
-            color=node_colors, 
-            line=dict(width=1, color="black"), 
-            opacity=node_opacities  # Variable opacity based on degree
+            size=node_sizes,
+            color=node_colors,
+            line=dict(width=1, color="black"),
+            opacity=node_opacities,  # Variable opacity based on degree
         ),
         name="Nodes",
     )
@@ -361,7 +362,7 @@ Visible edge types:
 def create_app():
     """Create and configure the Gradio app"""
     print("Initializing graphs...")
-    graphs_dict, repo_counts = init_graphs()
+    graphs_dict = init_graphs()
     repo_names = list(graphs_dict.keys())
 
     def plot_selected_repo(repo_name, layout_type, *edge_type_checkboxes):

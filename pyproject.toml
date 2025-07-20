@@ -11,6 +11,7 @@ dependencies = [
     "beir==2.0.0",
     "comment-parser>=1.2.4",
     "dagster>=1.6.5",
+    "datasets>=2.14.4",
     "dspy-ai>=2.4.5",
     "einops>=0.8.0",
     "fastparquet>=2024.11.0",
