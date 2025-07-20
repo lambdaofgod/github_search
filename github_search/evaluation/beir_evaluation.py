@@ -240,6 +240,9 @@ class PerQueryMetrics:
             per_query_metrics_df[f"Accuracy@{i}"] = 1.0 * (
                 per_query_metrics_df[f"Hits@{i}"] > 0
             )
+            per_query_metrics_df[f"Precision@{i}"] = 1.0 * (
+                per_query_metrics_df[f"Hits@{i}"] / i
+            )
         return per_query_metrics_df
 
 
