@@ -126,7 +126,9 @@ def code2doc_readmes(
     avg_files_per_repo = len(python_code_df) / len(sampled_repos)
     logging.info(f"{round(avg_files_per_repo, 2)} files per repo on average")
     logging.info(f"Using {config.files_per_repo} files per repo")
-    lm = dspy.OllamaLocal(model=config.lm_model_name, base_url=config.lm_base_url)
+    lm = dspy.LM(
+        f"ollama_chat/{config.lm_model_name}", api_base=config.lm_base_url, api_key=""
+    )
     dspy.configure(lm=lm)
 
     if config.is_debug_run:
