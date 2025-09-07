@@ -17,9 +17,6 @@ import phoenix as px
 class PhoenixTracker(ConfigurableResource):
     port: int = 6006
 
-    def launch(self):
-        px.launch_app(port=self.port)
-
     def get_traces_df(self):
         return px.Client().get_trace_dataset().dataframe
 

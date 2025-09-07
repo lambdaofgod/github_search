@@ -2,28 +2,10 @@
 \label{approach_document_expansion}
 Dependency graphs have rich structure, but the most important fact is that they encode project's hierarchical structure. We found that LLMs were able to provide useful summaries only given short snippets extracted from toplevel nodes that usually correspond to file names. We will call the outputs of document expansion \textbf{repository signatures}.
 
-Document expansion is the responsibility of the \textbf{librarian model} -- for each repository it generates potential queries given a short snippet. This approach was inspired by Generative Pseudo-Labeling \cite{gpl}. Intuitively we use few-shot prompting: the context contains $n=2$ repositories with their dependency signatures and tasks, and the target repository name with signature (thus the language model will generate the tasks). We omit prompting details here, they can be found in Appendix \ref{prompts}.
+We call the module responsible for this the \textbf{librarian model} -- for each repository it generates potential queries given a short snippet \footnote{This approach was inspired by Generative Pseudo-Labeling \cite{gpl}}. Intuitively we use few-shot prompting: the context contains $n=2$ repositories with their dependency signatures and tasks, and the target repository name with signature (thus the language model will generate the tasks). We omit prompting details here, they can be found in Appendix \ref{prompts}.
 
 \begin{samepage}
-\begin{lstlisting}[caption=Few-shot prompt format]
-## repository
-<CONTEXT REPOSITORY NAME>
-## files
-<CONTEXT DEPENDENCY RECORDS>
-## tags
-<TASKS>
-...
-## repository
-<REPOSITORY NAME>
-## files
-<DEPENDENCY RECORDS>
-## tags
-\end{lstlisting}
-\end{samepage}
-
-\begin{samepage}
-\begin{lstlisting}[caption=Input repository]
-<OMITTED CONTEXT>
+\begin{lstlisting}[caption=AWehenkel/UMNN - density estimation, variational inference]
 ## repository
 AWehenkel/UMNN
 
@@ -38,7 +20,10 @@ load_data, log_normal_diag, log_normal_standard, calculate_likelihood, calculate
 
 imported modules:
 numpy, torch, os.path.join, torch.nn, __future__.print_function, math, os, datasets, matplotlib.pyplot, matplotlib
+\end{lstlisting}
 
+\begin{samepage}
+\begin{lstlisting}[caption=Ahsanr312/Object-Detection-and-Tracking-using-YOLOv3-and-DeepSort]
 ## repository
 Ahsanr312/Object-Detection-and-Tracking-using-YOLOv3-and-DeepSort
 
@@ -54,6 +39,12 @@ DarknetConv, load_darknet_weights, YoloV3, YoloV3Tiny, transform_images, broadca
 imported modules:
 numpy, tensorflow, tensorflow.keras.Model, cv2, __future__.absolute_import, linear_assignment, scipy.linalg, absl.flags.FLAGS, kalman_filter, absl.logging
 
+\end{lstlisting}
+
+\end{samepage}
+
+\begin{samepage}
+\begin{lstlisting}[caption=rajammanabrolu/Q-BERT - textual game playing]
 ## repository
 rajammanabrolu/Q-BERT
 
@@ -71,9 +62,3 @@ glob, router.app, collections.namedtuple, numpy, time, collections.defaultdict, 
 \end{lstlisting}
 \end{samepage}
 
-
-\begin{samepage}
-\begin{lstlisting}[caption=Generated text]
-
-\end{lstlisting}
-\end{samepage}

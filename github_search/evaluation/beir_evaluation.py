@@ -13,7 +13,6 @@ from beir.retrieval.search.lexical import BM25Search as BM25
 import pandas as pd
 from typing import Dict, List, Tuple, Union
 from pydantic import BaseModel
-import pytrec_eval
 import logging
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
 from beir.retrieval.search.lexical import BM25Search as BM25
@@ -256,6 +255,9 @@ class PerQueryIREvaluator(BaseModel):
         ndcg_string = "ndcg_cut." + ",".join([str(k) for k in self.k_values])
         recall_string = "recall." + ",".join([str(k) for k in self.k_values])
         precision_string = "P." + ",".join([str(k) for k in self.k_values])
+
+        import pytrec_eval
+
         evaluator = pytrec_eval.RelevanceEvaluator(
             ir_data.qrels, {map_string, ndcg_string, recall_string, precision_string}
         )

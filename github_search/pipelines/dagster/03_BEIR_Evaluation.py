@@ -1,34 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# In[1]:
 
 
-import pytrec_eval
 import pandas as pd
-
-
-# In[ ]:
-
-
-import torch
-
-
-# In[ ]:
-
-
-pd.set_option('max_colwidth', 128)
-
-from pathlib import Path
 import json
 
-
-# In[ ]:
-
-
-from beir import util, LoggingHandler
-from beir.datasets.data_loader import GenericDataLoader
-from github_search.beir_evaluation import EvaluateRetrievalCustom as EvaluateRetrieval, CorpusDataLoader
 from beir.retrieval.search.lexical import BM25Search as BM25
 
 
@@ -36,210 +14,39 @@ from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
 from beir.retrieval.models import SPLADE, SentenceBERT, UniCOIL
 from beir.retrieval.search.sparse import SparseSearch
 
-#from github_search.ir.evaluate_bm25 import load_ir_data, load_generation_metrics_df, RetrievalConfig, get_retriever
-#from github_search.pipelines.get_zenml_results import ArtifactLoader
 
-
-# In[ ]:
-
-
-## Dependency and librarian signatures
-
-
-# In[ ]:
-
-
-librarian_signatures_df = pd.read_parquet("/home/kuba/Projects/uhackathons/fastrag_util/data/librarian_signatures.parquet")
-
-
-# In[7]:
-
-
-## load import2vec
-
-
-# In[9]:
-
+from beir import util, LoggingHandler
+from beir.datasets.data_loader import GenericDataLoader
+from github_search.evaluation.beir_evaluation import EvaluateRetrievalCustom as EvaluateRetrieval, CorpusDataLoader
+from beir.retrieval.search.lexical import BM25Search as BM25
 
 import sentence_transformers
 
 
-# In[10]:
+# In[2]:
 
 
-from typing import Union
-import ast
-from pydantic import BaseModel
+import pickle 
 
+with open("/home/kuba/Projects/github_search/.dagster/storage/corpus_information", "rb") as f:
+    corpora = json.loads(pickle.load(f))
 
-data_path = Path("../output").expanduser()
+[(cname, len(corpora[cname].keys())) for cname in corpora.keys()]
 
-small_sample_loader = CorpusDataLoader(
-    repos_df_path= data_path / "code2doc/sample2k/sampled_repos.jsonl",
-    generated_readmes_df_path=Path("~/Projects").expanduser() / "torch_example/phoenix/sample_2k/trace_dataset-353a22a7-b529-4d9d-a4ec-75f442aa3eb7.parquet",
-    code_df_path=data_path / "code" / "python_files_with_selected_code.feather"
-)
 
+# In[3]:
 
-# In[11]:
 
+list(corpora["repository_signature"].items())[:10]
 
-class ExperimentParams:
-    sampled_repos_per_task = 20
-    min_repos_per_task = 10
 
+# In[4]:
 
-# In[12]:
 
+corpora.keys()
 
-#sampled_repos_df, sampled_generated_readmes_df, sample_python_code_df = small_sample_loader.load_corpus_dfs(librarian_signatures_df["repo"])
 
-
-# In[13]:
-
-
-def filter_dfs_by_cols_in(dfs, col_values, colnames=["repo", "repo_name"]):
-    out_dfs = []
-    for df in dfs:
-        df_cols = [c for c in colnames if c in df.columns]
-        col = df_cols[0]
-        filtered_df = df[df[col].isin(col_values)]
-        out_dfs.append(filtered_df)
-    return out_dfs
-
-
-def align_dfs(dfs, colname="repo"):
-    df0 = dfs[0].reset_index()
-    df_index = df0[colname]
-    new_dfs = [
-        df.set_index(colname).loc[df_index].reset_index()
-        for df in dfs[1:]
-    ]
-    return [df0] + new_dfs
-
-
-# In[ ]:
-
-
-
-
-
-# In[14]:
-
-
-bigger_sample_path = f"../output/code2doc/sample_per_task_5_repos/sampled_repos{ExperimentParams.sampled_repos_per_task}.jsonl"
-sample_path = bigger_sample_path#"../output/code2doc/sample_small/sampled_repos_min10.jsonl"
-sampled_repos_df = pd.read_json(sample_path, orient="records", lines=True)
-sample_python_code_df = pd.read_feather(Path(data_path) / "code" / "python_files_with_selected_code.feather")
-
-
-# In[15]:
-
-
-sampled_repos_df.shape
-
-
-# In[16]:
-
-
-repos_with_all_data = (
-    set(sampled_repos_df["repo"]) &
-    set(librarian_signatures_df["repo"]) &
-    set(sample_python_code_df["repo_name"])
-)
-
-
-# In[17]:
-
-
-len(repos_with_all_data)
-
-
-# In[18]:
-
-
-#librarian_signatures_df = librarian_signatures_df[librarian_signatures_df["generation"] == 0]
-
-
-# Select only repos with signatures that were in sample
-
-# In[19]:
-
-
-sampled_repos_df, sample_python_code_df, sampled_librarian_signatures_df = filter_dfs_by_cols_in([sampled_repos_df, sample_python_code_df, librarian_signatures_df], repos_with_all_data)
-sampled_repos_df, sampled_librarian_signatures_df = align_dfs([sampled_repos_df, sampled_librarian_signatures_df])
-
-
-# ## Sample with generated READMEs
-
-# In[20]:
-
-
-model_name = "codellama_repomaps"
-sample_prefix = "sample_per_task_5_repos"
-
-sample_loader = CorpusDataLoader(
-    repos_df_path= data_path / f"code2doc/{sample_prefix}/sampled_repos5.jsonl",
-    generated_readmes_df_path=data_path / f"code2doc/{sample_prefix}/{model_name}_generated_readmes5.jsonl",
-    code_df_path=data_path / "code" / "python_files_with_selected_code.feather"
-)
-
-
-# In[21]:
-
-
-sample_loader.generated_readmes_df_path
-
-
-# In[22]:
-
-
-sampled_repos_df, sampled_generated_readmes_df, sample_python_code_df = sample_loader.load_corpus_dfs(librarian_signatures_df["repo"])
-
-
-# In[23]:
-
-
-repos_with_all_data = set(sampled_repos_df["repo"]).intersection(librarian_signatures_df["repo"])
-
-
-# In[24]:
-
-
-sampled_repos_df, sample_python_code_df, sampled_librarian_signatures_df = filter_dfs_by_cols_in([sampled_repos_df, sample_python_code_df, librarian_signatures_df], repos_with_all_data)
-sampled_repos_df, sampled_librarian_signatures_df = align_dfs([sampled_repos_df, sampled_librarian_signatures_df])#[sampled_librarian_signatures_df["generation"] == 0]])
-
-
-# ## Example BEIR dataset
-
-# In[25]:
-
-
-import os
-import pathlib
-
-dataset = "scifact"
-url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(dataset)
-out_dir = os.path.join(pathlib.Path("..").parent.absolute(), "datasets")
-beir_data_path = util.download_and_unzip(url, out_dir)
-
-
-# In[26]:
-
-
-_corpus, _queries, _qrels = GenericDataLoader(beir_data_path).load(split="test")
-
-
-# In[27]:
-
-
-print(_corpus['4983'].keys())
-_corpus['4983']
-
-
-# ## Data preparation
-
-# In[28]:
+# In[5]:
 
 
 def get_repos_for_query(query, repos_df):
@@ -261,119 +68,9 @@ def prepare_query_data(repos_df, min_query_count=5):
     return task_queries, task_qrels
 
 
-def prepare_readme_corpus(repos_df):
-    return {str(i): {"text": row["readme"], "title": row["repo"], 'tasks': row['tasks']} for (i, row) in repos_df.iterrows()}
 
+pd.Series(map(len, task_qrels.values())).describe()
 
-def prepare_generated_readme_corpus(repos_df, generated_readmes_df, columns=["answer"]):
-    generated_readmes_df = generated_readmes_df.set_index("repo_name").loc[repos_df["repo"]].reset_index()
-    return {str(i): {"text": "\n".join(row[columns]), "title": row["repo_name"]} for (i, row) in generated_readmes_df.iterrows()}
-
-    
-def prepare_code_corpus(repos_df, selected_python_code_df):
-    per_repo_code_df = selected_python_code_df.groupby("repo_name").apply(lambda df: "\n\n".join(df["selected_code"].fillna("")))
-    per_repo_code_df = per_repo_code_df.loc[repos_df["repo"]].reset_index()
-    return {str(i): {"text": row[0], "title": row["repo_name"]} for (i, row) in per_repo_code_df.iterrows()}
-
-
-# THIS IS FOR ONE GENERATION ONLY NOW
-def prepare_librarian_corpora(repos_df, sampled_librarian_signatures_df):
-    columns = ["dependency_signature", "repository_signature", "generated_tasks"]
-    sampled_librarian_signatures_df = sampled_librarian_signatures_df.set_index("repo").loc[repos_df["repo"]].reset_index()
-    return {
-        (column, g): {
-            str(i): {
-                "text": row[column], "title": row["repo"]
-            } for (i, row) in sampled_librarian_signatures_df[sampled_librarian_signatures_df["generation"] == g].reset_index(drop=True)[["repo", column]].iterrows()
-        } 
-        for column in columns
-        for g in sampled_librarian_signatures_df["generation"].unique()
-    }
-
-
-def prepare_basic_corpora(repos_df, selected_python_code_df):
-    readme_corpus = prepare_readme_corpus(repos_df)
-    selected_python_code_corpus = prepare_code_corpus(repos_df, selected_python_code_df)
-    return {"readme": readme_corpus, "selected_code": selected_python_code_corpus}
-
-
-def prepare_corpora(repos_df, generated_readmes_df, selected_python_code_df):
-    basic_corpora = prepare_basic_corpora(repos_df, selected_python_code_df)
-    readme_corpus = basic_corpora["readme"]
-    selected_python_code_corpus = basic_corpora["selected_code"]
-    generated_readme_corpus = prepare_generated_readme_corpus(repos_df, sampled_generated_readmes_df)
-    generated_rationale_corpus = prepare_generated_readme_corpus(repos_df, sampled_generated_readmes_df, columns=["rationale"])
-    generated_readme_rationale_corpus = prepare_generated_readme_corpus(repos_df, sampled_generated_readmes_df, columns=["answer", "rationale"])
-    generated_readme_context_corpus = prepare_generated_readme_corpus(repos_df, sampled_generated_readmes_df, columns=["context_history"])
-    
-
-    assert len(readme_corpus) == len(generated_readme_corpus)
-    assert len(selected_python_code_corpus) == len(readme_corpus)
-    
-    for k in readme_corpus.keys():
-        assert readme_corpus[k]['title'] == generated_readme_corpus[k]['title'], str((readme_corpus[k]['title'], generated_readme_corpus[k]['title']))
-        assert readme_corpus[k]['title'] == selected_python_code_corpus[k]['title']
-    return {
-        "readme": readme_corpus,
-        "generated_readme": generated_readme_corpus,
-        "selected_code": selected_python_code_corpus,
-        "generated_rationale": generated_rationale_corpus,
-        "generation_context": generated_readme_context_corpus,
-    }
-
-
-# In[29]:
-
-
-sampled_repos_df
-
-
-# In[30]:
-
-
-task_queries, task_qrels = prepare_query_data(sampled_repos_df, min_query_count=ExperimentParams.min_repos_per_task)
-
-
-# In[31]:
-
-
-pd.Series(task_qrels).apply(len).describe()
-
-
-# In[32]:
-
-
-pd.Series([len(qrl) for qrl in task_qrels.values()]).describe()
-
-
-# In[33]:
-
-
-#corpora = prepare_basic_corpora(sampled_repos_df, sample_python_code_df) |  #
-corpora =  prepare_corpora(sampled_repos_df, sampled_generated_readmes_df, sample_python_code_df) | prepare_librarian_corpora(sampled_repos_df, sampled_librarian_signatures_df)
-
-
-# In[34]:
-
-
-[len(corpora[cname].keys()) for cname in corpora.keys()]
-
-
-# In[35]:
-
-
-for cid in corpora["readme"].keys():
-    assert corpora["readme"][cid]["title"] == corpora["readme"][cid]["title"], f"no match at {cid}"
-    #assert corpora["readme"][cid]["title"] == corpora[("dependency_signature", 0)][cid]["title"], f"no match at {cid}"
-
-
-# In[36]:
-
-
-## Checking elasticsearch
-
-
-# In[37]:
 
 
 import elasticsearch
@@ -432,12 +129,20 @@ def show_elasticsearch_results(qid='10'):
 
 # ## Evaluating with BEIR
 
-# In[38]:
+# In[13]:
 
 
 def load_w2v_sentence_transformer(w2v_model_path):
     w2v_layer = sentence_transformers.models.WordEmbeddings.load(w2v_model_path)
     return sentence_transformers.SentenceTransformer(modules=[w2v_layer, sentence_transformers.models.Pooling(200)])
+
+
+
+def load_sentence_bert(model_name):
+    st_model = SentenceBERT("sentence-transformers/all-mpnet-base-v2")
+    st_model.doc_model = sentence_transformers.SentenceTransformer(model_name, trust_remote_code=True)
+    st_model.q_model = st_model.doc_model
+    return st_model
 
 def get_w2v_retriever(w2v_model_path="../models/rnn_abstract_readme_w2v/0_WordEmbeddings"):
     w2v_model = load_w2v_sentence_transformer(w2v_model_path)
@@ -469,11 +174,15 @@ def get_bm25_retrievers(corpora):
 sentence_transformer_model_names = [
     "sentence-transformers/all-mpnet-base-v2",
     "sentence-transformers/all-MiniLM-L12-v2",
-    "flax-sentence-embeddings/st-codesearch-distilroberta-base"
+    #"nomic-ai/modernbert-embed-base",
+    
+    #"estrogen/ModernBERT-base-nli-v3"
+    #"BAAI/bge-large-en-v1.5",
+    #"mixedbread-ai/mxbai-embed-large-v1"
 ]
 
-def get_sentence_transformer_retriever(model_name="sentence-transformers/all-mpnet-base-v2", batch_size=256):
-    model = DRES(SentenceBERT(model_name), batch_size=batch_size)
+def get_sentence_transformer_retriever(model_name="sentence-transformers/all-mpnet-base-v2", batch_size=8):
+    model = DRES(load_sentence_bert(model_name), batch_size=batch_size)
     return EvaluateRetrieval(model, score_function="cos_sim")
 
 def get_unicoil_retriever(model_name="castorini/unicoil-msmarco-passage"):
@@ -484,50 +193,38 @@ def get_unicoil_retriever(model_name="castorini/unicoil-msmarco-passage"):
     return EvaluateRetrieval(model, score_function="dot")
 
 
-# In[39]:
+
+def get_repomaps_df(repo_names, repomap_path="../output/aider/selected_repo_maps_1024.json"):
+    with open(repomap_path) as f:
+        repomaps = json.load(f)
+
+    records = []
+    for repo in repo_names:
+        records.append({"repo_name": repo, "text": repomaps[repo], "representation": "repomap"})
+    return pd.DataFrame.from_records(records)
 
 
-corpora.keys()
 
 
-# In[43]:
+import sentence_transformers
 
-
-bm25_retrievers = get_bm25_retrievers(corpora)
-
-
-# In[44]:
-
-
-#splade_retriever = get_splade_retriever()
+w2v_retriever = get_w2v_retriever()
+# change sentence-transformers to 2.7?
 sentence_transformer_retrievers = {
     model_name: get_sentence_transformer_retriever(model_name)
     for model_name in sentence_transformer_model_names
 }
 
 
-# In[45]:
+# In[32]:
 
 
-for dres in sentence_transformer_retrievers.values():
-    print(dres.retriever.model.doc_model.device)# = dres.retriever.model.doc_model.to("cuda")
-
-
-# In[46]:
-
-
-sentence_transformer_retrievers['sentence-transformers/all-mpnet-base-v2'].retriever.model.doc_model.device
-
-
-# In[47]:
-
-
-w2v_retriever = get_w2v_retriever()
+bm25_retrievers = get_bm25_retrievers(corpora)
 
 
 # ## Per query results
 
-# In[48]:
+# In[33]:
 
 
 from pydantic import BaseModel
@@ -545,7 +242,7 @@ class RetrievalEvaluationResults(BaseModel):
     model_type: str
 
     @classmethod
-    def from_retriever(cls, retriever, retriever_input, metric_names=["accuracy@k", "hits@k", "r_cap@k"]):
+    def from_retriever(cls, retriever, retriever_input, metric_names=["accuracy@k", "hits@k", "r_cap@k", "mrr@k"]):
         retrieval_results = retriever.retrieve(retriever_input.corpus, retriever_input.queries)
         custom_metrics = retriever.evaluate_custom_multi(retriever_input.qrels, retrieval_results, retriever.k_values, metrics=metric_names)
         other_metrics = retriever.evaluate(retriever_input.qrels, retrieval_results, retriever.k_values, ignore_identical_ids=False)
@@ -565,7 +262,7 @@ class RetrievalEvaluationResults(BaseModel):
         return merged_dict
 
 
-# In[49]:
+# In[34]:
 
 
 retriever_inputs = {
@@ -574,19 +271,19 @@ retriever_inputs = {
 }
 
 
-# In[50]:
+# In[35]:
 
 
-from github_search.ir.beir_utils import PerQueryIREvaluator
+from github_search.evaluation.beir_evaluation import PerQueryIREvaluator
 
 
-# In[51]:
+# In[36]:
 
 
 per_query_evaluator = PerQueryIREvaluator(k_values=[1, 5, 10, 25])
 
 
-# In[52]:
+# In[37]:
 
 
 retriever_inputs = {
@@ -595,13 +292,10 @@ retriever_inputs = {
 }
 
 
-# In[53]:
+# In[38]:
 
 
-retriever_inputs.keys()
-
-
-# In[54]:
+# In[39]:
 
 
 named_retrievers = {
@@ -613,31 +307,40 @@ named_retrievers = {
 }
 
 
-# In[63]:
+# In[40]:
 
 
-get_ipython().run_cell_magic('time', '', 'per_query_results = {\n    (corpus_name, retriever_name): per_query_evaluator.get_scores(retriever=retriever, ir_data=retriever_inputs[corpus_name])\n    for corpus_name in retriever_inputs.keys()\n    for (retriever_name, retriever) in named_retrievers[corpus_name]\n}\n')
+retriever_inputs.keys()
 
 
-# In[64]:
+# In[ ]:
+
+per_query_results = {
+    (corpus_name, retriever_name): per_query_evaluator.get_scores(retriever=retriever, ir_data=retriever_inputs[corpus_name])
+    for corpus_name in retriever_inputs.keys()
+    for (retriever_name, retriever) in named_retrievers[corpus_name]
+}
 
 
-per_query_results_df = pd.concat([
+# In[ ]:
+
+
+raw_per_query_results_df = pd.concat([
     df.assign(retriever=[retriever_name]*len(df)).assign(corpus=[corpus_name]*len(df))
     for ((corpus_name, retriever_name), df) in per_query_results.items()
 ])
 
 
-# In[65]:
+# In[ ]:
 
 
-per_query_results_df = per_query_results_df.assign(
-    corpus=per_query_results_df["corpus"].apply(lambda cname: cname if type(cname) is str else cname[0]),
-    generation=per_query_results_df["corpus"].apply(lambda cname: 0 if type(cname) is str else cname[1])
+per_query_results_df = raw_per_query_results_df.assign(
+    corpus=raw_per_query_results_df["corpus"].apply(lambda cname: cname if type(cname) is str else cname[0]),
+    generation=raw_per_query_results_df["corpus"].apply(lambda cname: 0 if type(cname) is str else cname[1])
 )
 
 
-# In[66]:
+# In[44]:
 
 
 per_query_results_df = (
@@ -647,13 +350,19 @@ per_query_results_df = (
 )
 
 
-# In[67]:
+# In[45]:
+
+
+per_query_results_df
+
+
+# In[46]:
 
 
 per_query_results_df.to_csv("../results/per_query_ir_results.csv", index=False)
 
 
-# In[68]:
+# In[47]:
 
 
 (per_query_results_df
@@ -666,7 +375,17 @@ per_query_results_df.to_csv("../results/per_query_ir_results.csv", index=False)
 
 # ## Aggregated results
 
-# In[69]:
+# In[48]:
+
+
+for corpus_name in corpora.keys():
+    try:
+        RetrievalEvaluationResults.from_retriever(bm25_retrievers[corpus_name], retriever_inputs[corpus_name])
+    except:
+        print(corpus_name)
+
+
+# In[52]:
 
 
 bm25_results = {
@@ -675,16 +394,12 @@ bm25_results = {
 }
 
 
-# In[62]:
+# splade_results = {
+#     corpus_name: RetrievalEvaluationResults.from_retriever(splade_retriever, retriever_inputs[corpus_name])
+#     for corpus_name in corpora.keys()
+# }
 
-
-splade_results = {
-    corpus_name: RetrievalEvaluationResults.from_retriever(splade_retriever, retriever_inputs[corpus_name])
-    for corpus_name in corpora.keys()
-}
-
-
-# In[70]:
+# In[53]:
 
 
 word2vec_results = {
@@ -693,7 +408,7 @@ word2vec_results = {
 }
 
 
-# In[71]:
+# In[54]:
 
 
 sentence_transformer_results = {
@@ -703,7 +418,7 @@ sentence_transformer_results = {
 }
 
 
-# In[72]:
+# In[55]:
 
 
 bm25_metrics = [
@@ -712,7 +427,7 @@ bm25_metrics = [
 ]
 
 
-# In[73]:
+# In[56]:
 
 
 word2vec_metrics = [
@@ -721,7 +436,7 @@ word2vec_metrics = [
 ]
 
 
-# In[76]:
+# In[57]:
 
 
 #splade_metrics = [
@@ -737,16 +452,40 @@ sentence_transformer_metrics = [
 all_metrics_df = pd.DataFrame.from_records(bm25_metrics + word2vec_metrics +  sentence_transformer_metrics).sort_values("Hits@10", ascending=False)
 
 
-# In[77]:
+# In[58]:
 
 
-f"../output/code2doc/{sample_prefix}/beir_results_{model_name}.csv"
+all_metrics_df.shape
 
 
-# In[78]:
+# In[59]:
 
 
-all_metrics_df.to_csv(f"../output/code2doc/{sample_prefix}/beir_results_{model_name}.csv", index=False)
+all_metrics_df[["corpus", "retriever", "Accuracy@10"]]
+
+
+# In[63]:
+
+
+all_metrics_df.columns
+
+
+# In[60]:
+
+
+model_name = "qwen2.5:7b-instruct"
+
+
+# In[61]:
+
+
+all_metrics_df.to_csv(f"../output/code2doc/beir_results_{model_name}.csv", index=False)
+
+
+# In[62]:
+
+
+#all_metrics_df.to_csv(f"../output/code2doc/beir_results_with_modernbert_{model_name}.csv", index=False)
 
 
 # ## Results
@@ -758,13 +497,19 @@ all_metrics_df.to_csv(f"../output/code2doc/{sample_prefix}/beir_results_{model_n
 # In[ ]:
 
 
-metric_df_cols = ["corpus", "retriever", "Accuracy@10", "Hits@10", "R_cap@10", "NDCG@10"]
+metric_df_cols = ["corpus", "retriever", "Accuracy@10", "Hits@10", "R_cap@10", "P@1", "P@5", "P@10"]
 
 
 # In[ ]:
 
 
 all_metrics_df[metric_df_cols]
+
+
+# In[ ]:
+
+
+all_metrics_df[metric_df_cols].sort_values("Accuracy@10", ascending=False)
 
 
 # In[ ]:
@@ -899,12 +644,6 @@ def merge_qrels(qrels1, qrels2):
 
 
 st_generation_results = merge_qrels(bm25_generated_readme_results, st_generated_readme_results)
-
-
-# In[ ]:
-
-
-st_generation_results['0']
 
 
 # In[ ]:

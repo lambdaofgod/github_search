@@ -95,7 +95,7 @@ def sampled_repos_small(
 
 
 @multi_asset(
-    outs={"generated_readmes": AssetOut(), "readme_generation_traces": AssetOut()},
+    outs={"generated_readmes": AssetOut()},
 )
 def code2doc_readmes(
     context: AssetExecutionContext,
@@ -153,17 +153,11 @@ def code2doc_readmes(
         output_name="generated_readmes",
         data_version=DataVersion(code2doc_config.lm_model_name),
     )
-    yield Output(
-        phoenix.get_traces_df(),
-        output_name="readme_generation_traces",
-        data_version=DataVersion(code2doc_config.lm_model_name),
-    )
 
 
 @multi_asset(
     outs={
         "repomap_generated_readmes": AssetOut(),
-        "repomap_readme_generation_traces": AssetOut(),
     },
 )
 def code2doc_readmes_from_repomaps(
@@ -181,13 +175,14 @@ def code2doc_readmes_from_repomaps(
         f"Generating readmes with code2doc using {code2doc_config.lm_model_name}, "
         f"using maximum of {code2doc_config.files_per_repo} files per repo"
     )
-    lm = dspy.OllamaLocal(model=config.lm_model_name, base_url=config.lm_base_url)
+    lm = dspy.LM(
+        model="ollama_chat/" + config.lm_model_name, base_url=config.lm_base_url
+    )
     dspy.configure(lm=lm)
 
     if config.is_debug_run:
         sampled_repos = sampled_repos.head()
 
-    phoenix.launch()
     with tqdm_logging_redirect():
         generated_readme_df = run_code2doc_on_df(
             sampled_repos, code_col="repomap", name_col="repo"
@@ -202,10 +197,5 @@ def code2doc_readmes_from_repomaps(
     yield Output(
         generated_readme_df,
         output_name="repomap_generated_readmes",
-        data_version=DataVersion(code2doc_config.lm_model_name),
-    )
-    yield Output(
-        phoenix.get_traces_df(),
-        output_name="repomap_readme_generation_traces",
         data_version=DataVersion(code2doc_config.lm_model_name),
     )

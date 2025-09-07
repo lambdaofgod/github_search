@@ -6,28 +6,39 @@ from dagster import (
     asset,
     multi_asset,
     AssetOut,
-    ConfigurableResource,
     AssetExecutionContext,
     Output,
     AssetIn,
 )
-from github_search.evaluation.beir_evaluation import (
-    EvaluateRetrievalCustom as EvaluateRetrieval,
-    CorpusDataLoader,
-)
+
 from github_search.evaluation.corpus_utils import (
-    filter_dfs_by_cols_in,
-    align_dfs,
     prepare_query_data,
-    prepare_corpora,
-    prepare_librarian_corpora,
+    create_corpora,
+    create_corpora_df,
 )
 from github_search.pipelines.dagster.resources import CorpusConfig
 
 
 @asset
-def repos_with_representations_df(librarian_signatures_df: pd.DataFrame):
-    return librarian_signatures_df
+def repos_with_representations_df(
+    config: CorpusConfig,
+    sampled_repos: pd.DataFrame,
+    generated_readmes: pd.DataFrame,
+    repomap_generated_readmes: pd.DataFrame,
+    librarian_signatures_df: pd.DataFrame,
+    selected_python_code_df: pd.DataFrame,
+):
+    valid_repos = sampled_repos[
+        sampled_repos["tasks"].apply(len) <= config.max_repo_tasks
+    ]
+    corpora_df = create_corpora_df(
+        valid_repos,
+        librarian_signatures_df,
+        generated_readmes,
+        repomap_generated_readmes,
+        selected_python_code_df,
+    )
+    return corpora_df
 
 
 @multi_asset(
@@ -49,6 +60,36 @@ def ir_data(config: CorpusConfig, repos_with_representations_df: pd.DataFrame):
     yield Output(task_qrels, "task_qrels")
 
 
+@asset
+def selected_python_code_df(config: CorpusConfig):
+    data_path = Path(config.data_path).expanduser()
+    python_code_df = pd.read_feather(data_path / "code" / config.python_code_file)
+    files_per_repo = 10
+    code_col = "selected_code"
+
+    def extract_summary(group):
+        """
+        Extracts the summary for a single repository group.
+        """
+        selected_files = group.head(files_per_repo)
+        return "\n\n".join(
+            [
+                f"file {path}\n```\n{code}\n```"
+                for path, code in zip(
+                    selected_files["path"],
+                    selected_files[code_col],
+                )
+            ]
+        )
+
+    return (
+        python_code_df.groupby("repo_name")
+        .apply(extract_summary)
+        .rename("selected_code")
+        .reset_index()
+    )
+
+
 @asset(
     ins={
         "sampled_repos": AssetIn(key="sampled_repos"),
@@ -60,7 +101,9 @@ def corpus_information(
     config: CorpusConfig,
     sampled_repos: pd.DataFrame,
     generated_readmes: pd.DataFrame,
+    repomap_generated_readmes: pd.DataFrame,
     librarian_signatures_df: pd.DataFrame,
+    selected_python_code_df: pd.DataFrame,
 ) -> str:
     """
     texts:
@@ -73,53 +116,18 @@ def corpus_information(
     right now it's dumped to string as there are some problems
     with dumping dictionaries...
     """
-    data_path = Path(config.data_path).expanduser()
 
-    sampled_repos = sampled_repos[
+    valid_repos = sampled_repos[
         sampled_repos["tasks"].apply(len) <= config.max_repo_tasks
     ]
 
-    # librarian_signatures_df = pd.read_parquet(config.librarian_signatures_path)
-    sample_python_code_df = pd.read_feather(
-        data_path / "code" / config.python_code_file
-    )
-
-    repos_with_all_data = set(sampled_repos["repo"]).intersection(
-        librarian_signatures_df["repo"]
-    )
-    sampled_repos = sampled_repos[sampled_repos["repo"].isin(repos_with_all_data)]
-
-    sampled_repos_df, sample_python_code_df, sampled_librarian_signatures_df = (
-        filter_dfs_by_cols_in(
-            [sampled_repos, sample_python_code_df, librarian_signatures_df],
-            repos_with_all_data,
-        )
-    )
-    sampled_repos_df, sampled_librarian_signatures_df = align_dfs(
-        [sampled_repos_df, sampled_librarian_signatures_df]
-    )
-
-    corpora = prepare_corpora(
-        sampled_repos_df,
+    corpora = create_corpora(
+        valid_repos,
+        librarian_signatures_df,
         generated_readmes,
-        sample_python_code_df,
+        repomap_generated_readmes,
+        selected_python_code_df,
     )
-    corpora = corpora | prepare_librarian_corpora(
-        sampled_repos_df, librarian_signatures_df
-    )
-    # corpora = corpora | prepare_librarian_corpora(
-    #     sampled_repos_df,
-    #     expanded_documents,
-    #     [
-    #         "pagerank_dependency_signature",
-    #         "pagerank_repository_signature",
-    #         "pagerank_generated_tasks",
-    #     ],
-    # )
-    corpora_keys = list(corpora.keys())
-
-    with open("/tmp/corpora.json", "w") as f:
-        json.dump(corpora, f)
-    context.add_output_metadata({"corpora_keys": corpora_keys})
+    context.add_output_metadata({"corpora_keys": list(corpora.keys())})
 
     return json.dumps(corpora)

@@ -6,13 +6,13 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aider>=0.2.6",
-    "arize-phoenix-otel>=0.6.1",
     "astunparse>=1.6.3",
     "beir==2.0.0",
     "comment-parser>=1.2.4",
     "dagster>=1.6.5",
     "datasets>=2.14.4",
-    "dspy-ai>=2.4.5",
+    "dspy-ai==2.4.5",
+    "dspy==3.0.1",
     "einops>=0.8.0",
     "fastparquet>=2024.11.0",
     "fire>=0.7.0",
@@ -22,7 +22,7 @@ dependencies = [
     "mlflow==2.16.2",
     "mlutil",
     "numba>=0.60.0",
-    "ollama>=0.5.1",
+    "ollama>=0.3.3",
     "openinference-instrumentation-dspy==0.1.6",
     "openinference-instrumentation-litellm>=0.1.22",
     "pandera>=0.20.4",
@@ -33,12 +33,14 @@ dependencies = [
     "pytrec-eval>=0.5",
     "rank-bm25>=0.2.2",
     "sentence-transformers==2.6.0",
+    "statsmodels>=0.14.5",
     "strawberry-graphql>=0.262.4",
     "tgutil",
     "toolz>=1.0.0",
     "transformers>=4.46.2",
     "typing-extensions>=4.12.2",
-    "weaviate-client>=4.10.4",
+    "umap-learn>=0.5.9.post2",
+    "arize-phoenix-otel>=0.13.0",
 ]
 
 [tool.uv]
@@ -49,6 +51,7 @@ dev-dependencies = ["dagster-webserver>=1.6.5"]
 mlutil = { git = "https://github.com/lambdaofgod/mlutil" }
 transformers = { git = "https://github.com/huggingface/transformers.git", rev = "b5a557e5fe2d015bd36214a95878370eaed51571" }
 tgutil = { path = "../tgutil" }
+pytrec-eval = { git = "https://github.com/cvangysel/pytrec_eval" }
 #visutils = { path = "../visualization" }
 
 [tool.dagster]
