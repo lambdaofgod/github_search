@@ -61,6 +61,65 @@ class Prompts:
     """.strip()
 
 
+class DirectRepoSummary(dspy.Signature):
+    context = dspy.InputField(desc="Python code from repository files")
+    question = dspy.InputField()
+    answer = dspy.OutputField(desc="Repository README documentation")
+
+
+class Code2DocumentationFlat(dspy.Module):
+    def __init__(
+        self,
+        repo_file_summary_provider: RepoFileSummaryProvider,
+        repo_summary_question_template=Prompts.repo_summary_question_template,
+        verbose=True,
+    ):
+        super().__init__()
+        self.repo_file_summary_provider = repo_file_summary_provider
+        self.summarize_repo = dspy.ChainOfThought(DirectRepoSummary)
+        self.repo_summary_question_template = repo_summary_question_template
+
+    def _create_multi_file_input(self, paths, code_file_contents):
+        return "\n\n".join(
+            [
+                self._create_single_file_part(path, code)
+                for path, code in zip(paths, code_file_contents)
+            ]
+        )
+
+    def _create_single_file_part(self, path, code):
+        return f"file {path}\n```\n{code}\n```"
+
+    def forward(
+        self,
+        repo_name,
+        repo_summary_kwargs={"num_predict": 256},
+        lms=None,
+    ):
+        try:
+            filenames = self.repo_file_summary_provider.get_filenames(repo_name)
+            code_context = self.repo_file_summary_provider.extract_summary(repo_name)
+            if isinstance(filenames, pd.Series):
+                filenames = filenames.tolist()
+
+            for key in repo_summary_kwargs.keys():
+                dspy.settings.lm.kwargs[key] = repo_summary_kwargs[key]
+
+            repo_summary = self.summarize_repo(
+                question=self.repo_summary_question_template.format(repo_name),
+                context=code_context,
+            )
+
+            return dspy.Prediction(
+                **repo_summary,
+                repo_name=repo_name,
+                filenames=filenames,
+                n_files=len(filenames),
+            )
+        except Exception as e:
+            raise Code2DocGenerationException(f"Error processing {repo_name}: {e}")
+
+
 class Code2Documentation(dspy.Module):
     def __init__(
         self,
@@ -151,13 +210,17 @@ class Code2Documentation(dspy.Module):
 
 
 def run_code2doc_on_files_df(
-    python_files_df, files_per_repo, code_col="selected_code", use_phoenix=True
+    python_files_df, files_per_repo, code_col="selected_code", use_phoenix=True, use_flat=False
 ):
     repo_file_summary_provider = DataFrameRepoFileSummaryProvider(
         python_files_df, files_per_repo, code_col
     )
 
-    code2doc = Code2Documentation(repo_file_summary_provider=repo_file_summary_provider)
+    if use_flat:
+        code2doc = Code2DocumentationFlat(repo_file_summary_provider=repo_file_summary_provider)
+    else:
+        code2doc = Code2Documentation(repo_file_summary_provider=repo_file_summary_provider)
+    
     code2doc_answers = []
     if use_phoenix:
         enable_phoenix_tracing()
@@ -172,14 +235,18 @@ def run_code2doc_on_files_df(
     return pd.DataFrame.from_records(code2doc_answers)
 
 
-def run_code2doc_on_df(repo_df, code_col, name_col, use_phoenix=True):
+def run_code2doc_on_df(repo_df, code_col, name_col, use_phoenix=True, use_flat=False):
     repo_file_summary_provider = DataFrameTextProvider(
         df=repo_df,
         text_col=code_col,
         name_col=name_col,
     )
 
-    code2doc = Code2Documentation(repo_file_summary_provider=repo_file_summary_provider)
+    if use_flat:
+        code2doc = Code2DocumentationFlat(repo_file_summary_provider=repo_file_summary_provider)
+    else:
+        code2doc = Code2Documentation(repo_file_summary_provider=repo_file_summary_provider)
+    
     code2doc_answers = []
     if use_phoenix:
         enable_phoenix_tracing()
@@ -193,3 +260,5 @@ def run_code2doc_on_df(repo_df, code_col, name_col, use_phoenix=True):
             pass
 
     return pd.DataFrame.from_records(code2doc_answers)
+
+
