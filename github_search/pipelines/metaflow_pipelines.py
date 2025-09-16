@@ -1,7 +1,6 @@
 from metaflow import FlowSpec, step, Parameter
 import yaml
 import logging
-import pandas as pd
 from github_search.pipelines.steps import Code2DocSteps
 from tqdm.contrib.logging import tqdm_logging_redirect
 

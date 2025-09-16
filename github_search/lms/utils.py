@@ -1,4 +1,3 @@
-import logging
 
 
 def enable_phoenix_tracing(endpoint="http://127.0.0.1:6006/v1/traces"):

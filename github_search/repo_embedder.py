@@ -2,14 +2,6 @@
 
 __all__ = []
 
-import io
-import keyword
-import tokenize
 
 # Cell
-import fasttext
-import gensim
-import pandas as pd
-from mlutil.feature_extraction import embeddings
 
-from github_search import python_tokens

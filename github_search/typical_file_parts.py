@@ -13,16 +13,11 @@ __all__ = [
     "get_selected_lines_and_repos",
 ]
 
-import mlutil
 import numpy as np
 
 # Cell
 import pandas as pd
-import transformers
-from mlutil import prototype_selection
-from mlutil.feature_extraction import embeddings
 
-from github_search import python_tokens
 
 # Cell
 

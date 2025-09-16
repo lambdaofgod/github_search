@@ -1,8 +1,6 @@
 from typing import List, Tuple, Callable
 import re
 import itertools
-import tqdm
-import pandas as pd
 import polars as pl
 
 

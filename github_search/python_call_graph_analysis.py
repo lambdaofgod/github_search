@@ -1,5 +1,5 @@
 from typing import Literal, Dict, Optional, List, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import networkx as nx
 import pandas as pd
 from pandera.typing import DataFrame

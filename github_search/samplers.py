@@ -1,13 +1,9 @@
-import abc
 import pandas as pd
 from pydantic import BaseModel
-from typing import Optional
 import logging
-import ast
 import hashlib
 from pydantic import BaseModel
 import itertools
-import scipy
 from github_search.utils import get_random_retrieval_baseline
 import tqdm
 

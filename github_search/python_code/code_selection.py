@@ -4,7 +4,6 @@ from typing import List
 from comment_parser import comment_parser
 import re
 import tqdm
-from tqdm.contrib.logging import tqdm_logging_redirect
 from contextlib import contextmanager
 
 

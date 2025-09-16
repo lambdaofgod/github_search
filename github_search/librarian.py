@@ -3,7 +3,6 @@ import pandas as pd
 import random
 import dspy
 from typing import List
-from ollama import chat
 import ollama
 from pydantic import BaseModel
 import json

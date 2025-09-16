@@ -4,11 +4,9 @@ __all__ = ["get_readme", "try_decode", "get_readmes"]
 
 # Cell
 
-import pandas as pd
 import requests
 
 from tqdm.contrib import concurrent
-from github_search import paperswithcode_tasks
 
 # Cell
 

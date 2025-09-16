@@ -1,4 +1,4 @@
-from github_search.python_code_analysis import ASTAnalysisResult, ASTExtractor
+from github_search.python_code_analysis import ASTAnalysisResult
 import pandas as pd
 import pandera as pa
 from pandera.typing import DataFrame
@@ -54,7 +54,6 @@ class GraphExtractor:
             output_path: Path where the parquet file should be written
         """
         import pyarrow as pa
-        import pyarrow.parquet as pq
         
         output_path = Path(output_path)
         

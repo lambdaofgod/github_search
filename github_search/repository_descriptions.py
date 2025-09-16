@@ -17,12 +17,9 @@ from io import StringIO
 
 import bs4
 import mlutil.parallel
-import numpy as np
 import pandas as pd
 import pypi_cli
 import requests
-import tqdm
-from sklearn import feature_extraction, metrics
 
 # Cell
 

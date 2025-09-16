@@ -44,6 +44,7 @@ dependencies = [
     "tgutil",
     "ratelimit>=2.2.1",
     "vulture>=2.14",
+    "black>=25.1.0",
 ]
 
 [tool.uv]

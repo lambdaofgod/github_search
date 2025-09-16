@@ -1,9 +1,7 @@
-import logging
 
 import numpy as np
 import attr
 import pandas as pd
-from mlutil.feature_extraction import embeddings
 from sklearn import model_selection
 
 from github_search import paperswithcode_tasks

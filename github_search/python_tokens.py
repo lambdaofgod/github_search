@@ -20,10 +20,6 @@ import re
 import tokenize
 
 # Cell
-import gensim
-import pandas as pd
-from mlutil.feature_extraction import embeddings
-from sklearn import metrics
 
 PYTHON_KEYWORDS = set(keyword.kwlist)
 

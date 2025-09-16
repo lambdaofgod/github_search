@@ -6,7 +6,6 @@ from github_search.ir import InformationRetrievalEvaluatorConfig
 from github_search.pipelines.configs import (
     EvaluationConfig,
     PipelineConfig,
-    SearchDataConfig,
 )
 from github_search.pipelines.steps import (
     expand_documents_step,
@@ -15,7 +14,6 @@ from github_search.pipelines.steps import (
 )
 from github_search.pipelines.metrics_steps import (
     evaluate_generation,
-    evaluate_information_retrieval,
     get_ir_experiments_results,
     prepare_search_df,
 )

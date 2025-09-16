@@ -9,21 +9,12 @@ __all__ = [
     "RetrieverLearner",
 ]
 
-import ast
-import json
 
 # Cell
-import os
-from functools import partial
-from operator import itemgetter
 
 import gensim
-import matplotlib.pyplot as plt
-import mlutil
-import numpy as np
 import pandas as pd
-import tqdm
-from sklearn import feature_extraction, metrics, model_selection
+from sklearn import metrics
 
 from github_search import paperswithcode_tasks
 

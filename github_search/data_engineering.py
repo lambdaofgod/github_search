@@ -9,22 +9,13 @@ __all__ = [
 ]
 
 import ast
-import concurrent.futures
 import csv
-import json
 import logging
-import pickle
 
-import gensim
-import numpy as np
 import pandas as pd
 import tqdm
-from sklearn import decomposition, feature_extraction
 
 from github_search import (
-    data_utils,
-    github_readmes,
-    node_embedding_evaluation,
     paperswithcode_tasks,
     parsing_imports,
     python_call_graph,
@@ -32,7 +23,6 @@ from github_search import (
     utils,
 )
 from github_search.papers_with_code import paperswithcode_tasks
-from github_search.python_code import signatures
 
 csv.field_size_limit(1000000)
 

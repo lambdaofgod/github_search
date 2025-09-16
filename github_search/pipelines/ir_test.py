@@ -1,12 +1,8 @@
 from information_retrieval_pipeline import (
-    evaluate_information_retrieval,
     load_ir_config,
     load_ir_df,
 )
 from github_search.ir.evaluator import (
-    InformationRetrievalEvaluatorConfig,
-    EmbedderPairConfig,
-    InformationRetrievalColumnConfig,
     InformationRetrievalEvaluator,
 )
 

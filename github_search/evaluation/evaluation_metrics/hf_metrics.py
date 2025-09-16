@@ -1,4 +1,4 @@
-from typing import Any, List, Dict, Callable
+from typing import Any, Dict
 import pandas as pd
 import evaluate
 from pydantic import BaseModel, Field

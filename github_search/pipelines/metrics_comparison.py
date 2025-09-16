@@ -1,8 +1,7 @@
-import ast
 import numpy as np
 import tqdm
 from typing import Any
-from github_search.utils import load_config_yaml_key, pd_read_star
+from github_search.utils import load_config_yaml_key
 import pandas as pd
 from github_search.ir.evaluator import (
     InformationRetrievalEvaluatorConfig,

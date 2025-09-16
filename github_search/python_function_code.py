@@ -20,13 +20,10 @@ import ast
 import multiprocessing.pool
 
 import astunparse
-import numpy as np
 
 # Cell
 import pandas as pd
-import tqdm
 
-from github_search import python_tokens
 
 # Cell
 
@@ -141,7 +138,6 @@ def get_function_tuples(code, max_depth):
 
 
 # Cell
-import tqdm
 import pandas_parallel_apply
 from github_search.python_code import signatures
 

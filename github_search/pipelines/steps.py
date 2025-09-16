@@ -1,6 +1,4 @@
 from typing import List, Tuple
-import os
-from pathlib import Path
 
 import pandas as pd
 from github_search.pipelines.postprocessing import GenerationPostprocessor
@@ -12,15 +10,12 @@ from jinja2 import Environment, FileSystemLoader
 import tqdm
 
 try:
-    from tgutil.configs import PromptConfig, load_config_from_dict
-    from tgutil.prompting import ContextPromptInfo
-    from tgutil.prompting_runner import DocumentExpander
+    pass
 except:
     logging.warning("tgutil not installed, using local imports")
 import dspy
 from github_search.samplers import TaskSizeRepoSampler
 from github_search.lms.code2documentation import (
-    run_code2doc_on_df,
     run_code2doc_on_files_df,
 )
 from phoenix.otel import register

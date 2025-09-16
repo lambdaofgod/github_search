@@ -1,11 +1,5 @@
-from pathlib import Path
 
 from typing import Dict, Any
-import pandas as pd
-from beir.retrieval.search.lexical import BM25Search as BM25
-from github_search.evaluation.beir_evaluation import (
-    EvaluateRetrievalCustom as CorpusDataLoader,
-)
 
 
 class ExperimentParams:

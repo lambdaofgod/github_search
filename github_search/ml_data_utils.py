@@ -1,12 +1,9 @@
 import logging
 
-import attr
-import numpy as np
 import pandas as pd
 from mlutil.feature_extraction import embeddings
-from sklearn import model_selection
 
-from github_search import paperswithcode_tasks, pytorch_geometric_data
+from github_search import pytorch_geometric_data
 
 try:
     import fasttext

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import os
 import yaml
-from returns.result import Success, Failure, Result
+from returns.result import Success, Failure
 
 
 def load_config_yaml_key(cls, config_path, key):

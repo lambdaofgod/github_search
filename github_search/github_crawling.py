@@ -2,22 +2,15 @@
 
 __all__ = ["token", "get_python_files_df", "clone_repo", "clone_repos", "DST_PREFIX"]
 
-import codecs
-import concurrent.futures
-import glob
-import itertools
 import json
 import os
 import pathlib
-from operator import itemgetter
 
 # Cell
 import pandas as pd
 import requests
 import tqdm
-from git.repo.base import Repo
 
-from github_search import paperswithcode_tasks
 
 # Cell
 

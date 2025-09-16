@@ -3,7 +3,7 @@ import json
 import os
 import re
 import string
-from typing import Dict, Iterable, List, Tuple, Union
+from typing import Iterable, List
 
 from github_search import python_tokens
 from sentence_transformers.models import tokenizer

@@ -1,7 +1,6 @@
 from contextlib import contextmanager
 import pandas as pd
 import dspy
-import re
 import tqdm
 from github_search.lms.utils import enable_phoenix_tracing
 from github_search.lms.repo_file_summary_provider import (

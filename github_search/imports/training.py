@@ -4,7 +4,6 @@ import pandas as pd
 import sentence_transformers
 import torch
 from github_search import word2vec
-from github_search.decorators import parse_dict_to_dataclass
 from github_search.imports import tokenization
 from github_search.sentence_embeddings import models
 from sentence_transformers import losses

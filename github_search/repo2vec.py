@@ -1,9 +1,7 @@
 import math
 
 import sentence_transformers
-import torch
 import torch.nn.functional as F
-import transformers
 
 
 def setup_transformer():

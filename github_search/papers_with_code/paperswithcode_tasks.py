@@ -18,7 +18,6 @@ import re
 
 # Cell
 import pandas as pd
-from github_search import utils
 
 # Cell
 
