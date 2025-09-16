@@ -3,7 +3,7 @@ name = "github-search"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "aider>=0.2.6",
     "astunparse>=1.6.3",
@@ -32,15 +32,18 @@ dependencies = [
     "pygithub>=2.6.1",
     "pytrec-eval>=0.5",
     "rank-bm25>=0.2.2",
-    "sentence-transformers==2.6.0",
     "statsmodels>=0.14.5",
     "strawberry-graphql>=0.262.4",
-    "tgutil",
+    #"tgutil",
     "toolz>=1.0.0",
     "transformers>=4.46.2",
     "typing-extensions>=4.12.2",
     "umap-learn>=0.5.9.post2",
     "arize-phoenix-otel>=0.13.0",
+    "sentence-transformers>=5.1.0",
+    "tgutil",
+    "ratelimit>=2.2.1",
+    "vulture>=2.14",
 ]
 
 [tool.uv]
@@ -49,11 +52,16 @@ dev-dependencies = ["dagster-webserver>=1.6.5"]
 
 [tool.uv.sources]
 mlutil = { git = "https://github.com/lambdaofgod/mlutil" }
-transformers = { git = "https://github.com/huggingface/transformers.git", rev = "b5a557e5fe2d015bd36214a95878370eaed51571" }
-tgutil = { path = "../tgutil" }
+#transformers = { git = "https://github.com/huggingface/transformers.git", rev = "b5a557e5fe2d015bd36214a95878370eaed51571" }
+#tgutil = { path = "../tgutil" }
 pytrec-eval = { git = "https://github.com/cvangysel/pytrec_eval" }
+tgutil = { path = "../tgutil" }
 #visutils = { path = "../visualization" }
 
 [tool.dagster]
 code_location_name = "github_search"
 module_name = "github_search.pipelines.dagster.definitions"
+
+[tools.setuptools]
+packages = ["github_search"]
+package-dir = {"" = "github_search"}

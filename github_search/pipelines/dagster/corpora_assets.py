@@ -25,8 +25,12 @@ def repos_with_representations_df(
     sampled_repos: pd.DataFrame,
     generated_readmes: pd.DataFrame,
     repomap_generated_readmes: pd.DataFrame,
+    flat_generated_readmes: pd.DataFrame,
+    flat_repomap_generated_readmes: pd.DataFrame,
     librarian_signatures_df: pd.DataFrame,
     selected_python_code_df: pd.DataFrame,
+    dependency_signature_generated_readmes: pd.DataFrame,
+    flat_dependency_signature_generated_readmes: pd.DataFrame,
 ):
     valid_repos = sampled_repos[
         sampled_repos["tasks"].apply(len) <= config.max_repo_tasks
@@ -36,7 +40,11 @@ def repos_with_representations_df(
         librarian_signatures_df,
         generated_readmes,
         repomap_generated_readmes,
+        flat_generated_readmes,
+        flat_repomap_generated_readmes,
         selected_python_code_df,
+        dependency_signature_generated_readmes,
+        flat_dependency_signature_generated_readmes,
     )
     return corpora_df
 
@@ -102,8 +110,12 @@ def corpus_information(
     sampled_repos: pd.DataFrame,
     generated_readmes: pd.DataFrame,
     repomap_generated_readmes: pd.DataFrame,
+    flat_generated_readmes: pd.DataFrame,
+    flat_repomap_generated_readmes: pd.DataFrame,
     librarian_signatures_df: pd.DataFrame,
     selected_python_code_df: pd.DataFrame,
+    dependency_signature_generated_readmes: pd.DataFrame,
+    flat_dependency_signature_generated_readmes: pd.DataFrame,
 ) -> str:
     """
     texts:
@@ -126,7 +138,11 @@ def corpus_information(
         librarian_signatures_df,
         generated_readmes,
         repomap_generated_readmes,
+        flat_generated_readmes,
+        flat_repomap_generated_readmes,
         selected_python_code_df,
+        dependency_signature_generated_readmes,
+        flat_dependency_signature_generated_readmes,
     )
     context.add_output_metadata({"corpora_keys": list(corpora.keys())})
 
