@@ -1,5 +1,0 @@
-generation: rwkv
-sampling: micro
-prompts: few_shot_markdown
-project: "github_search/document_expansion"
-name: "sampled document expansion pipeline"

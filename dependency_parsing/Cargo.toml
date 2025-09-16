@@ -1,8 +1,0 @@
-[package]
-name = "github-search"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-rustpython-parser = "0.1.2"
-polars = { version = "0.26.1", features = ["lazy","temporal","describe","json","parquet","dtype-datetime"]}
