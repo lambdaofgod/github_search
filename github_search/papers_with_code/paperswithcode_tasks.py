@@ -1,0 +1,226 @@
+__all__ = [
+    "clean_task_name",
+    "get_paperswithcode_dfs",
+    "get_papers_with_repo_df",
+    "get_papers_with_biggest_tasks",
+    "normalize_task_names",
+    "get_papers_with_biggest_tasks_df",
+    "get_task_counts",
+    "get_papers_with_valid_tasks",
+    "add_least_common_task",
+    "get_paperswithcode_with_tasks_df",
+    "get_area_grouped_tasks",
+]
+
+import re
+
+# Cell
+import pandas as pd
+
+# Cell
+
+# export
+
+
+def clean_task_name(task_name):
+    task_name = re.sub(r"\d+d", "", task_name)
+    task_name = task_name.replace("-", " ")
+    return task_name.lower().strip()
+
+
+def get_paperswithcode_dfs(
+    paperswithcode_filename="data/links-between-papers-and-code.json.gz",
+    papers_filename="data/papers-with-abstracts.json.gz",
+):
+    paper_links_df = pd.read_json(paperswithcode_filename)
+    paper_links_df["repo"] = paper_links_df["repo_url"].str.replace(
+        "https://github.com/", ""
+    )
+
+    paper_df = pd.read_json(papers_filename)
+    return paper_links_df, paper_df
+
+
+class PapersWithCodeMetadataAggregator:
+    @classmethod
+    def get_aggregated_df(cls, gp_df):
+        repo_name = gp_df.index[0]  # .iloc[0]
+        row_df = pd.DataFrame({"repo": [repo_name]})
+        for col in ["paper_url", "paper_title", "title", "arxiv_id", "authors"]:
+            new_col_name = (col + "s").replace("ss", "s")
+            row_df[new_col_name] = [gp_df[col].to_list()]
+        row_df["tasks"] = [
+            list(set([task for tasks in gp_df["tasks"].to_list() for task in tasks]))
+        ]
+        del row_df["repo"]
+        return row_df
+
+    @classmethod
+    def filter_small_tasks(cls, df, task_counts, min_count):
+        filtered_paperswithcode_df = df.assign(
+            tasks=df["tasks"].apply(
+                lambda tasks: [
+                    t
+                    for t in tasks
+                    if t in task_counts.index and task_counts.loc[t].min() >= min_count
+                ]
+            )
+        )
+        return filtered_paperswithcode_df[
+            filtered_paperswithcode_df["tasks"].apply(len) > 0
+        ]
+
+    @classmethod
+    def merge_repos(cls, paperswithcode_df):
+        pwc_df = paperswithcode_df.groupby("repo").apply(cls.get_aggregated_df)
+        pwc_df.index = pwc_df.index.get_level_values("repo")
+        pwc_df = pwc_df.reset_index(drop=False)
+        return pwc_df
+
+
+def get_papers_with_repo_df(all_papers_df, paperswithcode_df, repo_names):
+    """
+    add repo information to arxiv paper information
+    """
+    paperswithcode_with_repo_df = paperswithcode_df[
+        paperswithcode_df["repo"].isin(repo_names)
+    ]
+    paperswithcode_diff_columns = list(
+        paperswithcode_with_repo_df.columns.difference(all_papers_df.columns)
+    ) + ["paper_url"]
+    papers_with_repo_df = all_papers_df[
+        all_papers_df["paper_url"].isin(paperswithcode_with_repo_df["paper_url"])
+    ]
+
+    return papers_with_repo_df.merge(
+        paperswithcode_with_repo_df[paperswithcode_diff_columns], on="paper_url"
+    )
+
+
+def get_papers_with_biggest_tasks(papers_with_repo_df, n_biggest_tasks):
+    """
+    fetch papers which contain at least one task that is in n_biggest_tasks (by number of task occurrences)
+    """
+    all_tasks = papers_with_repo_df.explode("tasks")["tasks"]
+    biggest_tasks = all_tasks.value_counts()[:n_biggest_tasks]
+
+    papers_with_repo_with_biggest_tasks_df = papers_with_repo_df[
+        papers_with_repo_df["tasks"].apply(
+            lambda tasks: any(task in biggest_tasks.index for task in tasks)
+        )
+    ]
+    papers_with_repo_with_biggest_tasks_df[
+        "most_common_task"
+    ] = papers_with_repo_with_biggest_tasks_df["tasks"].apply(
+        lambda tasks: (
+            biggest_tasks[[t for t in tasks if t in biggest_tasks.index]].idxmax()
+            if len(biggest_tasks[[t for t in tasks if t in biggest_tasks.index]]) > 0
+            else None
+        )
+    )
+    return papers_with_repo_with_biggest_tasks_df
+
+
+def normalize_task_names(task_lists):
+    return task_lists.apply(lambda tasks: [t.lower() for t in tasks])
+
+
+def get_papers_with_biggest_tasks_df(n_biggest_tasks=None):
+    paperswithcode_df, all_papers_df = get_paperswithcode_dfs()
+    n_biggest_tasks = (
+        n_biggest_tasks if not n_biggest_tasks is None else len(paperswithcode_df)
+    )
+    papers_with_repo_df = get_papers_with_repo_df(
+        all_papers_df, paperswithcode_df, paperswithcode_df["repo"]
+    )
+    papers_with_repo_df["tasks"] = normalize_task_names(papers_with_repo_df["tasks"])
+    return get_papers_with_biggest_tasks(
+        papers_with_repo_df, n_biggest_tasks=n_biggest_tasks
+    )
+
+
+# Cell
+
+
+def get_task_counts(cleaned_tasks):
+    all_cleaned_tasks = cleaned_tasks.explode().dropna().apply(clean_task_name)
+    cleaned_tasks = all_cleaned_tasks.drop_duplicates()
+    return all_cleaned_tasks.value_counts()
+
+
+def get_papers_with_valid_tasks(all_papers_df, cleaned_tasks, min_task_occurrences):
+    task_counts = get_task_counts(cleaned_tasks)
+    valid_tasks = task_counts[task_counts >= min_task_occurrences].index
+    filtered_papers_tasks = cleaned_tasks.apply(
+        lambda ts: [t for t in ts if t in valid_tasks]
+    )
+    papers_with_tasks_df = all_papers_df[filtered_papers_tasks.apply(len) > 0]
+    papers_with_tasks_df["valid_tasks"] = filtered_papers_tasks[
+        filtered_papers_tasks.apply(len) > 0
+    ]
+    return papers_with_tasks_df
+
+
+def add_least_common_task(
+    paperswithcode_with_tasks_df, cleaned_tasks, min_task_occurrences
+):
+    task_counts = get_task_counts(cleaned_tasks).sort_values()
+    task_counts = task_counts[task_counts > min_task_occurrences]
+    least_common_task = cleaned_tasks.apply(
+        lambda ts: (
+            task_counts.loc[[t for t in ts if t in task_counts.index]].index[0]
+            if any([t for t in ts if t in task_counts.index])
+            else None
+        )
+    )
+    paperswithcode_with_tasks_df["least_common_task"] = least_common_task
+
+
+# Cell
+
+
+def get_paperswithcode_with_tasks_df(
+    paperswithcode_df, all_papers_df, min_task_occurrences=10
+):
+    all_papers_df["cleaned_tasks"] = all_papers_df["tasks"].apply(
+        lambda ts: [clean_task_name(t) for t in ts]
+    )
+    papers_with_valid_tasks_df = get_papers_with_valid_tasks(
+        all_papers_df, all_papers_df["cleaned_tasks"], min_task_occurrences
+    )
+    paperswithcode_with_tasks_df = paperswithcode_df.merge(
+        papers_with_valid_tasks_df[["title", "valid_tasks", "abstract"]],
+        left_on="paper_title",
+        right_on="title",
+    )
+    paperswithcode_with_tasks_df["tasks"] = paperswithcode_with_tasks_df["valid_tasks"]
+    paperswithcode_with_tasks_df = paperswithcode_with_tasks_df.groupby("repo").apply(
+        lambda df: df.loc[df["tasks"].apply(len).idxmax()]
+    )
+    add_least_common_task(
+        paperswithcode_with_tasks_df,
+        paperswithcode_with_tasks_df["valid_tasks"],
+        min_task_occurrences,
+    )
+    paperswithcode_with_tasks_df.drop("valid_tasks", axis=1, inplace=True)
+    all_valid_tasks = paperswithcode_with_tasks_df["least_common_task"].unique()
+    paperswithcode_with_tasks_df["tasks"] = paperswithcode_with_tasks_df["tasks"].apply(
+        lambda ts: [t for t in ts if t in all_valid_tasks]
+    )
+    paperswithcode_with_tasks_df = paperswithcode_with_tasks_df.dropna(
+        axis=0, subset=["least_common_task"]
+    )
+    return paperswithcode_with_tasks_df
+
+
+# Cell
+
+
+def get_area_grouped_tasks(paperswithcode_tasks_path="data/paperswithcode_tasks.csv"):
+    area_grouped_tasks = pd.read_csv("data/paperswithcode_tasks.csv").dropna()
+    area_grouped_tasks["task"] = area_grouped_tasks["task"].apply(clean_task_name)
+    area_counts = area_grouped_tasks["area"].value_counts()
+    area_grouped_tasks = area_grouped_tasks[
+        area_grouped_tasks["area"].isin(area_counts.index[area_counts > 1])
+    ]
+    return area_grouped_tasks
