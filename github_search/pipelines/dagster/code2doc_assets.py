@@ -26,7 +26,6 @@ from github_search.lms.code2documentation import (
     run_code2doc_on_files_df,
 )
 
-from github_search.pipelines.dagster.dspy_openrouter import OpenRouterClient
 
 logging.basicConfig(level=logging.INFO)
 
