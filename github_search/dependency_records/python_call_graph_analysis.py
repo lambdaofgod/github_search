@@ -3,7 +3,7 @@ from pydantic import BaseModel
 import networkx as nx
 import pandas as pd
 from pandera.typing import DataFrame
-from github_search.python_call_graph import DependencyGraphSchema
+from github_search.dependency_records.python_call_graph import DependencyGraphSchema
 import tqdm
 
 

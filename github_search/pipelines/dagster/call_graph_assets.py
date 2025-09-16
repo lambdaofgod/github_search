@@ -5,8 +5,8 @@ from dagster import (
     asset,
     AssetExecutionContext,
 )
-from github_search.python_call_graph import GraphExtractor
-from github_search.python_call_graph_analysis import (
+from github_search.dependency_records.python_call_graph import GraphExtractor
+from github_search.dependency_records.python_call_graph_analysis import (
     GraphCentralityAnalyzer,
     get_dependency_signatures,
 )
@@ -14,7 +14,7 @@ from github_search.pipelines.dagster.resources import (
     DependencyGraphConfig,
     LibrarianConfig,
 )
-from github_search.librarian import (
+from github_search.lms.librarian import (
     OllamaTypedPredict,
     create_fewshot_prompts,
     sample_context_repo_idxs,

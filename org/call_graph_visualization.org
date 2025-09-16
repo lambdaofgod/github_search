@@ -3,7 +3,7 @@
 
 #+BEGIN_SRC python :session call_graph_visualization.org  :exports both
 import pandas as pd
-from github_search.python_call_graph_analysis import GraphCentralityAnalyzer, get_dependency_signatures
+from github_search.dependency_records.python_call_graph_analysis import GraphCentralityAnalyzer, get_dependency_signatures
 import tqdm
 
 pd.options.display.max_columns = 5

@@ -1,4 +1,4 @@
-from github_search.python_code_analysis import ASTAnalysisResult
+from github_search.dependency_records.python_code_analysis import ASTAnalysisResult
 import pandas as pd
 import pandera as pa
 from pandera.typing import DataFrame
@@ -142,7 +142,7 @@ class GraphExtractor:
         Yields:
             pd.DataFrame: Edge DataFrames with schema [repo_name, target, source, edge_type]
         """
-        from github_search.python_code_analysis import get_ast_analysis_result
+        from github_search.dependency_records.python_code_analysis import get_ast_analysis_result
 
         for _, row in tqdm.tqdm(files_df.iterrows(), total=len(files_df)):
             path = row["path"]
@@ -251,7 +251,7 @@ class GraphExtractor:
 
     @classmethod
     def _extract_import_edges_df(cls, path, imports):
-        from github_search.python_code_analysis import ModuleImport, FromImport
+        from github_search.dependency_records.python_code_analysis import ModuleImport, FromImport
 
         import_targets = []
         for imp in imports:
@@ -292,7 +292,7 @@ class GraphExtractor:
         Extract import-import edges: imported functions/classes that are actually used.
         Creates edges from the imported module/name to the function/class that uses it.
         """
-        from github_search.python_code_analysis import ModuleImport, FromImport
+        from github_search.dependency_records.python_code_analysis import ModuleImport, FromImport
 
         import_import_edges = []
 

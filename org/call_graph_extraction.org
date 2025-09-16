@@ -103,7 +103,7 @@ python_files_df["repo_name"].value_counts().describe()
 
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both :async
 import pandas as pd
-from github_search.python_call_graph import GraphExtractor
+from github_search.dependency_records.python_call_graph import GraphExtractor
 #+END_SRC
 
 #+RESULTS:
@@ -126,7 +126,7 @@ graph_dependencies_df = pd.read_parquet("../output/dependency_records.parquet")
 
 #+BEGIN_SRC python :session call_graph_extraction.org  :exports both
 import pandas as pd
-from github_search.python_call_graph_analysis import GraphCentralityAnalyzer
+from github_search.dependency_records.python_call_graph_analysis import GraphCentralityAnalyzer
 
 #graph_dependencies_df = pd.read_csv("/tmp/deps.csv")
 graph_dependencies_df = pd.read_parquet("../output/dependency_records.parquet")
