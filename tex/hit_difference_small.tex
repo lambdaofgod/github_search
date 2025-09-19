@@ -1,0 +1,41 @@
+\begin{tabular}{||l|l|r|r|r|l||}
+\toprule
+\hline
+\hline
+corpus & retriever & Hit@10 & Hit@10 (lowest cross encoder score tasks) & difference & relative difference \\
+\hline
+\hline
+\midrule
+readme & MPNet & 0.929 & 0.933 & -0.005 & -0.5\% \\
+\hline
+{\color{green} flat code2doc generated readme} & MPNet & 0.880 & 0.813 & 0.067 & 7.6\% \\
+\hline
+{\color{cyan} flat code2doc generated readme (repomap)} & MiniLM & 0.875 & 0.787 & 0.088 & 10.1\% \\
+\hline
+{\color{blue} flat code2doc generated readme (dependency signature)} & MPNet & 0.885 & 0.787 & 0.099 & 11.2\% \\
+\hline
+{\color{cyan} code2doc generated readme (repomap)} & MPNet & 0.842 & 0.733 & 0.109 & 12.9\% \\
+\hline
+{\color{blue} code2doc files summary (dependency signature)} & MiniLM & 0.798 & 0.680 & 0.118 & 14.8\% \\
+\hline
+{\color{green} code2doc files summary(selected code)} & MiniLM & 0.788 & 0.667 & 0.122 & 15.4\% \\
+\hline
+{\color{cyan} code2doc files summary (repomap)} & MPNet & 0.790 & 0.667 & 0.123 & 15.6\% \\
+\hline
+selected code & MiniLM & 0.689 & 0.573 & 0.115 & 16.7\% \\
+\hline
+{\color{blue} code2doc generated readme (dependency signature)} & MiniLM & 0.853 & 0.707 & 0.146 & 17.2\% \\
+\hline
+{\color{green} code2doc generated readme (selected code)} & MiniLM & 0.863 & 0.707 & 0.156 & 18.1\% \\
+\hline
+{\color{cyan} repomap (repomap)} & MiniLM & 0.679 & 0.520 & 0.159 & 23.4\% \\
+\hline
+{\color{red} repository signature} & MPNet & 0.786 & 0.600 & 0.186 & 23.6\% \\
+\hline
+generated tasks & MPNet & 0.827 & 0.600 & 0.227 & 27.5\% \\
+\hline
+{\color{red} dependency signature} & MPNet & 0.737 & 0.520 & 0.217 & 29.5\% \\
+\hline
+\hline
+\bottomrule
+\end{tabular}
